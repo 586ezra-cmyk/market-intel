@@ -1,0 +1,77 @@
+// ============================================================
+// iSMT — Intermarket SMT (exactly 2 consecutive candles)
+// TF: 5m, 15m, 30m, 1h only
+// Pairs: BTC↔ETH, NQ↔ES
+// Pine Script v6 · מערכת מסחר חכמה
+// ============================================================
+//@version=6
+indicator("iSMT — Intermarket (2-candle)", overlay=true)
+
+secret = input.string("dev-secret", "Webhook Secret")
+asset2 = input.symbol("BINANCE:ETHUSDT", "Correlated asset (ETH / ES)")
+
+// ─── Only valid on short TFs ──────────────────────────────────────────────────
+validTF = timeframe.in_seconds() <= 3600  // ≤ 1h
+
+// ─── Fetch asset2 OHLC ───────────────────────────────────────────────────────
+[b_h, b_l, b_c, b_o] = request.security(asset2, timeframe.period, [high, low, close, open])
+
+// ─── iSMT logic (2 consecutive candles) ──────────────────────────────────────
+// BEARISH iSMT:
+//   Candle 1 (previous): asset A has a high
+//   Candle 2 (current):
+//     A sweeps above candle-1 high then closes BACK BELOW → A rejected
+//     B does NOT confirm: B does NOT sweep+close above its candle-1 high
+bearish_ismt = validTF and
+               high  > high[1]  and close  < high[1]  and  // A swept & rejected
+               not (b_h > b_h[1] and b_c > b_h[1])         // B did NOT confirm
+
+// BULLISH iSMT:
+//   A sweeps below candle-1 low then closes BACK ABOVE → A rejected downward
+//   B does NOT confirm: B does NOT sweep+close below its candle-1 low
+bullish_ismt = validTF and
+               low   < low[1]   and close  > low[1]   and  // A swept & rejected
+               not (b_l < b_l[1] and b_c < b_l[1])         // B did NOT confirm
+
+// ─── Visuals ──────────────────────────────────────────────────────────────────
+plotshape(bearish_ismt, title="Bearish iSMT", location=location.abovebar,
+          style=shape.labeldown, color=color.new(color.fuchsia, 10),
+          textcolor=color.white, text="⚡ iSMT ▼", size=size.small)
+
+plotshape(bullish_ismt, title="Bullish iSMT", location=location.belowbar,
+          style=shape.labelup, color=color.new(color.fuchsia, 10),
+          textcolor=color.white, text="⚡ iSMT ▲", size=size.small)
+
+// Draw divergence line connecting the two candle highs/lows
+if bearish_ismt
+    line.new(bar_index - 1, high[1], bar_index, high,
+             color=color.new(color.fuchsia, 30), width=2)
+if bullish_ismt
+    line.new(bar_index - 1, low[1],  bar_index, low,
+             color=color.new(color.fuchsia, 30), width=2)
+
+// ─── Alerts ───────────────────────────────────────────────────────────────────
+// Determine leading/lagging: whoever moved more is the leader
+aRange    = high - low
+bRange    = b_h - b_l
+leadAsset = aRange >= bRange ? syminfo.ticker : str.replace(asset2, ":", "_")
+entryAsset= aRange >= bRange ? str.replace(asset2, ":", "_") : syminfo.ticker
+
+bearPayload = '{"secret":"' + secret + '","event":"smt","symbol":"' + syminfo.ticker +
+              '","timeframe":"' + timeframe.period + '","time":' + str.tostring(math.round(time)) +
+              ',"asset1":"' + syminfo.ticker + '","asset1Price":' + str.tostring(close) +
+              ',"asset1High":' + str.tostring(high) + ',"asset1Low":' + str.tostring(low) +
+              ',"asset2":"' + str.replace(asset2, ":", "_") + '","asset2Price":' + str.tostring(b_c) +
+              ',"asset2High":' + str.tostring(b_h) + ',"asset2Low":' + str.tostring(b_l) +
+              ',"ismt":true,"direction":"bearish"}'
+
+bullPayload = '{"secret":"' + secret + '","event":"smt","symbol":"' + syminfo.ticker +
+              '","timeframe":"' + timeframe.period + '","time":' + str.tostring(math.round(time)) +
+              ',"asset1":"' + syminfo.ticker + '","asset1Price":' + str.tostring(close) +
+              ',"asset1High":' + str.tostring(high) + ',"asset1Low":' + str.tostring(low) +
+              ',"asset2":"' + str.replace(asset2, ":", "_") + '","asset2Price":' + str.tostring(b_c) +
+              ',"asset2High":' + str.tostring(b_h) + ',"asset2Low":' + str.tostring(b_l) +
+              ',"ismt":true,"direction":"bullish"}'
+
+alertcondition(bearish_ismt, "Bearish iSMT", bearPayload)
+alertcondition(bullish_ismt, "Bullish iSMT", bullPayload)

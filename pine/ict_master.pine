@@ -1,0 +1,286 @@
+// ============================================================
+// ICT Master Indicator — מערכת מסחר חכמה
+// Combines: Market Structure + FVG + Liquidity + SMT + iSMT +
+//           Wyckoff + Kill Zones + Dealing Range + Session H/L +
+//           Order Block + Po3 + Opening Range
+//
+// Pine Script v6
+// Usage: Add this ONE indicator to your chart.
+//        Set ONE alert with "any alert() call" → your webhook URL.
+// ============================================================
+//@version=6
+indicator("ICT Master — מסחר חכם", overlay=true, max_bars_back=500,
+          max_lines_count=200, max_boxes_count=100, max_labels_count=200)
+
+// ─── SETTINGS ────────────────────────────────────────────────────────────────
+grpWebhook = "⚙️ Webhook"
+secret      = input.string("dev-secret", "Secret",           group=grpWebhook)
+
+grpDisplay  = "🎨 תצוגה"
+showStruct  = input.bool(true,  "מבנה שוק (BOS/CHoCH)",     group=grpDisplay)
+showFVG     = input.bool(true,  "FVG",                        group=grpDisplay)
+showLiq     = input.bool(true,  "נזילות (Equal H/L)",         group=grpDisplay)
+showRange   = input.bool(true,  "Dealing Range",               group=grpDisplay)
+showKZ      = input.bool(true,  "Kill Zones",                  group=grpDisplay)
+showWyckoff = input.bool(true,  "Wyckoff",                     group=grpDisplay)
+showSMT     = input.bool(true,  "SMT",                         group=grpDisplay)
+showISMT    = input.bool(true,  "iSMT (2-candle)",            group=grpDisplay)
+showOB      = input.bool(true,  "Order Block",                 group=grpDisplay)
+showOR      = input.bool(true,  "Opening Range + Po3",         group=grpDisplay)
+
+grpSMT      = "⚡ SMT / iSMT"
+asset2      = input.symbol("BINANCE:ETHUSDT", "Correlated asset", group=grpSMT)
+
+grpConf     = "🎯 Confluence"
+minFactors  = input.int(2, "Minimum factors for alert", minval=1, maxval=5, group=grpConf)
+requireKZ   = input.bool(true, "Require Kill Zone",           group=grpConf)
+
+// ─── HELPERS ─────────────────────────────────────────────────────────────────
+h      = hour(time, "UTC")
+atr    = ta.atr(14)
+volMA  = ta.sma(volume, 20)
+lowVol = volume < volMA * 0.7
+
+isLondon = h >= 7  and h < 11
+isNY     = h >= 13 and h < 16
+isAsian  = h >= 20 or  h < 4
+isKZ     = isLondon or isNY
+
+// ─── KILL ZONES ───────────────────────────────────────────────────────────────
+bgcolor(showKZ and isLondon ? color.new(color.blue,  92) : na, title="London KZ")
+bgcolor(showKZ and isNY     ? color.new(color.green, 92) : na, title="NY KZ")
+
+if showKZ and isLondon and not isLondon[1]
+    label.new(bar_index, high + atr, "🇬🇧 London KZ",
+              style=label.style_label_down, color=color.new(color.blue, 40),
+              textcolor=color.white, size=size.tiny)
+if showKZ and isNY and not isNY[1]
+    label.new(bar_index, high + atr, "🗽 NY KZ",
+              style=label.style_label_down, color=color.new(color.green, 40),
+              textcolor=color.white, size=size.tiny)
+
+// ─── DEALING RANGE ────────────────────────────────────────────────────────────
+isLowTF   = timeframe.in_seconds() <= 900
+
+var float asianH = na
+var float asianL = na
+var bool  wasAsian = false
+
+if isAsian and not wasAsian
+    asianH := high; asianL := low; wasAsian := true
+else if isAsian
+    asianH := math.max(asianH, high); asianL := math.min(asianL, low)
+else
+    wasAsian := false
+
+ph5  = ta.pivothigh(high, 5, 5)
+pl5  = ta.pivotlow(low, 5, 5)
+var float swingH = na
+var float swingL = na
+if not na(ph5) then swingH := ph5
+if not na(pl5) then swingL := pl5
+
+rangeH   = isLowTF ? asianH : swingH
+rangeL   = isLowTF ? asianL : swingL
+rangeMid = not na(rangeH) and not na(rangeL) ? (rangeH + rangeL) / 2 : na
+
+if showRange and barstate.islast and not na(rangeH)
+    box.new(bar_index - 80, rangeH, bar_index + 20, rangeL,
+            border_color=color.new(color.blue, 60),
+            bgcolor=color.new(color.blue, 97))
+    line.new(bar_index - 80, rangeMid, bar_index + 20, rangeMid,
+             color=color.new(color.blue, 50), style=line.style_dashed)
+
+// ─── MARKET STRUCTURE ────────────────────────────────────────────────────────
+var float lastSH = na
+var float lastSL = na
+var string msTrend = "neutral"
+
+if not na(ph5) then lastSH := ph5
+if not na(pl5) then lastSL := pl5
+
+bullBOS   = not na(lastSH) and close > lastSH and msTrend == "bullish"
+bullCHoCH = not na(lastSH) and close > lastSH and msTrend != "bullish"
+bearBOS   = not na(lastSL) and close < lastSL and msTrend == "bearish"
+bearCHoCH = not na(lastSL) and close < lastSL and msTrend != "bearish"
+
+if bullBOS or bullCHoCH then msTrend := "bullish"
+if bearBOS or bearCHoCH then msTrend := "bearish"
+
+hasBOS = bullBOS or bearBOS or bullCHoCH or bearCHoCH
+structDir = (bullBOS or bullCHoCH) ? "bullish" : "bearish"
+
+if showStruct
+    if bullBOS   then label.new(bar_index, low  - atr*0.5, "BOS ▲",   style=label.style_label_up,   color=color.new(color.green,  20), textcolor=color.white, size=size.tiny)
+    if bullCHoCH then label.new(bar_index, low  - atr*0.5, "CHoCH ▲", style=label.style_label_up,   color=color.new(color.lime,   10), textcolor=color.black, size=size.tiny)
+    if bearBOS   then label.new(bar_index, high + atr*0.5, "BOS ▼",   style=label.style_label_down, color=color.new(color.red,    20), textcolor=color.white, size=size.tiny)
+    if bearCHoCH then label.new(bar_index, high + atr*0.5, "CHoCH ▼", style=label.style_label_down, color=color.new(color.orange, 10), textcolor=color.black, size=size.tiny)
+
+// ─── FVG ─────────────────────────────────────────────────────────────────────
+bullFVG = low > high[2] and math.abs(close[1] - open[1]) > 1.5 * atr[1]
+bearFVG = high < low[2] and math.abs(close[1] - open[1]) > 1.5 * atr[1]
+
+if showFVG
+    if bullFVG then box.new(bar_index - 2, low,    bar_index + 50, high[2], border_color=color.new(color.green, 60), bgcolor=color.new(color.green, 92))
+    if bearFVG then box.new(bar_index - 2, low[2], bar_index + 50, high,    border_color=color.new(color.red,   60), bgcolor=color.new(color.red,   92))
+
+hasFVG   = bullFVG or bearFVG
+fvgDir   = bullFVG ? "bullish" : "bearish"
+
+// ─── LIQUIDITY ────────────────────────────────────────────────────────────────
+tol         = close * 0.0005
+eqHigh      = math.abs(high - ta.highest(high, 20)[1]) < tol
+eqLow       = math.abs(low  - ta.lowest(low,  20)[1])  < tol
+sweepH      = not na(lastSH) and high > lastSH and close < lastSH
+sweepL      = not na(lastSL) and low  < lastSL and close > lastSL
+hasLiqSweep = sweepH or sweepL
+sweepDir    = sweepH ? "bearish" : "bullish"
+
+if showLiq
+    if eqHigh then line.new(bar_index - 1, high, bar_index + 20, high, color=color.new(color.yellow, 40), style=line.style_dotted)
+    if eqLow  then line.new(bar_index - 1, low,  bar_index + 20, low,  color=color.new(color.yellow, 40), style=line.style_dotted)
+    if sweepH then label.new(bar_index, high + atr*0.3, "⚡ Sweep H", style=label.style_label_down, color=color.new(color.red,   30), textcolor=color.white, size=size.tiny)
+    if sweepL then label.new(bar_index, low  - atr*0.3, "⚡ Sweep L", style=label.style_label_up,   color=color.new(color.green, 30), textcolor=color.white, size=size.tiny)
+
+// ─── SMT ─────────────────────────────────────────────────────────────────────
+[b_h, b_l, b_c] = request.security(asset2, timeframe.period, [high, low, close])
+
+var float sPH1 = na; var float sPH2 = na; var float sPL1 = na; var float sPL2 = na
+var float pPH1 = na; var float pPH2 = na; var float pPL1 = na; var float pPL2 = na
+
+ph3 = ta.pivothigh(high, 3, 3); pl3 = ta.pivotlow(low, 3, 3)
+ph3b = ta.pivothigh(b_h, 3, 3); pl3b = ta.pivotlow(b_l, 3, 3)
+
+if not na(ph3)  then pPH1 := sPH1; sPH1 := ph3
+if not na(ph3b) then pPH2 := sPH2; sPH2 := ph3b
+if not na(pl3)  then pPL1 := sPL1; sPL1 := pl3
+if not na(pl3b) then pPL2 := sPL2; sPL2 := pl3b
+
+bearSMT  = showSMT and not na(sPH1) and not na(pPH1) and sPH1 > pPH1 and not na(sPH2) and sPH2 <= pPH2
+bullSMT  = showSMT and not na(sPL1) and not na(pPL1) and sPL1 < pPL1 and not na(sPL2) and sPL2 >= pPL2
+hasSMT   = bearSMT or bullSMT
+smtDir   = bearSMT ? "bearish" : "bullish"
+
+if bearSMT then label.new(bar_index, high + atr, "⚡ SMT ▼", style=label.style_label_down, color=color.new(color.fuchsia, 20), textcolor=color.white, size=size.small)
+if bullSMT then label.new(bar_index, low  - atr, "⚡ SMT ▲", style=label.style_label_up,   color=color.new(color.fuchsia, 20), textcolor=color.white, size=size.small)
+
+// ─── iSMT (2-candle) ─────────────────────────────────────────────────────────
+validISMTtf   = timeframe.in_seconds() <= 3600
+bearISMT = showISMT and validISMTtf and high  > high[1] and close  < high[1] and not (b_h > b_h[1] and b_c > b_h[1])
+bullISMT = showISMT and validISMTtf and low   < low[1]  and close  > low[1]  and not (b_l < b_l[1] and b_c < b_l[1])
+hasISMT  = bearISMT or bullISMT
+ismtDir  = bearISMT ? "bearish" : "bullish"
+
+if bearISMT then label.new(bar_index, high + atr*0.8, "⚡ iSMT ▼", style=label.style_label_down, color=color.new(color.fuchsia, 10), textcolor=color.white, size=size.small)
+if bullISMT then label.new(bar_index, low  - atr*0.8, "⚡ iSMT ▲", style=label.style_label_up,   color=color.new(color.fuchsia, 10), textcolor=color.white, size=size.small)
+
+// ─── WYCKOFF ─────────────────────────────────────────────────────────────────
+wRangeH  = ta.highest(high, 20)[1]
+wRangeL  = ta.lowest(low,  20)[1]
+spring   = showWyckoff and low < wRangeL and close > wRangeL and close > open and lowVol
+upthrust = showWyckoff and high > wRangeH and close < wRangeH and close < open and lowVol
+
+if spring   then label.new(bar_index, low  - atr, "🌱 Spring",  style=label.style_label_up,   color=color.new(color.green, 20), textcolor=color.white)
+if upthrust then label.new(bar_index, high + atr, "⬆ Upthrust", style=label.style_label_down, color=color.new(color.red,   20), textcolor=color.white)
+
+// ─── ORDER BLOCK ─────────────────────────────────────────────────────────────
+bullDisp2 = math.abs(close - open) > 1.5 * atr and close > open and close > high[1]
+bearDisp2 = math.abs(close - open) > 1.5 * atr and close < open and close < low[1]
+bullOB2   = showOB and bullDisp2 and close[3] < open[3]
+bearOB2   = showOB and bearDisp2 and close[3] > open[3]
+
+if bullOB2 then box.new(bar_index - 3, math.max(open[3], close[3]), bar_index + 60, math.min(open[3], close[3]), border_color=color.new(color.green, 50), bgcolor=color.new(color.green, 90))
+if bearOB2 then box.new(bar_index - 3, math.max(open[3], close[3]), bar_index + 60, math.min(open[3], close[3]), border_color=color.new(color.red,   50), bgcolor=color.new(color.red,   90))
+
+// ─── OPENING RANGE + Po3 ─────────────────────────────────────────────────────
+var float londonORH = na; var float londonORL = na; var bool londonCap = false
+var float nyORH     = na; var float nyORL     = na; var bool nyCap     = false
+
+isLOR = h == 7  and minute(time, "UTC") < 15
+isNOR = h == 13 and minute(time, "UTC") < 15
+
+if isLOR and not londonCap then londonORH := high; londonORL := low;  londonCap := true
+else if isLOR then londonORH := math.max(londonORH, high); londonORL := math.min(londonORL, low)
+else if not isLOR then londonCap := false
+
+if isNOR and not nyCap then nyORH := high; nyORL := low; nyCap := true
+else if isNOR then nyORH := math.max(nyORH, high); nyORL := math.min(nyORL, low)
+else if not isNOR then nyCap := false
+
+if showOR
+    plot(not isLOR and not na(londonORH) ? londonORH : na, "London OR H", color.new(color.blue, 30), 1, plot.style_linebr)
+    plot(not isLOR and not na(londonORL) ? londonORL : na, "London OR L", color.new(color.blue, 30), 1, plot.style_linebr)
+    plot(not isNOR  and not na(nyORH)    ? nyORH     : na, "NY OR H",     color.new(color.green,30), 1, plot.style_linebr)
+    plot(not isNOR  and not na(nyORL)    ? nyORL     : na, "NY OR L",     color.new(color.green,30), 1, plot.style_linebr)
+
+judasBull = showOR and not na(londonORL) and not isLOR and low < londonORL and close > londonORL and close > open
+judasBear = showOR and not na(londonORH) and not isLOR and high > londonORH and close < londonORH and close < open
+nyJBull   = showOR and not na(nyORL) and not isNOR and low < nyORL and close > nyORL and close > open
+nyJBear   = showOR and not na(nyORH) and not isNOR and high > nyORH and close < nyORH and close < open
+
+if judasBull or nyJBull then label.new(bar_index, low - atr, "🎭 Judas ▲", style=label.style_label_up,   color=color.new(color.teal, 20), textcolor=color.white, size=size.small)
+if judasBear or nyJBear then label.new(bar_index, high+atr, "🎭 Judas ▼", style=label.style_label_down, color=color.new(color.teal, 20), textcolor=color.white, size=size.small)
+
+// ─── CONFLUENCE ENGINE ────────────────────────────────────────────────────────
+// Determine dominant direction from most recent signal
+directionBull = (bullBOS or bullCHoCH or bullISMT or bullSMT or sweepL or judasBull or nyJBull or spring)
+directionBear = (bearBOS or bearCHoCH or bearISMT or bearSMT or sweepH or judasBear or nyJBear or upthrust)
+
+confluenceDir = directionBull and not directionBear ? "bullish" :
+                directionBear and not directionBull ? "bearish" : "neutral"
+
+// Count confirmed factors
+factorCount = (hasBOS ? 1 : 0) + (hasLiqSweep ? 1 : 0) + (hasFVG ? 1 : 0) +
+              (hasSMT ? 1 : 0) + (hasISMT ? 1 : 0) + (spring or upthrust ? 1 : 0)
+
+confluenceOK = factorCount >= minFactors and (not requireKZ or isKZ) and confluenceDir != "neutral"
+
+// ─── ALERTS ───────────────────────────────────────────────────────────────────
+// Individual events
+alertcondition(hasBOS,      "Structure (BOS/CHoCH)",
+    '{"secret":"' + secret + '","event":"structure","symbol":"' + syminfo.ticker +
+    '","timeframe":"' + timeframe.period + '","time":' + str.tostring(math.round(time)) +
+    ',"type":"' + (bullBOS ? "BOS" : bullCHoCH ? "CHoCH" : bearBOS ? "BOS" : "CHoCH") +
+    '","direction":"' + structDir + '","price":' + str.tostring(close) + ',"confirmed":true}')
+
+alertcondition(hasFVG, "FVG Created",
+    '{"secret":"' + secret + '","event":"fvg_created","symbol":"' + syminfo.ticker +
+    '","timeframe":"' + timeframe.period + '","time":' + str.tostring(math.round(time)) +
+    ',"direction":"' + fvgDir + '","topPrice":' + str.tostring(bullFVG ? low : low[2]) +
+    ',"bottomPrice":' + str.tostring(bullFVG ? high[2] : high) + '}')
+
+alertcondition(hasLiqSweep, "Liquidity Sweep",
+    '{"secret":"' + secret + '","event":"liquidity_sweep","symbol":"' + syminfo.ticker +
+    '","timeframe":"' + timeframe.period + '","time":' + str.tostring(math.round(time)) +
+    ',"high":' + str.tostring(high) + ',"low":' + str.tostring(low) + ',"close":' + str.tostring(close) + '}')
+
+alertcondition(hasSMT or hasISMT, "SMT / iSMT",
+    '{"secret":"' + secret + '","event":"smt","symbol":"' + syminfo.ticker +
+    '","timeframe":"' + timeframe.period + '","time":' + str.tostring(math.round(time)) +
+    ',"asset1":"' + syminfo.ticker + '","asset1Price":' + str.tostring(close) +
+    ',"asset1High":' + str.tostring(high) + ',"asset1Low":' + str.tostring(low) +
+    ',"asset2":"ETHUSDT","asset2Price":' + str.tostring(b_c) +
+    ',"asset2High":' + str.tostring(b_h) + ',"asset2Low":' + str.tostring(b_l) + '}')
+
+alertcondition(spring, "Wyckoff Spring",
+    '{"secret":"' + secret + '","event":"wyckoff","symbol":"' + syminfo.ticker +
+    '","timeframe":"' + timeframe.period + '","time":' + str.tostring(math.round(time)) +
+    ',"phase":"accumulation","confidence":0.75}')
+
+alertcondition(upthrust, "Wyckoff Upthrust",
+    '{"secret":"' + secret + '","event":"wyckoff","symbol":"' + syminfo.ticker +
+    '","timeframe":"' + timeframe.period + '","time":' + str.tostring(math.round(time)) +
+    ',"phase":"distribution","confidence":0.75}')
+
+// ★ MASTER confluence alert — this is the one that triggers the full analysis
+alertcondition(confluenceOK, "★ CONFLUENCE ALERT ★",
+    '{"secret":"' + secret + '","event":"confluence","symbol":"' + syminfo.ticker +
+    '","timeframe":"' + timeframe.period + '","time":' + str.tostring(math.round(time)) +
+    ',"direction":"' + confluenceDir +
+    '","currentPrice":' + str.tostring(close) +
+    ',"hasBOSorCHoCH":' + str.tostring(hasBOS) +
+    ',"hasLiquiditySweep":' + str.tostring(hasLiqSweep) +
+    ',"hasFVG":' + str.tostring(hasFVG) +
+    ',"hasSMT":' + str.tostring(hasSMT) +
+    ',"hasISMT":' + str.tostring(hasISMT) +
+    ',"hasWyckoff":' + str.tostring(spring or upthrust) + '}')

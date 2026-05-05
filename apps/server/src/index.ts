@@ -1,0 +1,52 @@
+import http from 'http'
+import express from 'express'
+import cors from 'cors'
+import { config } from './config'
+import { getDb } from './db/client'
+import { initWebSocket } from './websocket'
+import webhookRouter from './routes/webhook'
+import alertsRouter from './routes/alerts'
+import marketRouter from './routes/market'
+import economicRouter from './routes/economic'
+import backtestRouter from './routes/backtest'
+import journalRouter from './routes/journal'
+import { initScheduler } from './services/scheduler'
+
+const app = express()
+
+// ─── Middleware ───────────────────────────────────────────────────────────────
+app.use(cors({ origin: process.env.CORS_ORIGIN ?? 'http://localhost:3000' }))
+app.use(express.json({ limit: '1mb' }))
+
+// ─── Routes ───────────────────────────────────────────────────────────────────
+app.use('/webhook', webhookRouter)
+app.use('/api/alerts', alertsRouter)
+app.use('/api/market', marketRouter)
+app.use('/api/economic-calendar', economicRouter)
+app.use('/api/briefing', economicRouter)
+app.use('/api/backtest', backtestRouter)
+app.use('/api/journal', journalRouter)
+
+// Health check
+app.get('/health', (_req, res) => {
+  res.json({ ok: true, time: Date.now(), env: config.nodeEnv })
+})
+
+// ─── Bootstrap ────────────────────────────────────────────────────────────────
+const server = http.createServer(app)
+initWebSocket(server)
+
+// Ensure DB is ready (runs migrations)
+getDb()
+
+// Start scheduler (cron jobs)
+if (config.nodeEnv !== 'test') {
+  initScheduler()
+}
+
+server.listen(config.port, () => {
+  console.log(`[Server] Running on port ${config.port} (${config.nodeEnv})`)
+  console.log(`[Server] WebSocket ready`)
+})
+
+export default app

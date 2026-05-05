@@ -1,0 +1,39 @@
+// ============================================================
+// Kill Zones — London + New York session highlighting
+// Pine Script v6 · מערכת מסחר חכמה
+// ============================================================
+//@version=6
+indicator("Kill Zones", overlay=true)
+
+showLondon = input.bool(true,  "Show London Kill Zone  07:00–11:00 UTC")
+showNY     = input.bool(true,  "Show NY Kill Zone      13:00–16:00 UTC")
+showAsian  = input.bool(false, "Show Asian Session     20:00–00:00 UTC")
+
+londonColor = input.color(color.new(color.blue,   88), "London color")
+nyColor     = input.color(color.new(color.green,  88), "NY color")
+asianColor  = input.color(color.new(color.yellow, 92), "Asian color")
+
+// Current bar hour in UTC
+h = hour(time, "UTC")
+
+isLondon = h >= 7  and h < 11
+isNY     = h >= 13 and h < 16
+isAsian  = h >= 20 or  h < 4
+
+bgcolor(showLondon and isLondon ? londonColor : na, title="London KZ")
+bgcolor(showNY     and isNY     ? nyColor     : na, title="NY KZ")
+bgcolor(showAsian  and isAsian  ? asianColor  : na, title="Asian Session")
+
+// Label at first bar of each zone (once per session)
+var bool londonLabelShown = false
+var bool nyLabelShown     = false
+
+if isLondon and not isLondon[1]
+    label.new(bar_index, high + ta.atr(14), "🇬🇧 London KZ",
+              style=label.style_label_down, color=color.new(color.blue, 40),
+              textcolor=color.white, size=size.small)
+
+if isNY and not isNY[1]
+    label.new(bar_index, high + ta.atr(14), "🗽 NY KZ",
+              style=label.style_label_down, color=color.new(color.green, 40),
+              textcolor=color.white, size=size.small)

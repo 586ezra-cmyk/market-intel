@@ -1,0 +1,83 @@
+// ============================================================
+// Liquidity — Equal Highs/Lows + Sweep detection
+// Pine Script v6 · מערכת מסחר חכמה
+// ============================================================
+//@version=6
+indicator("Liquidity Levels", overlay=true, max_bars_back=500)
+
+secret      = input.string("dev-secret", "Webhook Secret")
+eqTolerance = input.float(0.05, "Equal H/L tolerance (%)", minval=0.01, maxval=1.0)
+lookback    = input.int(20, "Lookback for Equal H/L", minval=5)
+
+// ─── Equal Highs / Lows detection ────────────────────────────────────────────
+tol = close * (eqTolerance / 100)
+
+// Find equal highs in lookback
+var float[] recentHighs = array.new<float>()
+var float[] recentLows  = array.new<float>()
+
+if barstate.isconfirmed
+    array.push(recentHighs, high)
+    array.push(recentLows,  low)
+    if array.size(recentHighs) > lookback
+        array.shift(recentHighs)
+        array.shift(recentLows)
+
+// Check if current high equals any previous high (within tolerance)
+equalHigh = false
+equalLow  = false
+for i = 0 to math.min(array.size(recentHighs) - 2, lookback - 1)
+    if math.abs(high - array.get(recentHighs, i)) < tol
+        equalHigh := true
+    if math.abs(low - array.get(recentLows, i)) < tol
+        equalLow := true
+
+// ─── Sweep detection ──────────────────────────────────────────────────────────
+// Sweep High: wick above recent high, close below it
+ph = ta.pivothigh(high, 5, 5)
+pl = ta.pivotlow(low,  5, 5)
+
+var float lastPH = na
+var float lastPL = na
+if not na(ph) then lastPH := ph
+if not na(pl) then lastPL := pl
+
+sweepHigh = not na(lastPH) and high > lastPH and close < lastPH
+sweepLow  = not na(lastPL) and low  < lastPL and close > lastPL
+
+// ─── Visuals ──────────────────────────────────────────────────────────────────
+if equalHigh
+    line.new(bar_index - 1, high, bar_index + 20, high,
+             color=color.new(color.yellow, 40), style=line.style_dotted, width=1)
+
+if equalLow
+    line.new(bar_index - 1, low, bar_index + 20, low,
+             color=color.new(color.yellow, 40), style=line.style_dotted, width=1)
+
+if sweepHigh
+    label.new(bar_index, high, "⚡ Sweep", style=label.style_label_down,
+              color=color.new(color.red, 30), textcolor=color.white, size=size.tiny)
+
+if sweepLow
+    label.new(bar_index, low, "⚡ Sweep", style=label.style_label_up,
+              color=color.new(color.green, 30), textcolor=color.white, size=size.tiny)
+
+// ─── Alerts ───────────────────────────────────────────────────────────────────
+eqHighPayload = '{"secret":"' + secret + '","event":"liquidity","symbol":"' + syminfo.ticker +
+                '","timeframe":"' + timeframe.period + '","time":' + str.tostring(math.round(time)) +
+                ',"type":"equal_highs","price":' + str.tostring(high) +
+                ',"firstTime":' + str.tostring(math.round(time)) + '}'
+
+eqLowPayload  = '{"secret":"' + secret + '","event":"liquidity","symbol":"' + syminfo.ticker +
+                '","timeframe":"' + timeframe.period + '","time":' + str.tostring(math.round(time)) +
+                ',"type":"equal_lows","price":' + str.tostring(low) +
+                ',"firstTime":' + str.tostring(math.round(time)) + '}'
+
+sweepPayload  = '{"secret":"' + secret + '","event":"liquidity_sweep","symbol":"' + syminfo.ticker +
+                '","timeframe":"' + timeframe.period + '","time":' + str.tostring(math.round(time)) +
+                ',"high":' + str.tostring(high) + ',"low":' + str.tostring(low) +
+                ',"close":' + str.tostring(close) + '}'
+
+alertcondition(equalHigh, "Equal Highs", eqHighPayload)
+alertcondition(equalLow,  "Equal Lows",  eqLowPayload)
+alertcondition(sweepHigh or sweepLow, "Liquidity Sweep", sweepPayload)

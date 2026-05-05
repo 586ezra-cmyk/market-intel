@@ -1,0 +1,76 @@
+// ============================================================
+// Dealing Range — Asian Session Range + Swing Range
+// Pine Script v6 · מערכת מסחר חכמה
+// ============================================================
+//@version=6
+indicator("Dealing Range", overlay=true)
+
+secret      = input.string("dev-secret", "Webhook Secret")
+swingLB     = input.int(5, "Swing lookback (high-TF)", minval=2)
+
+// ─── Classify TF ─────────────────────────────────────────────────────────────
+isLowTF = timeframe.in_seconds() <= 900  // ≤ 15m
+
+// ─── ASIAN SESSION RANGE (low TF: 1m–15m) ────────────────────────────────────
+// Asian session: 20:00–00:00 UTC
+isAsian = (hour(time, "UTC") >= 20)
+
+var float asianHigh = na
+var float asianLow  = na
+var bool  inAsian   = false
+
+if isLowTF
+    if isAsian and not inAsian
+        asianHigh := high
+        asianLow  := low
+        inAsian   := true
+    else if isAsian and inAsian
+        if high > asianHigh then asianHigh := high
+        if low  < asianLow  then asianLow  := low
+    else if not isAsian and inAsian
+        // Session ended — emit range event
+        inAsian := false
+
+// ─── SWING RANGE (high TF: 30m+) ─────────────────────────────────────────────
+ph = ta.pivothigh(high, swingLB, swingLB)
+pl = ta.pivotlow (low,  swingLB, swingLB)
+
+var float swingHigh = na
+var float swingLow  = na
+
+if not isLowTF
+    if not na(ph) then swingHigh := ph
+    if not na(pl) then swingLow  := pl
+
+// ─── Active range values ──────────────────────────────────────────────────────
+rangeHigh = isLowTF ? asianHigh : swingHigh
+rangeLow  = isLowTF ? asianLow  : swingLow
+midpoint  = not na(rangeHigh) and not na(rangeLow) ? (rangeHigh + rangeLow) / 2 : na
+
+// ─── Visuals ──────────────────────────────────────────────────────────────────
+isPremium  = not na(midpoint) and close > midpoint
+isDiscount = not na(midpoint) and close < midpoint
+
+// Draw range box
+if not na(rangeHigh) and not na(rangeLow) and barstate.islast
+    box.new(bar_index - 50, rangeHigh, bar_index + 20, rangeLow,
+            border_color=color.new(color.blue, 50),
+            bgcolor=color.new(color.blue, 95))
+    // Midpoint line
+    line.new(bar_index - 50, midpoint, bar_index + 20, midpoint,
+             color=color.new(color.blue, 40), style=line.style_dashed)
+    // Labels
+    label.new(bar_index + 5, rangeHigh, "Premium 🔴", style=label.style_label_left,
+              color=color.new(color.red, 80), textcolor=color.red, size=size.tiny)
+    label.new(bar_index + 5, rangeLow, "Discount 🟢", style=label.style_label_left,
+              color=color.new(color.green, 80), textcolor=color.green, size=size.tiny)
+
+// ─── Alerts ───────────────────────────────────────────────────────────────────
+newRange = isLowTF ? (not isAsian and inAsian[1]) : (not na(ph) or not na(pl))
+
+payload = '{"secret":"' + secret + '","event":"range_update","symbol":"' + syminfo.ticker +
+          '","timeframe":"' + timeframe.period + '","time":' + str.tostring(math.round(time)) +
+          ',"high":' + str.tostring(rangeHigh) + ',"low":' + str.tostring(rangeLow) +
+          ',"session":"asian"}'
+
+alertcondition(newRange, "Range Update", payload)

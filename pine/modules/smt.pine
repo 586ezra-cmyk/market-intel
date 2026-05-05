@@ -1,0 +1,66 @@
+// ============================================================
+// SMT — Smart Money Technique (BTC ↔ ETH  /  NQ ↔ ES)
+// Pine Script v6 · מערכת מסחר חכמה
+// ============================================================
+//@version=6
+indicator("SMT Divergence", overlay=true)
+
+secret      = input.string("dev-secret", "Webhook Secret")
+asset2      = input.symbol("BINANCE:ETHUSDT", "Correlated Asset (e.g. ETH, ES)")
+lookback    = input.int(5, "Pivot lookback", minval=2)
+
+// ─── Fetch correlated asset data ──────────────────────────────────────────────
+[a2_h, a2_l, a2_c] = request.security(asset2, timeframe.period, [high, low, close])
+
+// ─── Pivot highs/lows ────────────────────────────────────────────────────────
+ph1 = ta.pivothigh(high, lookback, lookback)
+pl1 = ta.pivotlow (low,  lookback, lookback)
+ph2 = ta.pivothigh(a2_h, lookback, lookback)
+pl2 = ta.pivotlow (a2_l, lookback, lookback)
+
+var float lastPH1 = na
+var float lastPH2 = na
+var float lastPL1 = na
+var float lastPL2 = na
+var float prevPH1 = na
+var float prevPH2 = na
+var float prevPL1 = na
+var float prevPL2 = na
+
+if not na(ph1) then prevPH1 := lastPH1; lastPH1 := ph1
+if not na(ph2) then prevPH2 := lastPH2; lastPH2 := ph2
+if not na(pl1) then prevPL1 := lastPL1; lastPL1 := pl1
+if not na(pl2) then prevPL2 := lastPL2; lastPL2 := pl2
+
+// ─── SMT conditions ───────────────────────────────────────────────────────────
+// Bearish SMT: asset1 HH, asset2 does NOT confirm HH
+bearSMT = not na(lastPH1) and not na(prevPH1) and not na(lastPH2) and
+          lastPH1 > prevPH1 and               // asset1 made new HH
+          lastPH2 <= prevPH2                  // asset2 did NOT make new HH
+
+// Bullish SMT: asset1 LL, asset2 does NOT confirm LL
+bullSMT = not na(lastPL1) and not na(prevPL1) and not na(lastPL2) and
+          lastPL1 < prevPL1 and               // asset1 made new LL
+          lastPL2 >= prevPL2                  // asset2 did NOT make new LL
+
+// ─── Visuals ──────────────────────────────────────────────────────────────────
+if bearSMT
+    label.new(bar_index, high, "⚡ SMT Bear", style=label.style_label_down,
+              color=color.new(color.fuchsia, 20), textcolor=color.white, size=size.small)
+
+if bullSMT
+    label.new(bar_index, low, "⚡ SMT Bull", style=label.style_label_up,
+              color=color.new(color.fuchsia, 20), textcolor=color.white, size=size.small)
+
+// ─── Alerts ───────────────────────────────────────────────────────────────────
+smtType   = bearSMT ? "bearish_smt" : "bullish_smt"
+a2Symbol  = str.replace(asset2, ":", "_")
+
+payload = '{"secret":"' + secret + '","event":"smt","symbol":"' + syminfo.ticker +
+          '","timeframe":"' + timeframe.period + '","time":' + str.tostring(math.round(time)) +
+          ',"asset1":"' + syminfo.ticker + '","asset1Price":' + str.tostring(close) +
+          ',"asset1High":' + str.tostring(high) + ',"asset1Low":' + str.tostring(low) +
+          ',"asset2":"' + a2Symbol + '","asset2Price":' + str.tostring(a2_c) +
+          ',"asset2High":' + str.tostring(a2_h) + ',"asset2Low":' + str.tostring(a2_l) + '}'
+
+alertcondition(bearSMT or bullSMT, "SMT Divergence", payload)

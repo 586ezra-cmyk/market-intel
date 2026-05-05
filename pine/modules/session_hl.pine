@@ -1,0 +1,130 @@
+// ============================================================
+// Session High/Low + PDH/PDL/PWH/PWL
+// Pine Script v6 · מערכת מסחר חכמה
+// ============================================================
+//@version=6
+indicator("Session H/L + PDH/PDL/PWH/PWL", overlay=true)
+
+secret     = input.string("dev-secret", "Webhook Secret")
+showAsian  = input.bool(true,  "Show Asian H/L")
+showLondon = input.bool(true,  "Show London H/L")
+showNY     = input.bool(true,  "Show NY H/L")
+showPDHL   = input.bool(true,  "Show PDH/PDL")
+showPWHL   = input.bool(false, "Show PWH/PWL")
+
+// ─── Session boundaries (UTC hours) ──────────────────────────────────────────
+h = hour(time, "UTC")
+isAsian  = h >= 20 or  h < 4
+isLondon = h >= 7  and h < 11
+isNY     = h >= 13 and h < 16
+
+// ─── Asian H/L ────────────────────────────────────────────────────────────────
+var float asianH = na
+var float asianL = na
+var bool  wasAsian = false
+
+if isAsian and not wasAsian   // session start
+    asianH := high
+    asianL := low
+    wasAsian := true
+else if isAsian
+    asianH := math.max(asianH, high)
+    asianL := math.min(asianL, low)
+else
+    wasAsian := false
+
+plot(showAsian and not isAsian and not na(asianH) ? asianH : na,
+     "Asian High", color.new(color.yellow, 30), 1, plot.style_linebr)
+plot(showAsian and not isAsian and not na(asianL) ? asianL : na,
+     "Asian Low",  color.new(color.yellow, 30), 1, plot.style_linebr)
+
+// ─── London H/L ───────────────────────────────────────────────────────────────
+var float londonH = na
+var float londonL = na
+var bool  wasLondon = false
+
+if isLondon and not wasLondon
+    londonH := high; londonL := low; wasLondon := true
+else if isLondon
+    londonH := math.max(londonH, high); londonL := math.min(londonL, low)
+else
+    wasLondon := false
+
+plot(showLondon and not isLondon and not na(londonH) ? londonH : na,
+     "London High", color.new(color.blue, 30), 1, plot.style_linebr)
+plot(showLondon and not isLondon and not na(londonL) ? londonL : na,
+     "London Low",  color.new(color.blue, 30), 1, plot.style_linebr)
+
+// ─── NY H/L ───────────────────────────────────────────────────────────────────
+var float nyH = na
+var float nyL = na
+var bool  wasNY = false
+
+if isNY and not wasNY
+    nyH := high; nyL := low; wasNY := true
+else if isNY
+    nyH := math.max(nyH, high); nyL := math.min(nyL, low)
+else
+    wasNY := false
+
+plot(showNY and not isNY and not na(nyH) ? nyH : na,
+     "NY High", color.new(color.green, 30), 1, plot.style_linebr)
+plot(showNY and not isNY and not na(nyL) ? nyL : na,
+     "NY Low",  color.new(color.green, 30), 1, plot.style_linebr)
+
+// ─── PDH / PDL ────────────────────────────────────────────────────────────────
+// Daily open = first bar of UTC day
+isNewDay = dayofweek != dayofweek[1] or (h == 0 and hour(time[1], "UTC") == 23)
+
+var float pdh = na
+var float pdl = na
+var float todayH = na
+var float todayL = na
+
+if isNewDay
+    pdh    := todayH
+    pdl    := todayL
+    todayH := high
+    todayL := low
+else
+    todayH := na(todayH) ? high : math.max(todayH, high)
+    todayL := na(todayL) ? low  : math.min(todayL, low)
+
+plot(showPDHL and not na(pdh) ? pdh : na, "PDH", color.new(color.orange, 20), 1, plot.style_linebr)
+plot(showPDHL and not na(pdl) ? pdl : na, "PDL", color.new(color.orange, 20), 1, plot.style_linebr)
+
+// ─── PWH / PWL ────────────────────────────────────────────────────────────────
+isNewWeek  = dayofweek == dayofweek.monday and dayofweek != dayofweek[1]
+
+var float pwh = na
+var float pwl = na
+var float thisWkH = na
+var float thisWkL = na
+
+if isNewWeek
+    pwh     := thisWkH; pwl     := thisWkL
+    thisWkH := high;    thisWkL := low
+else
+    thisWkH := na(thisWkH) ? high : math.max(thisWkH, high)
+    thisWkL := na(thisWkL) ? low  : math.min(thisWkL, low)
+
+plot(showPWHL and not na(pwh) ? pwh : na, "PWH", color.new(color.purple, 20), 1, plot.style_linebr)
+plot(showPWHL and not na(pwl) ? pwl : na, "PWL", color.new(color.purple, 20), 1, plot.style_linebr)
+
+// ─── Alerts — send session H/L to server ─────────────────────────────────────
+asianDone = not isAsian and isAsian[1]  // Asian session just ended
+
+asianPayload = '{"secret":"' + secret + '","event":"liquidity","symbol":"' + syminfo.ticker +
+               '","timeframe":"' + timeframe.period + '","time":' + str.tostring(math.round(time)) +
+               ',"type":"session_high","price":' + str.tostring(asianH) +
+               ',"firstTime":' + str.tostring(math.round(time)) + '}'
+
+alertcondition(asianDone and showAsian, "Asian Session Closed", asianPayload)
+
+newPDH = isNewDay and not na(pdh)
+pdPayload = '{"secret":"' + secret + '","event":"liquidity","symbol":"' + syminfo.ticker +
+            '","timeframe":"' + timeframe.period + '","time":' + str.tostring(math.round(time)) +
+            ',"type":"pdh","price":' + str.tostring(pdh) +
+            ',"firstTime":' + str.tostring(math.round(time)) + '}'
+
+alertcondition(newPDH and showPDHL, "New PDH/PDL", pdPayload)

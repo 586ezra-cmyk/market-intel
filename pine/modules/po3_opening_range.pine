@@ -1,0 +1,104 @@
+// ============================================================
+// Power of 3 (Po3) + Opening Range (first 15 min of session)
+// Pine Script v6 · מערכת מסחר חכמה
+// ============================================================
+//@version=6
+indicator("Po3 + Opening Range", overlay=true)
+
+secret      = input.string("dev-secret", "Webhook Secret")
+showLondon  = input.bool(true, "London Opening Range (07:00 UTC)")
+showNY      = input.bool(true, "NY Opening Range (13:00 UTC)")
+rangeMins   = input.int(15, "Opening range duration (minutes)", minval=5, maxval=60)
+
+tfSecs   = timeframe.in_seconds()
+rangeBars = math.ceil(rangeMins * 60 / tfSecs)
+
+h = hour(time, "UTC")
+m = minute(time, "UTC")
+
+// ─── Opening Range boundaries ─────────────────────────────────────────────────
+// London: 07:00–07:15 UTC
+isLondonOR = h == 7  and m < rangeMins
+// NY:     13:00–13:15 UTC
+isNYOR     = h == 13 and m < rangeMins
+
+var float londonORH = na
+var float londonORL = na
+var bool  londonCapturing = false
+var float nyORH     = na
+var float nyORL     = na
+var bool  nyCapturing = false
+
+// London OR
+if isLondonOR and not londonCapturing
+    londonORH := high; londonORL := low; londonCapturing := true
+else if isLondonOR
+    londonORH := math.max(londonORH, high)
+    londonORL := math.min(londonORL, low)
+else if not isLondonOR and londonCapturing
+    londonCapturing := false  // OR complete
+
+// NY OR
+if isNYOR and not nyCapturing
+    nyORH := high; nyORL := low; nyCapturing := true
+else if isNYOR
+    nyORH := math.max(nyORH, high)
+    nyORL := math.min(nyORL, low)
+else if not isNYOR and nyCapturing
+    nyCapturing := false
+
+// ─── Plots ────────────────────────────────────────────────────────────────────
+plot(showLondon and not isLondonOR and not na(londonORH) ? londonORH : na,
+     "London OR High", color.new(color.blue, 30), 1, plot.style_linebr)
+plot(showLondon and not isLondonOR and not na(londonORL) ? londonORL : na,
+     "London OR Low",  color.new(color.blue, 30), 1, plot.style_linebr)
+
+plot(showNY and not isNYOR and not na(nyORH) ? nyORH : na,
+     "NY OR High", color.new(color.green, 30), 1, plot.style_linebr)
+plot(showNY and not isNYOR and not na(nyORL) ? nyORL : na,
+     "NY OR Low",  color.new(color.green, 30), 1, plot.style_linebr)
+
+// ─── Po3 — Judas Swing detection ─────────────────────────────────────────────
+// London Judas: price drops below London OR Low then reverses up (bull Po3)
+londonJudasBull = showLondon and not na(londonORL) and not isLondonOR and
+                  low < londonORL and close > londonORL and close > open
+
+// London Judas Bear: price pops above London OR High then reverses down
+londonJudasBear = showLondon and not na(londonORH) and not isLondonOR and
+                  high > londonORH and close < londonORH and close < open
+
+// NY equivalents
+nyJudasBull = showNY and not na(nyORL) and not isNYOR and
+              low < nyORL and close > nyORL and close > open
+nyJudasBear = showNY and not na(nyORH) and not isNYOR and
+              high > nyORH and close < nyORH and close < open
+
+plotshape(londonJudasBull, title="London Judas Bull", location=location.belowbar,
+          style=shape.labelup,   color=color.new(color.blue,  20), textcolor=color.white,
+          text="🎭 Judas ▲ LON", size=size.small)
+plotshape(londonJudasBear, title="London Judas Bear", location=location.abovebar,
+          style=shape.labeldown, color=color.new(color.blue,  20), textcolor=color.white,
+          text="🎭 Judas ▼ LON", size=size.small)
+plotshape(nyJudasBull,     title="NY Judas Bull",     location=location.belowbar,
+          style=shape.labelup,   color=color.new(color.green, 20), textcolor=color.white,
+          text="🎭 Judas ▲ NY",  size=size.small)
+plotshape(nyJudasBear,     title="NY Judas Bear",     location=location.abovebar,
+          style=shape.labeldown, color=color.new(color.green, 20), textcolor=color.white,
+          text="🎭 Judas ▼ NY",  size=size.small)
+
+// ─── Confluence alert ─────────────────────────────────────────────────────────
+judasBull = londonJudasBull or nyJudasBull
+judasBear = londonJudasBear or nyJudasBear
+
+bullPayload = '{"secret":"' + secret + '","event":"confluence","symbol":"' + syminfo.ticker +
+              '","timeframe":"' + timeframe.period + '","time":' + str.tostring(math.round(time)) +
+              ',"direction":"bullish","currentPrice":' + str.tostring(close) +
+              ',"hasBOSorCHoCH":false,"hasLiquiditySweep":true,"hasFVG":false,"hasSMT":false}'
+
+bearPayload = '{"secret":"' + secret + '","event":"confluence","symbol":"' + syminfo.ticker +
+              '","timeframe":"' + timeframe.period + '","time":' + str.tostring(math.round(time)) +
+              ',"direction":"bearish","currentPrice":' + str.tostring(close) +
+              ',"hasBOSorCHoCH":false,"hasLiquiditySweep":true,"hasFVG":false,"hasSMT":false}'
+
+alertcondition(judasBull, "Bullish Judas Swing (Po3)", bullPayload)
+alertcondition(judasBear, "Bearish Judas Swing (Po3)", bearPayload)

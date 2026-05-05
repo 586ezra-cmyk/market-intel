@@ -1,0 +1,77 @@
+// ============================================================
+// Order Block + Breaker Block + iFVG
+// Pine Script v6 · מערכת מסחר חכמה
+// ============================================================
+//@version=6
+indicator("Order Block / Breaker / iFVG", overlay=true, max_bars_back=500)
+
+secret      = input.string("dev-secret", "Webhook Secret")
+dispLB      = input.int(3,    "Displacement lookback (bars)", minval=2)
+atrMult     = input.float(1.5,"Displacement ATR multiplier",   minval=0.5)
+showBreaker = input.bool(true, "Show Breaker Blocks")
+showIFVG    = input.bool(true, "Show iFVG")
+
+atr = ta.atr(14)
+
+// ─── Displacement detection ──────────────────────────────────────────────────
+// Strong bullish displacement: multiple strong bull candles with little overlap
+bullDisp = math.abs(close - open) > atrMult * atr and close > open and
+           close > high[1]
+
+// Strong bearish displacement
+bearDisp = math.abs(close - open) > atrMult * atr and close < open and
+           close < low[1]
+
+// ─── Order Block (last candle before displacement) ────────────────────────────
+// Bullish OB: last DOWN candle before bull displacement
+bullOB = bullDisp[0] and close[dispLB] < open[dispLB]  // candle N bars ago was bearish
+bearOB = bearDisp[0] and close[dispLB] > open[dispLB]  // candle N bars ago was bullish
+
+var box[] bullOBBoxes = array.new<box>()
+var box[] bearOBBoxes = array.new<box>()
+
+if bullOB
+    b = box.new(bar_index - dispLB, math.max(open[dispLB], close[dispLB]),
+                bar_index + 60,     math.min(open[dispLB], close[dispLB]),
+                border_color=color.new(color.green, 40),
+                bgcolor=color.new(color.green, 88))
+    array.push(bullOBBoxes, b)
+
+if bearOB
+    b = box.new(bar_index - dispLB, math.max(open[dispLB], close[dispLB]),
+                bar_index + 60,     math.min(open[dispLB], close[dispLB]),
+                border_color=color.new(color.red, 40),
+                bgcolor=color.new(color.red, 88))
+    array.push(bearOBBoxes, b)
+
+// ─── iFVG — Inverse FVG ──────────────────────────────────────────────────────
+// Standard FVG: price gaps through zone. iFVG = price retests FVG zone from opposite side
+// Bullish iFVG: a bearish FVG (high[0] < low[2]) that price later breaks above → bullish retest
+iFVGBull = showIFVG and high[2] < low and close > low[2] and close > open  // broke through bear FVG bullish
+iFVGBear = showIFVG and low[2]  > high and close < high[2] and close < open // broke through bull FVG bearish
+
+if iFVGBull
+    box.new(bar_index - 1, low, bar_index + 30, high[2],
+            border_color=color.new(color.lime, 50),
+            bgcolor=color.new(color.lime, 92), border_style=line.style_dotted)
+
+if iFVGBear
+    box.new(bar_index - 1, low[2], bar_index + 30, high,
+            border_color=color.new(color.orange, 50),
+            bgcolor=color.new(color.orange, 92), border_style=line.style_dotted)
+
+// ─── Alerts ───────────────────────────────────────────────────────────────────
+bullOBPayload = '{"secret":"' + secret + '","event":"fvg_created","symbol":"' + syminfo.ticker +
+                '","timeframe":"' + timeframe.period + '","time":' + str.tostring(math.round(time)) +
+                ',"direction":"bullish","topPrice":' + str.tostring(math.max(open[dispLB], close[dispLB])) +
+                ',"bottomPrice":' + str.tostring(math.min(open[dispLB], close[dispLB])) + '}'
+
+bearOBPayload = '{"secret":"' + secret + '","event":"fvg_created","symbol":"' + syminfo.ticker +
+                '","timeframe":"' + timeframe.period + '","time":' + str.tostring(math.round(time)) +
+                ',"direction":"bearish","topPrice":' + str.tostring(math.max(open[dispLB], close[dispLB])) +
+                ',"bottomPrice":' + str.tostring(math.min(open[dispLB], close[dispLB])) + '}'
+
+alertcondition(bullOB,    "Bullish Order Block", bullOBPayload)
+alertcondition(bearOB,    "Bearish Order Block", bearOBPayload)
+alertcondition(iFVGBull,  "Bullish iFVG",        bullOBPayload)
+alertcondition(iFVGBear,  "Bearish iFVG",        bearOBPayload)

@@ -1,0 +1,61 @@
+// ============================================================
+// Fair Value Gap (FVG)
+// Pine Script v6 · מערכת מסחר חכמה
+// ============================================================
+//@version=6
+indicator("FVG — Fair Value Gap", overlay=true, max_bars_back=500)
+
+secret     = input.string("dev-secret", "Webhook Secret")
+atrFilter  = input.bool(true, "ATR displacement filter")
+atrMult    = input.float(1.5, "ATR multiplier for strong candle", minval=0.5)
+
+atr = ta.atr(14)
+
+// ─── FVG detection (3-candle pattern) ────────────────────────────────────────
+// Bullish FVG: low[0] > high[2]  (gap between candle[2] high and candle[0] low)
+// Bearish FVG: high[0] < low[2]
+
+bullFVG = low > high[2]
+bearFVG = high < low[2]
+
+// ATR displacement filter (check middle candle is strong)
+strongCandle = math.abs(close[1] - open[1]) > atrMult * atr[1]
+
+validBullFVG = bullFVG and (not atrFilter or strongCandle)
+validBearFVG = bearFVG and (not atrFilter or strongCandle)
+
+// FVG prices
+bullTop    = low          // top of bullish FVG = current low
+bullBottom = high[2]      // bottom = high of candle 2 ago
+bearTop    = low[2]       // top of bearish FVG = low of candle 2 ago
+bearBottom = high         // bottom = current high
+
+// ─── Visuals ──────────────────────────────────────────────────────────────────
+var box[] bullBoxes = array.new<box>()
+var box[] bearBoxes = array.new<box>()
+
+if validBullFVG
+    b = box.new(bar_index - 2, bullTop, bar_index + 50, bullBottom,
+                border_color=color.new(color.green, 60),
+                bgcolor=color.new(color.green, 90))
+    array.push(bullBoxes, b)
+
+if validBearFVG
+    b = box.new(bar_index - 2, bearTop, bar_index + 50, bearBottom,
+                border_color=color.new(color.red, 60),
+                bgcolor=color.new(color.red, 90))
+    array.push(bearBoxes, b)
+
+// ─── Alerts ───────────────────────────────────────────────────────────────────
+bullPayload = '{"secret":"' + secret + '","event":"fvg_created","symbol":"' + syminfo.ticker +
+              '","timeframe":"' + timeframe.period + '","time":' + str.tostring(math.round(time)) +
+              ',"direction":"bullish","topPrice":' + str.tostring(bullTop) +
+              ',"bottomPrice":' + str.tostring(bullBottom) + '}'
+
+bearPayload = '{"secret":"' + secret + '","event":"fvg_created","symbol":"' + syminfo.ticker +
+              '","timeframe":"' + timeframe.period + '","time":' + str.tostring(math.round(time)) +
+              ',"direction":"bearish","topPrice":' + str.tostring(bearTop) +
+              ',"bottomPrice":' + str.tostring(bearBottom) + '}'
+
+alertcondition(validBullFVG, "Bullish FVG", bullPayload)
+alertcondition(validBearFVG, "Bearish FVG", bearPayload)

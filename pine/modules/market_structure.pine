@@ -1,0 +1,69 @@
+// ============================================================
+// Market Structure — BOS / CHoCH
+// Pine Script v6 · מערכת מסחר חכמה
+// ============================================================
+//@version=6
+indicator("Market Structure (BOS/CHoCH)", overlay=true, max_bars_back=500)
+
+// ─── Settings ─────────────────────────────────────────────────────────────────
+lookback  = input.int(5, "Swing Lookback", minval=2, maxval=20)
+webhook   = input.string("", "Webhook URL (leave empty for TV alerts)")
+secret    = input.string("dev-secret", "Webhook Secret")
+
+// ─── Pivot detection ──────────────────────────────────────────────────────────
+ph = ta.pivothigh(high, lookback, lookback)
+pl = ta.pivotlow(low,  lookback, lookback)
+
+var float lastSwingHigh = na
+var float lastSwingLow  = na
+var string trend = "neutral"
+
+// Update swing levels
+if not na(ph)
+    lastSwingHigh := ph
+if not na(pl)
+    lastSwingLow := pl
+
+// ─── BOS / CHoCH detection ───────────────────────────────────────────────────
+bullishBOS  = not na(lastSwingHigh) and close > lastSwingHigh and trend == "bullish"
+bullishCHoCH= not na(lastSwingHigh) and close > lastSwingHigh and trend != "bullish"
+bearishBOS  = not na(lastSwingLow)  and close < lastSwingLow  and trend == "bearish"
+bearishCHoCH= not na(lastSwingLow)  and close < lastSwingLow  and trend != "bearish"
+
+// Update trend state
+if bullishBOS or bullishCHoCH
+    trend := "bullish"
+if bearishBOS or bearishCHoCH
+    trend := "bearish"
+
+// ─── Visuals ──────────────────────────────────────────────────────────────────
+if bullishBOS
+    label.new(bar_index, low - ta.atr(14), "BOS ▲", style=label.style_label_up,
+              color=color.new(color.green, 20), textcolor=color.white, size=size.small)
+
+if bullishCHoCH
+    label.new(bar_index, low - ta.atr(14), "CHoCH ▲", style=label.style_label_up,
+              color=color.new(color.lime, 10), textcolor=color.black, size=size.small)
+
+if bearishBOS
+    label.new(bar_index, high + ta.atr(14), "BOS ▼", style=label.style_label_down,
+              color=color.new(color.red, 20), textcolor=color.white, size=size.small)
+
+if bearishCHoCH
+    label.new(bar_index, high + ta.atr(14), "CHoCH ▼", style=label.style_label_down,
+              color=color.new(color.orange, 10), textcolor=color.black, size=size.small)
+
+// ─── Alerts ───────────────────────────────────────────────────────────────────
+structType = bullishBOS ? "BOS" : bullishCHoCH ? "CHoCH" : bearishBOS ? "BOS" : "CHoCH"
+direction  = (bullishBOS or bullishCHoCH) ? "bullish" : "bearish"
+price_val  = (bullishBOS or bullishCHoCH) ? lastSwingHigh : lastSwingLow
+
+payload = '{"secret":"' + secret + '","event":"structure","symbol":"' + syminfo.ticker +
+          '","timeframe":"' + timeframe.period + '","time":' + str.tostring(math.round(time)) +
+          ',"type":"' + structType + '","direction":"' + direction +
+          '","price":' + str.tostring(price_val) + ',"confirmed":true}'
+
+alertcondition(bullishBOS,   "Bullish BOS",   payload)
+alertcondition(bullishCHoCH, "Bullish CHoCH", payload)
+alertcondition(bearishBOS,   "Bearish BOS",   payload)
+alertcondition(bearishCHoCH, "Bearish CHoCH", payload)
