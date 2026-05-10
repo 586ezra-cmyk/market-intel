@@ -10,6 +10,8 @@ import marketRouter from './routes/market'
 import economicRouter from './routes/economic'
 import backtestRouter from './routes/backtest'
 import journalRouter from './routes/journal'
+import settingsRouter from './routes/settings'
+import watchlistRouter from './routes/watchlist'
 import { initScheduler } from './services/scheduler'
 
 const app = express()
@@ -26,6 +28,8 @@ app.use('/api/economic-calendar', economicRouter)
 app.use('/api/briefing', economicRouter)
 app.use('/api/backtest', backtestRouter)
 app.use('/api/journal', journalRouter)
+app.use('/api/settings', settingsRouter)
+app.use('/api/watchlist', watchlistRouter)
 
 // Health check
 app.get('/health', (_req, res) => {

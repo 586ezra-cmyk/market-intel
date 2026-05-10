@@ -65,15 +65,30 @@ export async function saveAlert(payload: AlertPayload): Promise<Alert> {
     createdAt: now,
   }
 
-  // Broadcast via WebSocket
+  // Broadcast via WebSocket (always)
   broadcastWS({ type: 'alert', payload: alert })
 
-  // Send to Telegram (async, non-blocking)
-  sendTelegram(payload.messageHe, payload.score).catch(err =>
-    console.error('[Telegram] Failed to send:', err)
-  )
+  // Send to Telegram only if score >= minScore setting
+  const minScore = getMinScore()
+  if (payload.score >= minScore) {
+    sendTelegram(payload.messageHe, payload.score, payload.timeframe).catch(err =>
+      console.error('[Telegram] Failed to send:', err)
+    )
+  } else {
+    console.log(`[Alert] score ${payload.score} < minScore ${minScore} — skipping Telegram`)
+  }
 
   return alert
+}
+
+function getMinScore(): number {
+  try {
+    const db = getDb()
+    const row = db.prepare(`SELECT value FROM settings WHERE key = 'min_score'`).get() as { value: string } | undefined
+    return row ? parseFloat(row.value) : 3
+  } catch {
+    return 3
+  }
 }
 
 export function getRecentAlerts(limit = 50): any[] {

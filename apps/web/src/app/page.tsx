@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Header from '@/components/layout/Header'
 import TabDashboard from '@/components/tabs/TabDashboard'
 import TabAlerts from '@/components/tabs/TabAlerts'
@@ -44,6 +44,16 @@ const TABS: Array<{ id: TabId; label: string; icon: string }> = [
 export default function HomePage() {
   const [activeTab, setActiveTab] = useState<TabId>('dashboard')
   useWebSocket()
+
+  // Allow tabs to switch programmatically (e.g. from Matrix click)
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail as TabId
+      if (detail) setActiveTab(detail)
+    }
+    window.addEventListener('switch-tab', handler)
+    return () => window.removeEventListener('switch-tab', handler)
+  }, [])
 
   return (
     <div className="flex flex-col h-screen overflow-hidden">
