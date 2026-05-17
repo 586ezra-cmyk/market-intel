@@ -29,7 +29,6 @@ RUN mkdir -p /data /data/backups
 
 ENV NODE_ENV=production
 ENV DB_PATH=/data/market.db
-ENV PORT=3001
 
 EXPOSE 3001
 
