@@ -21,8 +21,8 @@ COPY apps/server/ ./apps/server/
 RUN npm run build -w packages/shared
 RUN npm run build -w apps/server
 
-# Copy migrations
-COPY apps/server/src/db/migrations ./apps/server/src/db/migrations
+# Copy migrations to where compiled code expects them
+COPY apps/server/src/db/migrations ./apps/server/dist/db/migrations
 
 # Data directory (mounted as Railway volume)
 RUN mkdir -p /data /data/backups
