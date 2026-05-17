@@ -1,51 +1,31 @@
-# ── Stage 1: Build ───────────────────────────────────────────────────────────
-FROM node:20-alpine AS builder
+FROM node:20-alpine
 
-WORKDIR /app
-
-# Copy package files for all workspaces
-COPY package.json package-lock.json ./
-COPY packages/shared/package.json ./packages/shared/
-COPY apps/server/package.json ./apps/server/
-
-# Install all dependencies (including devDeps for build)
-RUN npm ci --ignore-scripts
-
-# Copy source
-COPY packages/shared/ ./packages/shared/
-COPY apps/server/ ./apps/server/
-
-# Build shared package first, then server
-RUN npm run build -w packages/shared
-RUN npm run build -w apps/server
-
-# ── Stage 2: Production ───────────────────────────────────────────────────────
-FROM node:20-alpine AS runner
-
-# Install native deps for better-sqlite3
+# Install native build deps for better-sqlite3
 RUN apk add --no-cache python3 make g++
 
 WORKDIR /app
 
-# Copy package files
+# Copy all package files
 COPY package.json package-lock.json ./
 COPY packages/shared/package.json ./packages/shared/
 COPY apps/server/package.json ./apps/server/
 
-# Install production deps only (with native rebuild)
-RUN npm ci --omit=dev --ignore-scripts && \
-    cd node_modules/better-sqlite3 && \
-    npm rebuild
+# Install all deps (with native scripts enabled for better-sqlite3)
+RUN npm ci
 
-# Copy built artifacts
-COPY --from=builder /app/packages/shared/dist ./packages/shared/dist
-COPY --from=builder /app/apps/server/dist ./apps/server/dist
+# Copy source files
+COPY packages/shared/ ./packages/shared/
+COPY apps/server/ ./apps/server/
 
-# Copy migrations (needed at runtime)
+# Build
+RUN npm run build -w packages/shared
+RUN npm run build -w apps/server
+
+# Copy migrations
 COPY apps/server/src/db/migrations ./apps/server/src/db/migrations
 
 # Data directory (mounted as Railway volume)
-RUN mkdir -p /data
+RUN mkdir -p /data /data/backups
 
 ENV NODE_ENV=production
 ENV DB_PATH=/data/market.db
