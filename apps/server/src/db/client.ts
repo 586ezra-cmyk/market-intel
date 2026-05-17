@@ -21,7 +21,11 @@ export function getDb(): Database.Database {
 }
 
 function runMigrations(db: Database.Database): void {
-  const migrationsDir = path.join(__dirname, 'migrations')
+  // In production (dist/db/), go up to find src/db/migrations
+  // In development (src/db/), look in same dir
+  const migrationsDir = fs.existsSync(path.join(__dirname, 'migrations'))
+    ? path.join(__dirname, 'migrations')
+    : path.join(__dirname, '../../src/db/migrations')
   const files = fs.readdirSync(migrationsDir).filter(f => f.endsWith('.sql')).sort()
 
   db.exec(`CREATE TABLE IF NOT EXISTS _migrations (
