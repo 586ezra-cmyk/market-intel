@@ -5,7 +5,7 @@
     "lib": ["ES2022"],
     "composite": true,
     "declaration": true,
-    "declarationMap": true,
+    "declarationMap": false,
     "outDir": "dist",
     "rootDir": "src",
     "strict": true,
