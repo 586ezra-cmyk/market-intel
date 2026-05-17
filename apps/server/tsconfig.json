@@ -10,9 +10,8 @@
     "skipLibCheck": true,
     "resolveJsonModule": true,
     "paths": {
-      "@market/shared": ["../../packages/shared/src/index"]
+      "@market/shared": ["../../packages/shared/dist/index"]
     }
   },
-  "include": ["src"],
-  "references": [{ "path": "../../packages/shared" }]
+  "include": ["src"]
 }
