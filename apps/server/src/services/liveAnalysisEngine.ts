@@ -789,6 +789,19 @@ function buildDrawingLayer(tf: TFAnalysis, cp: number): DrawingLayer {
   // Judas Swing
   if (tf.po3?.judas)               markers.push({ price: cp, label: `Judas ${tf.po3.direction === 'bullish' ? '⬆️' : '⬇️'}`, color: '#a78bfa', position: tf.po3.direction === 'bullish' ? 'below' : 'above' })
 
+  // iSMT (intra-bar SMT — 2 candles, detected per-TF)
+  if (tf.iSMT?.detected) {
+    const dir = tf.iSMT.direction
+    markers.push({
+      price: cp,
+      label: `iSMT ${dir === 'bullish' ? '⬆️' : '⬇️'}`,
+      color: '#e879f9',   // fuchsia
+      position: dir === 'bullish' ? 'below' : 'above',
+    })
+    // Also draw a horizontal line at current price so it's visible even when zoomed out
+    lines.push({ label: 'iSMT', price: cp, color: '#e879f9', dash: true })
+  }
+
   return {
     tf: tf.timeframe,
     fvgBoxes: tf.fvgs,
@@ -1063,6 +1076,23 @@ export async function analyzeSymbol(symbol: string): Promise<FullAnalysis> {
   const drawingLayers: DrawingLayer[] = tfAnalyses.map(tf =>
     buildDrawingLayer(tf, tf.currentPrice)
   )
+
+  // Inject SMT markers into the drawing layers where divergence is detected
+  if (smtComparison?.smtDetected && smtComparison.smtDirection) {
+    const smtColor = smtComparison.smtDirection === 'bearish' ? '#f87171' : '#4ade80'
+    const smtPos   = smtComparison.smtDirection === 'bearish' ? 'above' : 'below'
+    const smtLabel = `SMT ${smtComparison.smtDirection === 'bearish' ? '🔴' : '🟢'} ⚡`
+
+    for (const smtTF of smtComparison.timeframes.filter(t => t.divergence)) {
+      const layer = drawingLayers.find(l => l.tf === smtTF.tf)
+      if (!layer) continue
+      const tfData = tfAnalyses.find(t => t.timeframe === smtTF.tf)
+      const price = tfData?.currentPrice ?? currentPrice
+
+      layer.markers.push({ price, label: smtLabel, color: smtColor, position: smtPos })
+      layer.horizontalLines.push({ label: 'SMT', price, color: smtColor, dash: true })
+    }
+  }
 
   return {
     symbol: upper,
