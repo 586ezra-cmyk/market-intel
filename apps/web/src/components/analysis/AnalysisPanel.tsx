@@ -122,6 +122,60 @@ export default function AnalysisPanel({ open, onClose }: { open: boolean; onClos
               </div>
             )}
 
+            {/* SMT Comparison */}
+            {data.smtComparison && (
+              <div className={`rounded-lg p-4 border ${data.smtComparison.smtDetected ? 'bg-fuchsia-950 border-fuchsia-600' : 'bg-gray-800 border-gray-700'}`}>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-white font-bold text-sm flex items-center gap-2">
+                    ⚡ SMT — {data.symbol} ↔ {data.smtComparison.correlated}
+                  </div>
+                  {data.smtComparison.smtDetected && (
+                    <span className={`text-xs font-bold px-2 py-0.5 rounded ${data.smtComparison.smtDirection === 'bearish' ? 'bg-red-600 text-white' : 'bg-green-600 text-white'}`}>
+                      {data.smtComparison.smtDirection === 'bearish' ? '🔴 בארישׁ' : '🟢 בוליש'}
+                    </span>
+                  )}
+                </div>
+
+                {/* Prices side by side */}
+                <div className="flex justify-between mb-3">
+                  <div className="text-center">
+                    <div className="text-gray-400 text-xs">{data.symbol}</div>
+                    <div className="text-white font-mono font-bold">${data.currentPrice.toLocaleString()}</div>
+                  </div>
+                  <div className="text-gray-500 self-center">↔</div>
+                  <div className="text-center">
+                    <div className="text-gray-400 text-xs">{data.smtComparison.correlated}</div>
+                    <div className="text-white font-mono font-bold">${data.smtComparison.correlatedPrice.toLocaleString()}</div>
+                  </div>
+                </div>
+
+                {/* Details */}
+                <p className={`text-xs leading-relaxed mb-3 ${data.smtComparison.smtDetected ? 'text-fuchsia-200' : 'text-gray-400'}`}>
+                  {data.smtComparison.details}
+                </p>
+
+                {/* TF breakdown */}
+                <div className="space-y-1">
+                  {data.smtComparison.timeframes.filter(t => t.divergence).map((t, i) => (
+                    <div key={i} className="flex items-center justify-between text-xs bg-fuchsia-900/50 rounded px-2 py-1">
+                      <span className="text-gray-300 font-mono w-8">{t.tf}</span>
+                      <span className={t.mainTrend === 'bullish' ? 'text-green-400' : 'text-red-400'}>
+                        {data.symbol} {t.mainTrend === 'bullish' ? '▲' : '▼'}
+                      </span>
+                      <span className="text-fuchsia-400">≠</span>
+                      <span className={t.corrTrend === 'bullish' ? 'text-green-400' : 'text-red-400'}>
+                        {data.smtComparison!.correlated} {t.corrTrend === 'bullish' ? '▲' : '▼'}
+                      </span>
+                      <span className="text-fuchsia-300 font-bold">⚡ SMT</span>
+                    </div>
+                  ))}
+                  {data.smtComparison.timeframes.filter(t => t.divergence).length === 0 && (
+                    <div className="text-gray-500 text-xs text-center">אין דיברגנס בטווחי הזמן הנוכחיים</div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Strategies */}
             {data.strategies.length > 0 && (
               <div className="space-y-2">

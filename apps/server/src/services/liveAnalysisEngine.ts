@@ -23,6 +23,20 @@ export interface TFAnalysis {
   score: number
 }
 
+export interface SMTComparison {
+  correlated: string          // e.g. "ETHUSDT"
+  correlatedPrice: number
+  smtDetected: boolean
+  smtDirection: 'bullish' | 'bearish' | null
+  details: string             // Hebrew explanation
+  timeframes: Array<{
+    tf: string
+    mainTrend: 'bullish' | 'bearish' | 'neutral'
+    corrTrend: 'bullish' | 'bearish' | 'neutral'
+    divergence: boolean       // true = SMT confirmed on this TF
+  }>
+}
+
 export interface FullAnalysis {
   symbol: string
   analyzedAt: number
@@ -33,6 +47,7 @@ export interface FullAnalysis {
   strategies: Array<{ name: string; confidence: number; details: string }>
   recommendation: string
   nextLevels: { tp1: number | null; tp2: number | null; tp3: number | null; sl: number | null }
+  smtComparison: SMTComparison | null   // null if no SMT pair for this asset
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -580,6 +595,94 @@ export async function analyzeSymbol(symbol: string): Promise<FullAnalysis> {
     }
   }
 
+  // ─── SMT Comparison ───────────────────────────────────────────────────────
+  const SMT_PAIRS: Record<string, string> = {
+    'BTCUSDT': 'ETHUSDT',
+    'ETHUSDT': 'BTCUSDT',
+    'NQ':      'ES',
+    'ES':      'NQ',
+  }
+
+  let smtComparison: SMTComparison | null = null
+  const corrSymbol = SMT_PAIRS[upper]
+
+  if (corrSymbol) {
+    // Fetch correlated asset candles
+    const corrResults = await Promise.allSettled(
+      TIMEFRAMES.map(tf => fetchCandles(corrSymbol, tf, 200)),
+    )
+    const corrCandleMap = new Map<string, Candle[]>()
+    TIMEFRAMES.forEach((tf, i) => {
+      const r = corrResults[i]
+      if (r.status === 'fulfilled' && r.value.length > 0) corrCandleMap.set(tf, r.value)
+    })
+
+    // Analyze correlated asset per TF (simple trend only)
+    const smtTFs: SMTComparison['timeframes'] = []
+    let smtBullish = false, smtBearish = false
+
+    for (const tf of TIMEFRAMES) {
+      const mainCandles = candleMap.get(tf)
+      const corrCandles = corrCandleMap.get(tf)
+      if (!mainCandles || !corrCandles || mainCandles.length < 10) continue
+
+      const mainTrend = rawResults.get(tf)?.trend ?? 'neutral'
+
+      // Simple trend for correlated asset
+      const cLen = corrCandles.length
+      const corrClose = corrCandles[cLen - 1].close
+      const corrPrev = corrCandles[cLen - 6]?.close ?? corrClose
+      const corrTrend: 'bullish' | 'bearish' | 'neutral' =
+        corrClose > corrPrev * 1.001 ? 'bullish'
+        : corrClose < corrPrev * 0.999 ? 'bearish'
+        : 'neutral'
+
+      // Divergence = main and corr go different directions
+      const divergence = mainTrend !== 'neutral' && corrTrend !== 'neutral' && mainTrend !== corrTrend
+
+      if (divergence) {
+        if (mainTrend === 'bearish') smtBearish = true  // main going down, corr going up = bearish SMT
+        if (mainTrend === 'bullish') smtBullish = true  // main going up, corr going down = bullish SMT
+      }
+
+      smtTFs.push({ tf, mainTrend, corrTrend, divergence })
+    }
+
+    const smtDetected = smtBullish || smtBearish
+    const smtDirection = smtBearish ? 'bearish' : smtBullish ? 'bullish' : null
+
+    const corrPrice = corrCandleMap.get('1h')?.[corrCandleMap.get('1h')!.length - 1]?.close
+      ?? corrCandleMap.get('15m')?.[corrCandleMap.get('15m')!.length - 1]?.close
+      ?? 0
+
+    let smtDetails = ''
+    if (smtDetected && smtDirection === 'bearish') {
+      smtDetails = `${upper} עולה אך ${corrSymbol} לא מאשר — סימן חולשה, SMT בארישׁ`
+    } else if (smtDetected && smtDirection === 'bullish') {
+      smtDetails = `${upper} יורד אך ${corrSymbol} לא מאשר — סימן חוזק, SMT בוליש`
+    } else {
+      smtDetails = `${upper} ו-${corrSymbol} נעים באותו כיוון — אין דיברגנס SMT כרגע`
+    }
+
+    smtComparison = {
+      correlated: corrSymbol,
+      correlatedPrice: corrPrice,
+      smtDetected,
+      smtDirection,
+      details: smtDetails,
+      timeframes: smtTFs,
+    }
+
+    // Boost score if SMT detected
+    if (smtDetected) {
+      strategies.push({
+        name: smtDetected && smtDirection === 'bearish' ? 'SMT בארישׁ' : 'SMT בוליש',
+        confidence: 0.80,
+        details: smtDetails,
+      })
+    }
+  }
+
   return {
     symbol: upper,
     analyzedAt: Date.now(),
@@ -590,5 +693,6 @@ export async function analyzeSymbol(symbol: string): Promise<FullAnalysis> {
     strategies,
     recommendation,
     nextLevels: { tp1, tp2, tp3, sl },
+    smtComparison,
   }
 }

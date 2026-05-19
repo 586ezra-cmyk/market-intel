@@ -22,6 +22,20 @@ export interface TFAnalysis {
   score: number
 }
 
+export interface SMTComparison {
+  correlated: string
+  correlatedPrice: number
+  smtDetected: boolean
+  smtDirection: 'bullish' | 'bearish' | null
+  details: string
+  timeframes: Array<{
+    tf: string
+    mainTrend: 'bullish' | 'bearish' | 'neutral'
+    corrTrend: 'bullish' | 'bearish' | 'neutral'
+    divergence: boolean
+  }>
+}
+
 export interface FullAnalysis {
   symbol: string
   analyzedAt: number
@@ -32,6 +46,7 @@ export interface FullAnalysis {
   strategies: Array<{ name: string; confidence: number; details: string }>
   recommendation: string
   nextLevels: { tp1: number | null; tp2: number | null; tp3: number | null; sl: number | null }
+  smtComparison: SMTComparison | null
 }
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001'
