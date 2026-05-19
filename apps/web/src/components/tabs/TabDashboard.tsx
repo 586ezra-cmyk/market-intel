@@ -5,12 +5,14 @@ import { useState } from 'react'
 import { useMarketStore, LAYER_LABELS, LAYER_COLORS, type LayerId } from '@/store/marketStore'
 import { useApi } from '@/hooks/useApi'
 import { formatTime, formatPrice, scoreBadgeClass } from '@/lib/utils'
+import AnalysisPanel from '@/components/analysis/AnalysisPanel'
 
 const TradingChart = dynamic(() => import('@/components/chart/TradingChart'), { ssr: false })
 
 export default function TabDashboard() {
   const { symbol, timeframe, activeRange, alerts, structures, layers, toggleLayer } = useMarketStore()
   const [rightPanel, setRightPanel] = useState<'layers' | 'cascade' | 'missed'>('layers')
+  const [analysisOpen, setAnalysisOpen] = useState(false)
 
   const lastAlert = alerts[0]
   const lastStructure = structures[0]
@@ -44,6 +46,8 @@ export default function TabDashboard() {
 
   return (
     <div className="flex h-full overflow-hidden">
+      <AnalysisPanel open={analysisOpen} onClose={() => setAnalysisOpen(false)} />
+
       {/* ─── Main Chart Area ──────────────────────────────────────────────── */}
       <div className="flex flex-col flex-1 overflow-hidden">
         {/* Top info bar */}
@@ -86,7 +90,7 @@ export default function TabDashboard() {
           {lastAlert && (
             <>
               <span className="text-surface-border">|</span>
-              <div className="flex items-center gap-1.5 mr-auto">
+              <div className="flex items-center gap-1.5">
                 <span className="text-slate-400">התראה אחרונה:</span>
                 <span className={`score-badge ${scoreBadgeClass(lastAlert.score ?? 0)}`}>
                   {(lastAlert.score ?? 0).toFixed(1)}
@@ -98,6 +102,14 @@ export default function TabDashboard() {
               </div>
             </>
           )}
+
+          {/* Analysis button */}
+          <button
+            onClick={() => setAnalysisOpen(true)}
+            className="mr-auto bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-3 py-1 rounded flex items-center gap-1"
+          >
+            🔍 בחן עכשיו
+          </button>
         </div>
 
         {/* Chart */}

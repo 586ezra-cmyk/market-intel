@@ -7,8 +7,10 @@ import { getRecentSMTSignals } from '../services/smtEngine'
 import { parseTF } from '../utils/timeframe'
 import { cascadeScan } from '../services/confluenceEngine'
 import type { Direction } from '@market/shared'
+import { analyzeSymbol } from '../services/liveAnalysisEngine'
 
 const router = Router()
+const analysisCache = new Map<string, any>()
 
 // GET /api/market/:symbol/:timeframe/state — full current state for chart
 router.get('/:symbol/:timeframe/state', (req: Request, res: Response) => {
@@ -54,6 +56,23 @@ router.get('/:symbol/:timeframe/cascade', (req: Request, res: Response) => {
     res.json(scan)
   } catch (err: any) {
     res.status(400).json({ error: err.message })
+  }
+})
+
+// GET /api/market/:symbol/analyze
+router.get('/:symbol/analyze', async (req: Request, res: Response) => {
+  try {
+    const symbol = (req.params['symbol'] as string).toUpperCase()
+    // Simple 60-second cache
+    const cached = analysisCache.get(symbol)
+    if (cached && Date.now() - cached.analyzedAt < 60000) {
+      return res.json(cached)
+    }
+    const result = await analyzeSymbol(symbol)
+    analysisCache.set(symbol, result)
+    res.json(result)
+  } catch (err: any) {
+    res.status(500).json({ error: err.message })
   }
 })
 
