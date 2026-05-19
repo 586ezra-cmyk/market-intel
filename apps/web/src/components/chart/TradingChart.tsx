@@ -10,6 +10,7 @@ import RangeLayer from './layers/RangeLayer'
 import LiquidityLayer from './layers/LiquidityLayer'
 import SMTLayer from './layers/SMTLayer'
 import KillZoneLayer from './layers/KillZoneLayer'
+import AnalysisOverlayLayer from './layers/AnalysisOverlayLayer'
 import DetailPanel from './DetailPanel'
 
 interface ChartState {
@@ -105,6 +106,7 @@ export default function TradingChart() {
           <LiquidityLayer chart={cs.chart} series={cs.candleSeries} />
           <SMTLayer chart={cs.chart} series={cs.candleSeries} />
           <KillZoneLayer chart={cs.chart} series={cs.candleSeries} />
+          <AnalysisOverlayLayer chart={cs.chart} series={cs.candleSeries} />
         </>
       )}
 

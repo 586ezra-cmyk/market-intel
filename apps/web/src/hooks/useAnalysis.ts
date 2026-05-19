@@ -1,6 +1,32 @@
 'use client'
 import { useState } from 'react'
 
+export interface WyckoffDetail {
+  phase: string
+  phaseDetail: string  // 'B' | 'C' | 'D' | ''
+  spring: boolean
+  testAfterSpring: boolean
+  sos: boolean
+  lps: boolean
+  utad: boolean
+  testOfUtad: boolean
+  upthrust: boolean
+  sow: boolean
+  lpsy: boolean
+}
+
+export interface BreakerBlock {
+  direction: 'bullish' | 'bearish'
+  top: number
+  bottom: number
+}
+
+export interface Po3Signal {
+  detected: boolean
+  judas: boolean
+  direction: 'bullish' | 'bearish'
+}
+
 export interface TFAnalysis {
   timeframe: string
   trend: 'bullish' | 'bearish' | 'neutral'
@@ -13,12 +39,19 @@ export interface TFAnalysis {
   dealingRange: { high: number; low: number; mid: number; position: string } | null
   killZone: { active: boolean; session: string | null }
   iSMT: { detected: boolean; direction: string } | null
-  wyckoff: { phase: string; spring: boolean; upthrust: boolean } | null
+  wyckoff: WyckoffDetail | null
   wingBreak: { detected: boolean; inPhaseD: boolean; hasRetest: boolean; bosConfirmed: boolean } | null
   wPattern: { detected: boolean; confirmed: boolean } | null
   mPattern: { detected: boolean; confirmed: boolean } | null
   doubleTop: { detected: boolean; price: number } | null
   doubleBottom: { detected: boolean; price: number } | null
+  breakerBlock: BreakerBlock | null
+  pdh: number | null
+  pdl: number | null
+  pwh: number | null
+  pwl: number | null
+  vwap: number | null
+  po3: Po3Signal | null
   score: number
 }
 
@@ -36,6 +69,15 @@ export interface SMTComparison {
   }>
 }
 
+export interface DrawingLayer {
+  tf: string
+  fvgBoxes: Array<{ direction: string; top: number; bottom: number }>
+  horizontalLines: Array<{ label: string; price: number; color: string; dash: boolean }>
+  markers: Array<{ price: number; label: string; color: string; position: string }>
+  vwap: number | null
+  breakerBoxes: Array<{ direction: string; top: number; bottom: number }>
+}
+
 export interface FullAnalysis {
   symbol: string
   analyzedAt: number
@@ -47,6 +89,7 @@ export interface FullAnalysis {
   recommendation: string
   nextLevels: { tp1: number | null; tp2: number | null; tp3: number | null; sl: number | null }
   smtComparison: SMTComparison | null
+  drawingLayers: DrawingLayer[]
 }
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001'

@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { Alert, FVG, Structure, Range, Liquidity, SMTSignal, WyckoffPhase } from '@market/shared'
+import type { DrawingLayer } from '@/hooks/useAnalysis'
 
 // ─── Layer visibility ─────────────────────────────────────────────────────────
 export type LayerId =
@@ -64,6 +65,11 @@ interface MarketStore {
   pushSMT: (s: SMTSignal) => void
   pushWyckoff: (w: WyckoffPhase) => void
 
+  // Analysis overlay (from "בחן עכשיו")
+  analysisLayers: DrawingLayer[]
+  setAnalysisLayers: (layers: DrawingLayer[]) => void
+  analysisSymbol: string | null
+
   // UI state
   selectedAlertId: string | null
   setSelectedAlert: (id: string | null) => void
@@ -117,6 +123,10 @@ export const useMarketStore = create<MarketStore>()(
       pushSMT: (sm) => set((s) => ({ smtSignals: [sm, ...s.smtSignals].slice(0, 50) })),
       pushWyckoff: (w) =>
         set((s) => ({ wyckoffPhases: [w, ...s.wyckoffPhases.filter(x => x.id !== w.id)] })),
+
+      analysisLayers: [],
+      analysisSymbol: null,
+      setAnalysisLayers: (layers) => set({ analysisLayers: layers }),
 
       selectedAlertId: null,
       setSelectedAlert: (id) => set({ selectedAlertId: id }),
