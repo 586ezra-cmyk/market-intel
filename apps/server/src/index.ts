@@ -12,7 +12,9 @@ import backtestRouter from './routes/backtest'
 import journalRouter from './routes/journal'
 import settingsRouter from './routes/settings'
 import watchlistRouter from './routes/watchlist'
+import statsRouter from './routes/stats'
 import { initScheduler } from './services/scheduler'
+import { startOutcomeTracker } from './services/outcomeTracker'
 
 const app = express()
 
@@ -30,6 +32,7 @@ app.use('/api/backtest', backtestRouter)
 app.use('/api/journal', journalRouter)
 app.use('/api/settings', settingsRouter)
 app.use('/api/watchlist', watchlistRouter)
+app.use('/api/stats', statsRouter)
 
 // Health check
 app.get('/health', (_req, res) => {
@@ -46,6 +49,9 @@ getDb()
 // Start scheduler (cron jobs)
 if (config.nodeEnv !== 'test') {
   initScheduler()
+  // Start outcome tracker (self-learning feedback loop)
+  const db = getDb()
+  startOutcomeTracker(db)
 }
 
 server.listen(config.port, () => {

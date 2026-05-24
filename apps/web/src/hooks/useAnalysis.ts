@@ -21,6 +21,39 @@ export interface BreakerBlock {
   bottom: number
 }
 
+export interface OrderBlock {
+  direction: 'bullish' | 'bearish'
+  top: number
+  bottom: number
+  broken: boolean
+}
+
+export interface FibOTE {
+  high: number
+  low: number
+  level705: number
+  inZone: boolean
+}
+
+export interface ScoreBreakdown {
+  base: number
+  higherTFBonus: number
+  fvg: number
+  bosChoch: number
+  liquiditySweep: number
+  killZone: number
+  ismt: number
+  wyckoff: number
+  wm: number
+  doublePattern: number
+  breakerBlock: number
+  po3: number
+  wingBreak: number
+  orderBlock: number
+  ote: number
+  total: number
+}
+
 export interface Po3Signal {
   detected: boolean
   judas: boolean
@@ -52,6 +85,10 @@ export interface TFAnalysis {
   pwl: number | null
   vwap: number | null
   po3: Po3Signal | null
+  orderBlocks: OrderBlock[]
+  ote: FibOTE | null
+  sessionOpenPrices: { nyMidnight: number | null; trueDay: number | null }
+  scoreBreakdown: ScoreBreakdown
   score: number
 }
 
@@ -76,6 +113,8 @@ export interface DrawingLayer {
   markers: Array<{ price: number; label: string; color: string; position: string }>
   vwap: number | null
   breakerBoxes: Array<{ direction: string; top: number; bottom: number }>
+  obBoxes: Array<{ direction: string; top: number; bottom: number; broken: boolean }>
+  oteBox: { high: number; low: number; level705: number } | null
 }
 
 export interface FullAnalysis {
@@ -87,7 +126,12 @@ export interface FullAnalysis {
   timeframes: TFAnalysis[]
   strategies: Array<{ name: string; confidence: number; details: string }>
   recommendation: string
-  nextLevels: { tp1: number | null; tp2: number | null; tp3: number | null; sl: number | null }
+  nextLevels: {
+    sl: number | null; slPct: number | null
+    tp1: number | null; tp1RR: number | null
+    tp2: number | null; tp2RR: number | null
+    tp3: number | null; tp3RR: number | null
+  }
   smtComparison: SMTComparison | null
   drawingLayers: DrawingLayer[]
 }

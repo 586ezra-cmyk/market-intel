@@ -22,6 +22,39 @@ export interface BreakerBlock {
   bottom: number
 }
 
+export interface OrderBlock {
+  direction: 'bullish' | 'bearish'
+  top: number
+  bottom: number
+  broken: boolean
+}
+
+export interface FibOTE {
+  high: number
+  low: number
+  level705: number
+  inZone: boolean
+}
+
+export interface ScoreBreakdown {
+  base: number
+  higherTFBonus: number
+  fvg: number
+  bosChoch: number
+  liquiditySweep: number
+  killZone: number
+  ismt: number
+  wyckoff: number
+  wm: number
+  doublePattern: number
+  breakerBlock: number
+  po3: number
+  wingBreak: number
+  orderBlock: number
+  ote: number
+  total: number
+}
+
 export interface Po3Signal {
   detected: boolean
   judas: boolean           // fake move detected (Judas Swing)
@@ -53,6 +86,10 @@ export interface TFAnalysis {
   pwl: number | null   // Previous Week Low
   vwap: number | null
   po3: Po3Signal | null
+  orderBlocks: OrderBlock[]
+  ote: FibOTE | null
+  sessionOpenPrices: { nyMidnight: number | null; trueDay: number | null }
+  scoreBreakdown: ScoreBreakdown
   score: number
 }
 
@@ -77,6 +114,8 @@ export interface DrawingLayer {
   markers: Array<{ price: number; label: string; color: string; position: 'above' | 'below' }>
   vwap: number | null
   breakerBoxes: Array<{ direction: 'bullish' | 'bearish'; top: number; bottom: number }>
+  obBoxes: Array<{ direction: 'bullish' | 'bearish'; top: number; bottom: number; broken: boolean }>
+  oteBox: { high: number; low: number; level705: number } | null
 }
 
 export interface FullAnalysis {
@@ -88,7 +127,12 @@ export interface FullAnalysis {
   timeframes: TFAnalysis[]
   strategies: Array<{ name: string; confidence: number; details: string }>
   recommendation: string
-  nextLevels: { tp1: number | null; tp2: number | null; tp3: number | null; sl: number | null }
+  nextLevels: {
+    sl: number | null; slPct: number | null
+    tp1: number | null; tp1RR: number | null
+    tp2: number | null; tp2RR: number | null
+    tp3: number | null; tp3RR: number | null
+  }
   smtComparison: SMTComparison | null
   drawingLayers: DrawingLayer[]  // one per timeframe, for chart overlay
 }
@@ -426,6 +470,130 @@ function detectPo3(candles: Candle[]): Po3Signal | null {
   }
 }
 
+// ─── Order Block Detection ────────────────────────────────────────────────────
+
+function detectOrderBlocks(candles: Candle[], structures: TFAnalysis['structures']): OrderBlock[] {
+  const obs: OrderBlock[] = []
+  if (candles.length < 10 || structures.length === 0) return obs
+
+  for (let si = structures.length - 1; si >= Math.max(0, structures.length - 5); si--) {
+    const struct = structures[si]
+    const bosPrice = struct.price
+
+    // Find approximate index where BOS happened
+    const bosIdx = candles.findIndex(c => {
+      if (struct.direction === 'bullish') return c.close > bosPrice
+      return c.close < bosPrice
+    })
+    if (bosIdx < 2 || bosIdx >= candles.length) continue
+
+    if (struct.direction === 'bullish') {
+      // Bullish OB: last bearish candle before BOS
+      for (let i = bosIdx - 1; i >= Math.max(0, bosIdx - 10); i--) {
+        if (candles[i].close < candles[i].open) {
+          const top = candles[i].high
+          const bottom = candles[i].low
+          const afterCandles = candles.slice(bosIdx)
+          const broken = afterCandles.some(c => c.close < bottom)
+          obs.push({ direction: 'bullish', top, bottom, broken })
+          break
+        }
+      }
+    } else {
+      // Bearish OB: last bullish candle before BOS
+      for (let i = bosIdx - 1; i >= Math.max(0, bosIdx - 10); i--) {
+        if (candles[i].close > candles[i].open) {
+          const top = candles[i].high
+          const bottom = candles[i].low
+          const afterCandles = candles.slice(bosIdx)
+          const broken = afterCandles.some(c => c.close > top)
+          obs.push({ direction: 'bearish', top, bottom, broken })
+          break
+        }
+      }
+    }
+  }
+
+  return obs
+}
+
+// ─── Fibonacci OTE Zone ───────────────────────────────────────────────────────
+
+function detectOTE(
+  candles: Candle[],
+  pivotHighs: Array<{ index: number; price: number }>,
+  pivotLows: Array<{ index: number; price: number }>,
+  trend: 'bullish' | 'bearish' | 'neutral',
+  currentPrice: number,
+): FibOTE | null {
+  if (trend === 'neutral' || pivotHighs.length < 1 || pivotLows.length < 1) return null
+
+  let swingHigh: number
+  let swingLow: number
+
+  if (trend === 'bullish') {
+    // For bullish: measure retracement from last swing low to last swing high
+    swingLow  = pivotLows[pivotLows.length - 1].price
+    swingHigh = pivotHighs[pivotHighs.length - 1].price
+  } else {
+    // For bearish: measure retracement from last swing high down to last swing low
+    swingHigh = pivotHighs[pivotHighs.length - 1].price
+    swingLow  = pivotLows[pivotLows.length - 1].price
+  }
+
+  if (swingHigh <= swingLow) return null
+
+  const range = swingHigh - swingLow
+
+  let oteHigh: number
+  let oteLow: number
+  let level705: number
+
+  if (trend === 'bullish') {
+    // Retracement levels (price pulling back from high to low)
+    oteHigh   = swingHigh - range * 0.62
+    oteLow    = swingHigh - range * 0.79
+    level705  = swingHigh - range * 0.705
+  } else {
+    // Retracement levels (price pulling back from low to high)
+    oteLow    = swingLow + range * 0.62
+    oteHigh   = swingLow + range * 0.79
+    level705  = swingLow + range * 0.705
+  }
+
+  const inZone = currentPrice >= oteLow && currentPrice <= oteHigh
+
+  return { high: oteHigh, low: oteLow, level705, inZone }
+}
+
+// ─── Session Opening Prices ───────────────────────────────────────────────────
+
+function calcSessionOpenPrices(candles: Candle[]): { nyMidnight: number | null; trueDay: number | null } {
+  const now = new Date()
+
+  // True Day Open: 00:00 UTC today
+  const trueDayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0))
+  const trueDayTs = trueDayStart.getTime() / 1000
+
+  // NY Midnight Open: 05:00 UTC (= 00:00 New York in winter, 01:00 in summer — approximation)
+  const nyMidnightTs = trueDayTs + 5 * 3600
+
+  let trueDay: number | null = null
+  let nyMidnight: number | null = null
+
+  for (const c of candles) {
+    if (trueDay === null && c.time >= trueDayTs && c.time < trueDayTs + 3600) {
+      trueDay = c.open
+    }
+    if (nyMidnight === null && c.time >= nyMidnightTs && c.time < nyMidnightTs + 3600) {
+      nyMidnight = c.open
+    }
+    if (trueDay !== null && nyMidnight !== null) break
+  }
+
+  return { nyMidnight, trueDay }
+}
+
 // ─── Per-timeframe analysis ────────────────────────────────────────────────────
 
 function analyzeTF(
@@ -651,6 +819,22 @@ function analyzeTF(
   // ── Po3 / Judas Swing ─────────────────────────────────────────────────────
   const po3 = detectPo3(candles)
 
+  // ── Order Blocks ───────────────────────────────────────────────────────────
+  const orderBlocks = detectOrderBlocks(candles, structures)
+
+  // ── Fibonacci OTE ─────────────────────────────────────────────────────────
+  const ote = detectOTE(candles, pivotHighs, pivotLows, trend, currentPrice)
+
+  // ── Session Open Prices ───────────────────────────────────────────────────
+  const sessionOpenPrices = calcSessionOpenPrices(candles)
+
+  // scoreBreakdown filled in after scoring — placeholder here
+  const scoreBreakdown: ScoreBreakdown = {
+    base: 0, higherTFBonus: 0, fvg: 0, bosChoch: 0, liquiditySweep: 0,
+    killZone: 0, ismt: 0, wyckoff: 0, wm: 0, doublePattern: 0,
+    breakerBlock: 0, po3: 0, wingBreak: 0, orderBlock: 0, ote: 0, total: 0,
+  }
+
   return {
     timeframe: tf,
     trend,
@@ -676,6 +860,10 @@ function analyzeTF(
     pwl: pwhpwl?.pwl ?? null,
     vwap,
     po3,
+    orderBlocks,
+    ote,
+    sessionOpenPrices,
+    scoreBreakdown,
   }
 }
 
@@ -684,13 +872,14 @@ function analyzeTF(
 function scoreTF(
   result: Omit<TFAnalysis, 'score'>,
   higherTFConfirmations: number,
-): number {
-  let score = TF_BASE_SCORE[result.timeframe] ?? 1.0
+): { score: number; breakdown: ScoreBreakdown } {
+  const base = TF_BASE_SCORE[result.timeframe] ?? 1.0
+  let higherTFBonus = 0
 
   // Higher TF confirmation bonus
-  if      (higherTFConfirmations === 1) score += 1.0
-  else if (higherTFConfirmations === 2) score += 2.5
-  else if (higherTFConfirmations >= 3)  score += 4.0
+  if      (higherTFConfirmations === 1) higherTFBonus = 1.0
+  else if (higherTFConfirmations === 2) higherTFBonus = 2.5
+  else if (higherTFConfirmations >= 3)  higherTFBonus = 4.0
 
   // Confluence bonuses
   const hasBOS    = result.structures.some(s => s.type === 'BOS')
@@ -719,21 +908,50 @@ function scoreTF(
   const hasPo3 = result.po3?.detected && result.po3.judas
   const hasWB  = result.wingBreak?.detected
 
-  if (hasFVG)          score += 0.3
-  if (hasBOS || hasCHoCH) score += 0.3
-  if (hasLiqSweep)     score += 0.3
-  if (hasKZ)           score += 0.3
-  if (hasISMT)         score += 0.4
-  if (wyckoffBestEntry) score += 0.5
-  if (wyckoffPhaseD)   score += 0.3
-  if (wyckoffPhaseC)   score += 0.2
-  if (hasWM)           score += 0.4
-  if (hasDT)           score += 0.3
-  if (hasBB)           score += 0.3
-  if (hasPo3)          score += 0.4
-  if (hasWB)           score += 0.4
+  // New bonuses
+  const hasOBInDir = result.orderBlocks.some(ob => !ob.broken)
+  const hasOTE     = result.ote?.inZone ?? false
 
-  return Math.min(10, score)
+  const fvgBonus          = hasFVG ? 0.3 : 0
+  const bosChochBonus     = (hasBOS || hasCHoCH) ? 0.3 : 0
+  const liquiditySweepBonus = hasLiqSweep ? 0.3 : 0
+  const killZoneBonus     = hasKZ ? 0.3 : 0
+  const ismtBonus         = hasISMT ? 0.4 : 0
+  const wyckoffBonus      = wyckoffBestEntry ? 0.5 : (wyckoffPhaseD ? 0.3 : (wyckoffPhaseC ? 0.2 : 0))
+  const wmBonus           = hasWM ? 0.4 : 0
+  const doublePatternBonus = hasDT ? 0.3 : 0
+  const bbBonus           = hasBB ? 0.3 : 0
+  const po3Bonus          = hasPo3 ? 0.4 : 0
+  const wbBonus           = hasWB ? 0.4 : 0
+  const obBonus           = hasOBInDir ? 0.3 : 0
+  const oteBonus          = hasOTE ? 0.4 : 0
+
+  const total = Math.min(10,
+    base + higherTFBonus + fvgBonus + bosChochBonus + liquiditySweepBonus +
+    killZoneBonus + ismtBonus + wyckoffBonus + wmBonus + doublePatternBonus +
+    bbBonus + po3Bonus + wbBonus + obBonus + oteBonus
+  )
+
+  const breakdown: ScoreBreakdown = {
+    base,
+    higherTFBonus,
+    fvg: fvgBonus,
+    bosChoch: bosChochBonus,
+    liquiditySweep: liquiditySweepBonus,
+    killZone: killZoneBonus,
+    ismt: ismtBonus,
+    wyckoff: wyckoffBonus,
+    wm: wmBonus,
+    doublePattern: doublePatternBonus,
+    breakerBlock: bbBonus,
+    po3: po3Bonus,
+    wingBreak: wbBonus,
+    orderBlock: obBonus,
+    ote: oteBonus,
+    total,
+  }
+
+  return { score: total, breakdown }
 }
 
 // ─── Build drawing layer ──────────────────────────────────────────────────────
@@ -802,6 +1020,19 @@ function buildDrawingLayer(tf: TFAnalysis, cp: number): DrawingLayer {
     lines.push({ label: 'iSMT', price: cp, color: '#e879f9', dash: true })
   }
 
+  // Session open prices
+  if (tf.sessionOpenPrices.nyMidnight) {
+    lines.push({ label: 'NY Midnight', price: tf.sessionOpenPrices.nyMidnight, color: '#3b82f6', dash: false })
+  }
+  if (tf.sessionOpenPrices.trueDay) {
+    lines.push({ label: 'True Day Open', price: tf.sessionOpenPrices.trueDay, color: '#6b7280', dash: true })
+  }
+
+  // OTE level
+  if (tf.ote) {
+    lines.push({ label: 'OTE 0.705', price: tf.ote.level705, color: '#f59e0b', dash: true })
+  }
+
   return {
     tf: tf.timeframe,
     fvgBoxes: tf.fvgs,
@@ -809,6 +1040,8 @@ function buildDrawingLayer(tf: TFAnalysis, cp: number): DrawingLayer {
     markers,
     vwap: tf.vwap,
     breakerBoxes: tf.breakerBlock ? [tf.breakerBlock] : [],
+    obBoxes: tf.orderBlocks,
+    oteBox: tf.ote ? { high: tf.ote.high, low: tf.ote.low, level705: tf.ote.level705 } : null,
   }
 }
 
@@ -871,8 +1104,8 @@ export async function analyzeSymbol(symbol: string): Promise<FullAnalysis> {
       return h && h.trend === raw.trend && raw.trend !== 'neutral'
     }).length
 
-    const score = scoreTF(raw, confirmations)
-    tfAnalyses.push({ ...raw, score })
+    const { score, breakdown } = scoreTF(raw, confirmations)
+    tfAnalyses.push({ ...raw, score, scoreBreakdown: breakdown })
   }
 
   // Overall direction
@@ -1001,6 +1234,18 @@ export async function analyzeSymbol(symbol: string): Promise<FullAnalysis> {
     }
   }
 
+  // Compute R:R ratios
+  const slPct = sl && currentPrice ? Math.abs((currentPrice - sl) / currentPrice) : null
+  const calcRR = (tp: number | null): number | null => {
+    if (!tp || !sl || !currentPrice || !slPct || slPct === 0) return null
+    const slDist = Math.abs(currentPrice - sl)
+    const tpDist = Math.abs(tp - currentPrice)
+    return parseFloat((tpDist / slDist).toFixed(2))
+  }
+  const tp1RR = calcRR(tp1)
+  const tp2RR = calcRR(tp2)
+  const tp3RR = calcRR(tp3)
+
   // ─── SMT Comparison ────────────────────────────────────────────────────────
   const SMT_PAIRS: Record<string, string> = {
     'BTCUSDT': 'ETHUSDT',
@@ -1103,7 +1348,12 @@ export async function analyzeSymbol(symbol: string): Promise<FullAnalysis> {
     timeframes: tfAnalyses,
     strategies,
     recommendation,
-    nextLevels: { tp1, tp2, tp3, sl },
+    nextLevels: {
+      sl, slPct,
+      tp1, tp1RR,
+      tp2, tp2RR,
+      tp3, tp3RR,
+    },
     smtComparison,
     drawingLayers,
   }
