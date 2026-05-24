@@ -73,13 +73,13 @@ export default function TabAlerts() {
       {/* ── Symbol filter ── */}
       <div className="space-y-3">
         <div className="flex gap-2 items-center flex-wrap">
-          <span className="text-xs text-slate-400 shrink-0">נכס:</span>
+          <span className="text-xs text-gray-400 shrink-0">נכס:</span>
           <button
             onClick={() => setFilterSymbol('')}
-            className={`px-3 py-1 rounded-full text-xs font-medium border transition-all ${
+            className={`px-3 py-1 rounded-full text-xs font-bold border transition-all ${
               filterSymbol === ''
-                ? 'bg-brand-600 border-brand-500 text-white'
-                : 'bg-surface border-surface-border text-slate-400 hover:border-slate-500'
+                ? 'bg-blue-600 border-blue-500 text-white'
+                : 'bg-gray-800 border-gray-600 text-gray-200 hover:bg-gray-700'
             }`}
           >
             הכל
@@ -88,10 +88,10 @@ export default function TabAlerts() {
             <button
               key={sym}
               onClick={() => setFilterSymbol(sym === filterSymbol ? '' : sym)}
-              className={`px-3 py-1 rounded-full text-xs font-medium border transition-all ${
+              className={`px-3 py-1 rounded-full text-xs font-bold border transition-all ${
                 filterSymbol === sym
-                  ? 'bg-brand-600 border-brand-500 text-white'
-                  : 'bg-surface border-surface-border text-slate-400 hover:border-slate-500'
+                  ? 'bg-blue-600 border-blue-500 text-white'
+                  : 'bg-gray-800 border-gray-600 text-gray-200 hover:bg-gray-700'
               }`}
             >
               {sym}
@@ -101,13 +101,13 @@ export default function TabAlerts() {
 
         {/* ── TF filter ── */}
         <div className="flex gap-2 items-center flex-wrap">
-          <span className="text-xs text-slate-400 shrink-0">TF:</span>
+          <span className="text-xs text-gray-400 shrink-0">TF:</span>
           <button
             onClick={() => setFilterTF('')}
-            className={`px-3 py-1 rounded-full text-xs font-medium border transition-all ${
+            className={`px-3 py-1 rounded-full text-xs font-bold border transition-all ${
               filterTF === ''
-                ? 'bg-brand-600 border-brand-500 text-white'
-                : 'bg-surface border-surface-border text-slate-400 hover:border-slate-500'
+                ? 'bg-blue-600 border-blue-500 text-white'
+                : 'bg-gray-800 border-gray-600 text-gray-200 hover:bg-gray-700'
             }`}
           >
             הכל
@@ -116,10 +116,10 @@ export default function TabAlerts() {
             <button
               key={tf}
               onClick={() => setFilterTF(tf === filterTF ? '' : tf)}
-              className={`px-3 py-1 rounded-full text-xs font-medium border transition-all ${
+              className={`px-3 py-1 rounded-full text-xs font-bold border transition-all ${
                 filterTF === tf
-                  ? 'bg-brand-600 border-brand-500 text-white'
-                  : 'bg-surface border-surface-border text-slate-400 hover:border-slate-500'
+                  ? 'bg-blue-600 border-blue-500 text-white'
+                  : 'bg-gray-800 border-gray-600 text-gray-200 hover:bg-gray-700'
               }`}
             >
               {tf}
@@ -129,7 +129,7 @@ export default function TabAlerts() {
 
         {/* ── Direction + refresh ── */}
         <div className="flex gap-2 items-center">
-          <span className="text-xs text-slate-400 shrink-0">כיוון:</span>
+          <span className="text-xs text-gray-400 shrink-0">כיוון:</span>
           {[
             { v: '', label: 'הכל' },
             { v: 'bullish', label: '▲ לונג' },
@@ -138,14 +138,14 @@ export default function TabAlerts() {
             <button
               key={v}
               onClick={() => setFilterDir(v)}
-              className={`px-3 py-1 rounded-full text-xs font-medium border transition-all ${
+              className={`px-3 py-1 rounded-full text-xs font-bold border transition-all ${
                 filterDir === v
                   ? v === 'bullish'
                     ? 'bg-green-700 border-green-600 text-white'
                     : v === 'bearish'
                     ? 'bg-red-700 border-red-600 text-white'
-                    : 'bg-brand-600 border-brand-500 text-white'
-                  : 'bg-surface border-surface-border text-slate-400 hover:border-slate-500'
+                    : 'bg-blue-600 border-blue-500 text-white'
+                  : 'bg-gray-800 border-gray-600 text-gray-200 hover:bg-gray-700'
               }`}
             >
               {label}
@@ -154,7 +154,7 @@ export default function TabAlerts() {
 
           <button
             onClick={refetch}
-            className="mr-auto px-3 py-1 rounded-full text-xs border border-surface-border text-slate-400 hover:border-slate-500 transition-all"
+            className="mr-auto px-3 py-1 rounded-full text-xs border border-gray-600 bg-gray-800 text-gray-200 hover:bg-gray-700 transition-all font-bold"
           >
             🔄 רענן
           </button>
@@ -162,7 +162,7 @@ export default function TabAlerts() {
       </div>
 
       {/* ── Alerts count ── */}
-      <div className="text-xs text-slate-500">
+      <div className="text-xs text-gray-400">
         {allAlerts.length} התראות{filterSymbol ? ` עבור ${filterSymbol}` : ''}{filterTF ? ` | ${filterTF}` : ''}
       </div>
 
