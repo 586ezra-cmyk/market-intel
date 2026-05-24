@@ -46,6 +46,28 @@ export default function AnalysisOverlayLayer({ chart, series }: Props) {
       attach(makePriceBand(series, bb.top, bb.bottom, fill, border, [6, 3]))
     })
 
+    // ── Order Block Boxes ─────────────────────────────────────────────────────
+    layer.obBoxes.slice(0, 6).forEach(ob => {
+      // Broken OBs: dimmer, dashed border
+      if (ob.broken) {
+        const fill   = ob.direction === 'bullish' ? 'rgba(34,197,94,0.04)'  : 'rgba(239,68,68,0.04)'
+        const border = ob.direction === 'bullish' ? 'rgba(34,197,94,0.25)'  : 'rgba(239,68,68,0.25)'
+        attach(makePriceBand(series, ob.top, ob.bottom, fill, border, [3, 4]))
+      } else {
+        const fill   = ob.direction === 'bullish' ? 'rgba(34,197,94,0.15)'  : 'rgba(239,68,68,0.15)'
+        const border = ob.direction === 'bullish' ? 'rgba(34,197,94,0.75)'  : 'rgba(239,68,68,0.75)'
+        attach(makePriceBand(series, ob.top, ob.bottom, fill, border))
+      }
+    })
+
+    // ── OTE (Fibonacci 62–79% zone) ───────────────────────────────────────────
+    if (layer.oteBox) {
+      const ote = layer.oteBox
+      attach(makePriceBand(series, ote.high, ote.low, 'rgba(245,158,11,0.10)', 'rgba(245,158,11,0.55)', [4, 3]))
+      // 0.705 level as a solid amber line
+      attach(makeHLine(series, ote.level705, '#f59e0b', 'OTE 0.705', false))
+    }
+
     // ── Horizontal Lines (PDH/PDL/PWH/PWL/VWAP/EQH/EQL/Range) ────────────────
     layer.horizontalLines.forEach(line => {
       attach(makeHLine(series, line.price, line.color, line.label, line.dash))

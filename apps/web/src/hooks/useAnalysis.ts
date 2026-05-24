@@ -147,7 +147,7 @@ export function useAnalysis() {
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch(`${API}/market/${symbol}/analyze`)
+      const res = await fetch(`${API}/api/market/${symbol}/analyze`)
       if (!res.ok) throw new Error('שגיאה בניתוח')
       const json = await res.json()
       setData(json)
