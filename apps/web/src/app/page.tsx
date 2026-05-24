@@ -40,7 +40,7 @@ const TABS: Array<{ id: TabId; label: string; icon: string }> = [
   { id: 'notes',             label: 'הערות',            icon: '✏️' },
   { id: 'reports',           label: 'דוחות',            icon: '📋' },
   { id: 'quick-confluence',  label: 'קונפלואנס מהיר',   icon: '⚡' },
-  { id: 'learning',          label: 'לימודים',           icon: '📚' },
+  { id: 'learning',          label: 'לימודים',           icon: '🎓' },
 ]
 
 export default function HomePage() {

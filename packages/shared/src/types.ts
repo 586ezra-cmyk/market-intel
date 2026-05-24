@@ -5,7 +5,7 @@ export type Timeframe =
 
 export type Direction = 'bullish' | 'bearish'
 export type TFClass = 'low' | 'high'
-export type AlertFactor = 'BOS' | 'CHoCH' | 'LiquiditySweep' | 'FVG' | 'SMT'
+export type AlertFactor = 'BOS' | 'CHoCH' | 'LiquiditySweep' | 'FVG' | 'SMT' | 'DoubleTop' | 'DoubleBottom' | 'Wyckoff' | 'OrderBlock'
 export type Session = 'asian' | 'london' | 'ny'
 export type Recommendation = 'long' | 'short' | 'neutral'
 export type PremiumDiscount = 'premium' | 'discount' | 'midpoint'

@@ -36,6 +36,9 @@ export interface ConfluenceInput {
   hasISMT?: boolean
   hasWyckoff?: boolean
   wyckoffPhase?: string
+  hasDoubleTop?: boolean
+  hasDoubleBottom?: boolean
+  hasOrderBlock?: boolean
   // Optional: confirmations from higher TFs
   higherTFConfirmations?: Timeframe[]
 }
@@ -116,6 +119,10 @@ function buildHebrewMessage(
     LiquiditySweep: 'שאיבת נזילות',
     FVG: 'FVG פעיל',
     SMT: 'SMT (דיברגנס)',
+    DoubleTop: 'דאבל טופ 🔴',
+    DoubleBottom: 'דאבל בוטום 🟢',
+    Wyckoff: 'Wyckoff',
+    OrderBlock: 'Order Block',
   }
 
   const factorsText = factors.map(f => factorHe[f]).join(', ')
@@ -163,6 +170,8 @@ function calcScore(input: ConfluenceInput): number {
   if (isInKillZone()) score += 0.3
   if (input.hasSMT || input.hasISMT) score += 0.4
   if (input.hasWyckoff) score += 0.5
+  if (input.hasDoubleTop || input.hasDoubleBottom) score += 0.3
+  if (input.hasOrderBlock) score += 0.3
 
   const range = getActiveRange(input.symbol, input.timeframe)
   if (range) score += 0.2 // Dealing Range context available
@@ -185,6 +194,10 @@ export async function evaluateConfluence(input: ConfluenceInput): Promise<Alert 
   if (input.hasLiquiditySweep) factors.push('LiquiditySweep')
   if (input.hasFVG) factors.push('FVG')
   if (input.hasSMT || input.hasISMT) factors.push('SMT')
+  if (input.hasDoubleTop && input.direction === 'bearish') factors.push('DoubleTop')
+  if (input.hasDoubleBottom && input.direction === 'bullish') factors.push('DoubleBottom')
+  if (input.hasOrderBlock) factors.push('OrderBlock')
+  if (input.hasWyckoff) factors.push('Wyckoff')
 
   // Gate: require ≥2 factors AND kill zone
   if (factors.length < 2 || !isInKillZone()) return null
