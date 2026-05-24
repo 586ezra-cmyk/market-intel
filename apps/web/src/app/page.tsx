@@ -16,13 +16,14 @@ import TabKnowledgeBase from '@/components/tabs/TabKnowledgeBase'
 import TabNotes from '@/components/tabs/TabNotes'
 import TabReports from '@/components/tabs/TabReports'
 import TabQuickConfluence from '@/components/tabs/TabQuickConfluence'
+import TabLearning from '@/components/tabs/TabLearning'
 import { useWebSocket } from '@/hooks/useWebSocket'
 
 export type TabId =
   | 'dashboard' | 'alerts' | 'stats' | 'alert-settings'
   | 'journal' | 'backtest' | 'watchlist' | 'matrix'
   | 'history-scan' | 'economic-calendar' | 'knowledge-base'
-  | 'notes' | 'reports' | 'quick-confluence'
+  | 'notes' | 'reports' | 'quick-confluence' | 'learning'
 
 const TABS: Array<{ id: TabId; label: string; icon: string }> = [
   { id: 'dashboard',         label: 'דשבורד',          icon: '📊' },
@@ -39,6 +40,7 @@ const TABS: Array<{ id: TabId; label: string; icon: string }> = [
   { id: 'notes',             label: 'הערות',            icon: '✏️' },
   { id: 'reports',           label: 'דוחות',            icon: '📋' },
   { id: 'quick-confluence',  label: 'קונפלואנס מהיר',   icon: '⚡' },
+  { id: 'learning',          label: 'לימודים',           icon: '📚' },
 ]
 
 export default function HomePage() {
@@ -91,6 +93,7 @@ export default function HomePage() {
             {activeTab === 'notes'             && <TabNotes />}
             {activeTab === 'reports'           && <TabReports />}
             {activeTab === 'quick-confluence'  && <TabQuickConfluence />}
+            {activeTab === 'learning'           && <TabLearning />}
           </main>
         )}
       </div>
