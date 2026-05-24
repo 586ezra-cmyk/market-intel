@@ -71,12 +71,12 @@ export function getTopCombinations(db: Database.Database, limit = 10): FactorSta
 
 export function getWinRateSummary(db: Database.Database): WinRateSummary {
   const total = (db.prepare('SELECT COUNT(*) as c FROM alerts').get() as { c: number }).c
-  const outcomed = (db.prepare(`SELECT COUNT(*) as c FROM alerts WHERE outcome NOT IN ('pending','expired')`).get() as { c: number }).c
-  const tp1 = (db.prepare(`SELECT COUNT(*) as c FROM alerts WHERE tp1_hit = 1`).get() as { c: number }).c
-  const tp2 = (db.prepare(`SELECT COUNT(*) as c FROM alerts WHERE tp2_hit = 1`).get() as { c: number }).c
-  const tp3 = (db.prepare(`SELECT COUNT(*) as c FROM alerts WHERE tp3_hit = 1`).get() as { c: number }).c
-  const sl  = (db.prepare(`SELECT COUNT(*) as c FROM alerts WHERE sl_hit = 1`).get() as { c: number }).c
-  const pending = (db.prepare(`SELECT COUNT(*) as c FROM alerts WHERE outcome = 'pending'`).get() as { c: number }).c
+  const outcomed = (db.prepare(`SELECT COUNT(*) as c FROM alerts WHERE outcome IS NOT NULL AND outcome NOT IN ('pending','expired')`).get() as { c: number }).c
+  const tp1 = (db.prepare(`SELECT COUNT(*) as c FROM alerts WHERE tp1_hit = 1 AND outcome IS NOT NULL AND outcome NOT IN ('pending','expired')`).get() as { c: number }).c
+  const tp2 = (db.prepare(`SELECT COUNT(*) as c FROM alerts WHERE tp2_hit = 1 AND outcome IS NOT NULL AND outcome NOT IN ('pending','expired')`).get() as { c: number }).c
+  const tp3 = (db.prepare(`SELECT COUNT(*) as c FROM alerts WHERE tp3_hit = 1 AND outcome IS NOT NULL AND outcome NOT IN ('pending','expired')`).get() as { c: number }).c
+  const sl  = (db.prepare(`SELECT COUNT(*) as c FROM alerts WHERE sl_hit = 1 AND outcome IS NOT NULL AND outcome NOT IN ('pending','expired')`).get() as { c: number }).c
+  const pending = (db.prepare(`SELECT COUNT(*) as c FROM alerts WHERE outcome = 'pending' OR outcome IS NULL`).get() as { c: number }).c
   const expired = (db.prepare(`SELECT COUNT(*) as c FROM alerts WHERE outcome = 'expired'`).get() as { c: number }).c
 
   const base = outcomed || 1

@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
-import { LineSeries } from 'lightweight-charts'
 import type { IChartApi, ISeriesApi } from 'lightweight-charts'
 import { useMarketStore } from '@/store/marketStore'
 
@@ -10,45 +9,87 @@ interface Props {
   series: ISeriesApi<'Candlestick'>
 }
 
+function makeSmtMarker(
+  series: ISeriesApi<'Candlestick'>,
+  price: number,
+  label: string,
+  color: string,
+) {
+  return {
+    draw(ctx: CanvasRenderingContext2D) {
+      try {
+        const y = series.priceToCoordinate(price)
+        if (y === null) return
+        const { width } = ctx.canvas
+        ctx.save()
+
+        // Dashed horizontal line
+        ctx.strokeStyle = color
+        ctx.lineWidth = 1
+        ctx.setLineDash([3, 3])
+        ctx.globalAlpha = 0.65
+        ctx.beginPath()
+        ctx.moveTo(0, y)
+        ctx.lineTo(width, y)
+        ctx.stroke()
+
+        // Badge on right
+        ctx.setLineDash([])
+        ctx.font = 'bold 10px sans-serif'
+        const tw = ctx.measureText(label).width
+        const pad = 4
+        const bw = tw + pad * 2
+        const bh = 16
+        const bx = width - bw - 60
+        const by = y - bh / 2
+
+        ctx.globalAlpha = 0.9
+        ctx.fillStyle = '#1a1230'
+        ctx.fillRect(bx, by, bw, bh)
+        ctx.strokeStyle = color
+        ctx.lineWidth = 1
+        ctx.globalAlpha = 0.9
+        ctx.strokeRect(bx, by, bw, bh)
+
+        ctx.globalAlpha = 1
+        ctx.fillStyle = color
+        ctx.fillText(label, bx + pad, by + bh - 4)
+        ctx.restore()
+      } catch {}
+    },
+    hitTest() { return null },
+  }
+}
+
 export default function SMTLayer({ chart, series }: Props) {
   const smtSignals = useMarketStore(s => s.smtSignals)
   const visible = useMarketStore(s => s.layers.smt)
-  const markersRef = useRef<any[]>([])
+  const primitivesRef = useRef<any[]>([])
 
   useEffect(() => {
-    // Remove old marker series
-    markersRef.current.forEach(s2 => { try { chart.removeSeries(s2) } catch {} })
-    markersRef.current = []
+    primitivesRef.current.forEach(p => { try { series.detachPrimitive(p) } catch {} })
+    primitivesRef.current = []
 
     if (!visible || smtSignals.length === 0) return
 
-    // LW Charts v5 removed setMarkers from series.
-    // Use a separate Line series at the signal price as visual indicator.
     smtSignals.slice(0, 20).forEach(smt => {
       try {
         const isBull = smt.type === 'bullish_smt'
-        const s2 = chart.addSeries(LineSeries, {
-          color: '#ec4899',
-          lineWidth: 1,
-          lineStyle: 3,
-          priceLineVisible: false,
-          lastValueVisible: true,
-          title: isBull ? '⚡ SMT Bull' : '⚡ SMT Bear',
-          crosshairMarkerVisible: true,
-        }) as any
-
-        const t = Math.floor(smt.time / 1000) as any
-        const price = isBull ? smt.asset1Price : smt.asset1Price
-        s2.setData([{ time: t, value: price }])
-        markersRef.current.push(s2)
+        const color = '#ec4899'
+        const label = isBull ? '⚡ SMT Bull' : '⚡ SMT Bear'
+        // Fix: bullish divergence → use asset1Price; bearish → use asset2Price
+        const price = isBull ? smt.asset1Price : (smt.asset2Price ?? smt.asset1Price)
+        const prim = makeSmtMarker(series, price, label, color)
+        series.attachPrimitive(prim as any)
+        primitivesRef.current.push(prim)
       } catch {}
     })
 
     return () => {
-      markersRef.current.forEach(s2 => { try { chart.removeSeries(s2) } catch {} })
-      markersRef.current = []
+      primitivesRef.current.forEach(p => { try { series.detachPrimitive(p) } catch {} })
+      primitivesRef.current = []
     }
-  }, [smtSignals, visible, chart])
+  }, [smtSignals, visible, series])
 
   return null
 }

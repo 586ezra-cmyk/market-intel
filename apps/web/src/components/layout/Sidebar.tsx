@@ -1,5 +1,6 @@
 'use client'
 
+// Reserved for future use — not yet rendered
 import { useMarketStore, LAYER_LABELS, LAYER_COLORS, type LayerId } from '@/store/marketStore'
 
 export default function Sidebar() {

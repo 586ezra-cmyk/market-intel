@@ -37,22 +37,9 @@ export default function TabAlertSettings() {
     setTestResult(null)
     try {
       const base = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001'
-      const topics: Record<string, number> = {
-        'מסחר יומי': settings?.TELEGRAM_TOPIC_DAILY ?? 6,
-        'מסחר שבועי': settings?.TELEGRAM_TOPIC_WEEKLY ?? 5,
-        'דירוגים 7+': settings?.TELEGRAM_TOPIC_HIGH ?? 4,
-      }
-      const results: string[] = []
-      for (const [name, id] of Object.entries(topics)) {
-        const r = await fetch(`https://api.telegram.org/bot${settings?.telegram_token ?? ''}/sendMessage`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ chat_id: settings?.telegram_chat_id, message_thread_id: id, text: `🧪 בדיקה — ${name}` }),
-        })
-        const d = await r.json()
-        results.push(`${name}: ${d.ok ? '✅' : '❌'}`)
-      }
-      setTestResult(results.join(' · '))
+      const r = await fetch(`${base}/api/telegram/test`, { method: 'POST' })
+      const d = await r.json()
+      setTestResult(d.results ? d.results.join(' · ') : (d.ok ? '✅ נשלח' : '❌ שגיאה'))
     } catch {
       setTestResult('❌ שגיאה בשליחה')
     }
@@ -103,11 +90,11 @@ export default function TabAlertSettings() {
         <h3 className="font-semibold text-sm">📦 מבנה ערוצי הטלגרם</h3>
         <div className="space-y-2">
           {[
-            { icon: '📅', name: 'מסחר יומי', desc: '15m, 30m, 1h — התראות real-time', topic: settings?.TELEGRAM_TOPIC_DAILY ?? 6 },
-            { icon: '📈', name: 'מסחר שבועי', desc: '4h, יומי, שבועי — התראות real-time', topic: settings?.TELEGRAM_TOPIC_WEEKLY ?? 5 },
-            { icon: '⭐', name: 'דירוגים 7+', desc: 'כל הטווחים מעל ציון 7', topic: settings?.TELEGRAM_TOPIC_HIGH ?? 4 },
-            { icon: '🌅', name: 'סקירה יומית', desc: '08:00 יעדים · 23:00 סיכום', topic: settings?.TELEGRAM_TOPIC_BRIEFING ?? 3 },
-            { icon: '📰', name: 'דוחות כלכליים', desc: 'ForexFactory + הסברים + תזכורות', topic: settings?.TELEGRAM_TOPIC_CALENDAR ?? 2 },
+            { icon: '📅', name: 'מסחר יומי', desc: '15m, 30m, 1h — התראות real-time', topic: settings?.telegram_topic_daily ?? 6 },
+            { icon: '📈', name: 'מסחר שבועי', desc: '4h, יומי, שבועי — התראות real-time', topic: settings?.telegram_topic_weekly ?? 5 },
+            { icon: '⭐', name: 'דירוגים 7+', desc: 'כל הטווחים מעל ציון 7', topic: settings?.telegram_topic_high ?? 4 },
+            { icon: '🌅', name: 'סקירה יומית', desc: '08:00 יעדים · 23:00 סיכום', topic: settings?.telegram_topic_briefing ?? 3 },
+            { icon: '📰', name: 'דוחות כלכליים', desc: 'ForexFactory + הסברים + תזכורות', topic: settings?.telegram_topic_calendar ?? 2 },
           ].map(ch => (
             <div key={ch.name} className="flex items-center gap-3 p-2 bg-surface rounded-lg">
               <span className="text-lg">{ch.icon}</span>

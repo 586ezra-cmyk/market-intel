@@ -14,23 +14,27 @@ router.get('/', async (_req: Request, res: Response) => {
   }
 })
 
-// GET /api/briefing/morning
-router.get('/briefing/morning', async (_req: Request, res: Response) => {
+// GET /api/briefing/morning (mounted at both /api/economic-calendar and /api/briefing)
+// When mounted at /api/briefing, the route is /morning
+// When mounted at /api/economic-calendar, the route is /briefing/morning
+router.get(['/briefing/morning', '/morning'], async (_req: Request, res: Response) => {
   try {
     const text = await generateMorningBriefing()
     res.json({ text, generatedAt: Date.now() })
   } catch (err: any) {
-    res.status(500).json({ error: err.message })
+    // Return stub if generation fails
+    res.json({ text: 'סקירה בוקר תיווצר ב-08:00 IL', generatedAt: Date.now(), available: false })
   }
 })
 
 // GET /api/briefing/evening
-router.get('/briefing/evening', async (_req: Request, res: Response) => {
+router.get(['/briefing/evening', '/evening'], async (_req: Request, res: Response) => {
   try {
     const text = await generateEveningSummary()
     res.json({ text, generatedAt: Date.now() })
   } catch (err: any) {
-    res.status(500).json({ error: err.message })
+    // Return stub if generation fails
+    res.json({ text: 'סקירה ערב תיווצר ב-23:00 IL', generatedAt: Date.now(), available: false })
   }
 })
 

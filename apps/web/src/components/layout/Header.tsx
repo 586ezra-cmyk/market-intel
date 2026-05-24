@@ -4,32 +4,36 @@ import { useMarketStore } from '@/store/marketStore'
 import { TF_OPTIONS, SYMBOL_OPTIONS } from '@/lib/utils'
 import { useState, useEffect } from 'react'
 
+function getSession(h: number) {
+  if (h >= 20 || h < 4) return { label: 'אסייה 🌏', color: 'text-yellow-400' }
+  if (h >= 7 && h < 11) return { label: 'לונדון 🇬🇧', color: 'text-blue-400' }
+  if (h >= 13 && h < 16) return { label: 'ניו יורק 🗽', color: 'text-green-400' }
+  return { label: 'מחוץ לסשן', color: 'text-slate-500' }
+}
+
 export default function Header() {
   const { symbol, timeframe, setSymbol, setTimeframe, wsConnected } = useMarketStore()
   const [utcTime, setUtcTime] = useState('')
   const [ilTime, setILTime] = useState('')
   const [isKillZone, setIsKillZone] = useState(false)
+  const [session, setSession] = useState(() => getSession(new Date().getUTCHours()))
 
   useEffect(() => {
     function tick() {
       const now = new Date()
       const h = now.getUTCHours()
-      setUtcTime(now.toUTCString().slice(17, 22))
+      const m = now.getUTCMinutes()
+      const hStr = h.toString().padStart(2, '0')
+      const mStr = m.toString().padStart(2, '0')
+      setUtcTime(`${hStr}:${mStr}`)
       setILTime(now.toLocaleTimeString('he-IL', { timeZone: 'Asia/Jerusalem', hour: '2-digit', minute: '2-digit' }))
       setIsKillZone((h >= 7 && h < 11) || (h >= 13 && h < 16))
+      setSession(getSession(h))
     }
     tick()
     const id = setInterval(tick, 30_000)
     return () => clearInterval(id)
   }, [])
-
-  const session = (() => {
-    const h = new Date().getUTCHours()
-    if (h >= 20 || h < 4) return { label: 'אסייה 🌏', color: 'text-yellow-400' }
-    if (h >= 7 && h < 11) return { label: 'לונדון 🇬🇧', color: 'text-blue-400' }
-    if (h >= 13 && h < 16) return { label: 'ניו יורק 🗽', color: 'text-green-400' }
-    return { label: 'מחוץ לסשן', color: 'text-slate-500' }
-  })()
 
   return (
     <header className="flex items-center justify-between gap-4 bg-surface-raised border-b border-surface-border px-4 py-2 shrink-0">

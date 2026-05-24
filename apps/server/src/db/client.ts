@@ -37,7 +37,16 @@ function runMigrations(db: Database.Database): void {
     const already = db.prepare('SELECT 1 FROM _migrations WHERE name = ?').get(file)
     if (already) continue
     const sql = fs.readFileSync(path.join(migrationsDir, file), 'utf8')
-    db.exec(sql)
+    try {
+      db.exec(sql)
+    } catch (err: any) {
+      // Ignore "duplicate column name" errors — migration was partially applied previously
+      if (err.message && err.message.includes('duplicate column name')) {
+        console.warn(`[DB] migration ${file}: duplicate column ignored (already applied partially)`)
+      } else {
+        throw err
+      }
+    }
     db.prepare('INSERT INTO _migrations (name, ran_at) VALUES (?, ?)').run(file, Date.now())
     console.log(`[DB] migration ran: ${file}`)
   }

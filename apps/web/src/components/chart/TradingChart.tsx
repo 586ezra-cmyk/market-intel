@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createChart, CandlestickSeries, type IChartApi, type ISeriesApi } from 'lightweight-charts'
 import { useMarketStore } from '@/store/marketStore'
 import { useApi } from '@/hooks/useApi'
@@ -18,10 +18,13 @@ interface ChartState {
   candleSeries: ISeriesApi<'Candlestick'>
 }
 
+const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001'
+
 export default function TradingChart() {
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<ChartState | null>(null)
   const forceRef = useRef(0) // to trigger re-render when chart is ready
+  const [candlesLoading, setCandlesLoading] = useState(false)
   const { symbol, timeframe, selectedAlertId, setSelectedAlert } = useMarketStore()
 
   useApi<any>(
@@ -88,8 +91,22 @@ export default function TradingChart() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Fetch candle data whenever symbol or timeframe changes
   useEffect(() => {
-    chartRef.current?.candleSeries.setData([])
+    const cs = chartRef.current
+    if (!cs) return
+    cs.candleSeries.setData([])
+    setCandlesLoading(true)
+    fetch(`${API}/api/market/${encodeURIComponent(symbol)}/${timeframe}/candles?limit=200`)
+      .then(r => r.ok ? r.json() : Promise.reject(r.status))
+      .then((candles: Array<{ time: number; open: number; high: number; low: number; close: number; volume: number }>) => {
+        if (!chartRef.current) return
+        chartRef.current.candleSeries.setData(
+          candles.map(c => ({ time: c.time as any, open: c.open, high: c.high, low: c.low, close: c.close }))
+        )
+      })
+      .catch(() => { /* non-crypto symbol — candles stay empty */ })
+      .finally(() => setCandlesLoading(false))
   }, [symbol, timeframe])
 
   const cs = chartRef.current
@@ -97,6 +114,11 @@ export default function TradingChart() {
   return (
     <div className="relative w-full h-full">
       <div ref={containerRef} className="chart-ltr w-full h-full" />
+      {candlesLoading && (
+        <div className="absolute top-2 left-1/2 -translate-x-1/2 bg-surface-raised/80 text-xs text-slate-400 px-3 py-1 rounded-full pointer-events-none">
+          טוען נרות...
+        </div>
+      )}
 
       {cs && (
         <>

@@ -12,11 +12,14 @@ export default function TabMatrix() {
   const { data: alertsData } = useApi<{ alerts: any[] }>('/api/alerts?limit=500')
   const alerts = alertsData?.alerts ?? []
 
-  // Build lookup: symbol+tf → best (highest score) alert
+  // Build lookup: symbol+tf → most recent alert (by triggeredAt)
   const lookup: Record<string, any> = {}
   alerts.forEach(a => {
     const key = `${a.symbol}:${a.timeframe}`
-    if (!lookup[key] || (a.score ?? 0) > (lookup[key].score ?? 0)) lookup[key] = a
+    const ts = a.triggeredAt ?? a.createdAt ?? 0
+    const existing = lookup[key]
+    const existingTs = existing ? (existing.triggeredAt ?? existing.createdAt ?? 0) : 0
+    if (!existing || ts > existingTs) lookup[key] = a
   })
 
   function getAlert(symbol: string, tf: string) {
@@ -35,6 +38,18 @@ export default function TabMatrix() {
       if (s >= 4) return 'bg-red-900/30 hover:bg-red-900/50'
       return 'bg-red-900/15 hover:bg-red-900/30'
     }
+  }
+
+  function relativeTime(ts: number | undefined): string {
+    if (!ts) return ''
+    const diffMs = Date.now() - ts
+    const diffM = Math.floor(diffMs / 60_000)
+    const diffH = Math.floor(diffM / 60)
+    const diffD = Math.floor(diffH / 24)
+    if (diffD > 0) return `לפני ${diffD}י`
+    if (diffH > 0) return `לפני ${diffH}ש`
+    if (diffM > 0) return `לפני ${diffM}ד`
+    return 'עכשיו'
   }
 
   function handleClick(symbol: string, tf: string) {
@@ -102,7 +117,8 @@ export default function TabMatrix() {
                               }`}>
                                 {(alert.score ?? 0).toFixed(1)}
                               </span>
-                              {alert.inKillZone && <span className="text-[9px] text-purple-400">🎯KZ</span>}
+                                  {alert.inKillZone && <span className="text-[9px] text-purple-400">🎯KZ</span>}
+                              <span className="text-[8px] text-slate-500">{relativeTime(alert.triggeredAt ?? alert.createdAt)}</span>
                             </div>
                           ) : (
                             <span className="text-slate-700">—</span>

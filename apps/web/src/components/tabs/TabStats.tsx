@@ -90,8 +90,8 @@ export default function TabStats() {
       byFactor[f] = (byFactor[f] ?? 0) + 1
     })
 
-    // By hour
-    const h = new Date(a.triggeredAt ?? a.createdAt).getHours()
+    // By hour (UTC)
+    const h = new Date(a.triggeredAt ?? a.createdAt).getUTCHours()
     byHour[h] = (byHour[h] ?? 0) + 1
 
     // By symbol

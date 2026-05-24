@@ -4,6 +4,9 @@ const BINANCE_BASE = 'https://api.binance.com/api/v3'
 const CHECK_INTERVAL_MS = 60 * 60 * 1000  // 1 hour
 const EXPIRY_HOURS = 48
 
+// Symbols that cannot be fetched from Binance — require manual outcome review
+const NON_BINANCE_SYMBOLS = new Set(['NQ', 'NQ1!', 'ES', 'ES1!', 'XAUUSD', 'GOLD'])
+
 async function fetchCurrentPrice(symbol: string): Promise<number | null> {
   try {
     const res = await fetch(`${BINANCE_BASE}/ticker/price?symbol=${symbol}`)
@@ -54,6 +57,15 @@ export async function checkOutcomes(db: Database.Database): Promise<void> {
   console.log(`[OutcomeTracker] Checking ${pending.length} pending alerts`)
 
   for (const alert of pending) {
+    // Skip non-Binance symbols — mark as requiring manual review
+    if (NON_BINANCE_SYMBOLS.has(alert.symbol.toUpperCase())) {
+      console.log(`[OutcomeTracker] Skipping non-Binance symbol: ${alert.symbol} (manual review required)`)
+      db.prepare(`
+        UPDATE alerts SET outcome = 'manual_required', outcome_checked_at = ? WHERE id = ?
+      `).run(nowTs, alert.id)
+      continue
+    }
+
     const currentPrice = await fetchCurrentPrice(alert.symbol)
     if (!currentPrice) continue
 

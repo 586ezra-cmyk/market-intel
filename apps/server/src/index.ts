@@ -10,9 +10,10 @@ import marketRouter from './routes/market'
 import economicRouter from './routes/economic'
 import backtestRouter from './routes/backtest'
 import journalRouter from './routes/journal'
-import settingsRouter from './routes/settings'
+import settingsRouter, { telegramTestRouter } from './routes/settings'
 import watchlistRouter from './routes/watchlist'
 import statsRouter from './routes/stats'
+import notesRouter from './routes/notes'
 import { initScheduler } from './services/scheduler'
 import { startOutcomeTracker } from './services/outcomeTracker'
 
@@ -31,8 +32,10 @@ app.use('/api/briefing', economicRouter)
 app.use('/api/backtest', backtestRouter)
 app.use('/api/journal', journalRouter)
 app.use('/api/settings', settingsRouter)
+app.use('/api/telegram', telegramTestRouter)
 app.use('/api/watchlist', watchlistRouter)
 app.use('/api/stats', statsRouter)
+app.use('/api/notes', notesRouter)
 
 // Health check
 app.get('/health', (_req, res) => {

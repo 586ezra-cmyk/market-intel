@@ -34,6 +34,8 @@ const EMPTY_FORM = {
   sizeUsd: 0,
   commissionUsd: 0,
   notes: '',
+  openedAtStr: new Date().toISOString().slice(0, 16),
+  closedAtStr: '',
 }
 
 function calcPnL(entry: number, exit: number, size: number, dir: 'LONG'|'SHORT', fee: number): number {
@@ -67,8 +69,8 @@ export default function TabJournal() {
     try {
       await apiPost('/api/journal', {
         ...form,
-        openedAt: Date.now(),
-        closedAt: form.exitPrice ? Date.now() : null,
+        openedAt: form.openedAtStr ? new Date(form.openedAtStr).getTime() : Date.now(),
+        closedAt: form.closedAtStr ? new Date(form.closedAtStr).getTime() : (form.exitPrice ? Date.now() : null),
         tradeNum: trades.length + 1,
       })
       setForm({ ...EMPTY_FORM })
@@ -175,6 +177,22 @@ export default function TabJournal() {
                 <option value="SHORT">▼ SHORT</option>
               </select>
             </div>
+            <div>
+              <label className="text-xs text-slate-400 mb-1 block">תאריך פתיחה</label>
+              <input
+                type="datetime-local" className="input"
+                value={form.openedAtStr}
+                onChange={e => setForm(f => ({ ...f, openedAtStr: e.target.value }))}
+              />
+            </div>
+            <div>
+              <label className="text-xs text-slate-400 mb-1 block">תאריך סגירה</label>
+              <input
+                type="datetime-local" className="input"
+                value={form.closedAtStr}
+                onChange={e => setForm(f => ({ ...f, closedAtStr: e.target.value }))}
+              />
+            </div>
             {[
               { label: 'מחיר כניסה', key: 'entryPrice' },
               { label: 'מחיר סטופ', key: 'stopPrice' },
@@ -241,7 +259,16 @@ export default function TabJournal() {
               {filtered.map((t, idx) => {
                 const pnl = t.pnlUsd
                 const rr = t.entryPrice && t.stopPrice && t.exitPrice
-                  ? ((Math.abs(t.exitPrice - t.entryPrice)) / (Math.abs(t.entryPrice - t.stopPrice))).toFixed(1)
+                  ? (() => {
+                      const isLong = t.direction === 'LONG'
+                      const reward = isLong
+                        ? t.exitPrice - t.entryPrice
+                        : t.entryPrice - t.exitPrice
+                      const risk = isLong
+                        ? t.entryPrice - t.stopPrice
+                        : t.stopPrice - t.entryPrice
+                      return risk > 0 ? (reward / risk).toFixed(1) : null
+                    })()
                   : null
 
                 return (

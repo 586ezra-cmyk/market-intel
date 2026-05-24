@@ -68,7 +68,6 @@ interface MarketStore {
   // Analysis overlay (from "בחן עכשיו")
   analysisLayers: DrawingLayer[]
   setAnalysisLayers: (layers: DrawingLayer[]) => void
-  analysisSymbol: string | null
 
   // UI state
   selectedAlertId: string | null
@@ -125,7 +124,6 @@ export const useMarketStore = create<MarketStore>()(
         set((s) => ({ wyckoffPhases: [w, ...s.wyckoffPhases.filter(x => x.id !== w.id)] })),
 
       analysisLayers: [],
-      analysisSymbol: null,
       setAnalysisLayers: (layers) => set({ analysisLayers: layers }),
 
       selectedAlertId: null,

@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
-import { LineSeries } from 'lightweight-charts'
 import type { IChartApi, ISeriesApi } from 'lightweight-charts'
 import { useMarketStore } from '@/store/marketStore'
 
@@ -13,39 +12,42 @@ interface Props {
 export default function RangeLayer({ chart, series }: Props) {
   const activeRange = useMarketStore(s => s.activeRange)
   const visible = useMarketStore(s => s.layers.range)
-  const midlineRef = useRef<any>(null)
-  const primitiveRef = useRef<any>(null)
+  const primitivesRef = useRef<any[]>([])
 
   useEffect(() => {
-    if (midlineRef.current) {
-      try { chart.removeSeries(midlineRef.current) } catch {}
-      midlineRef.current = null
-    }
-    if (primitiveRef.current) {
-      try { series.detachPrimitive(primitiveRef.current) } catch {}
-      primitiveRef.current = null
-    }
+    primitivesRef.current.forEach(p => { try { series.detachPrimitive(p) } catch {} })
+    primitivesRef.current = []
 
     if (!visible || !activeRange) return
 
-    // Midpoint line — LW Charts v5: addSeries with seriesType 'Line'
+    // Midpoint as horizontal line primitive (dashed gray)
+    const midpointPrice = activeRange.midpoint
+    const midlinePrim = {
+      draw(ctx: CanvasRenderingContext2D) {
+        try {
+          const y = series.priceToCoordinate(midpointPrice)
+          if (y === null) return
+          const { width } = ctx.canvas
+          ctx.save()
+          ctx.strokeStyle = 'rgba(148,163,184,0.5)'
+          ctx.lineWidth = 1
+          ctx.setLineDash([6, 4])
+          ctx.beginPath()
+          ctx.moveTo(0, y)
+          ctx.lineTo(width, y)
+          ctx.stroke()
+          ctx.restore()
+        } catch {}
+      },
+      hitTest() { return null },
+    }
     try {
-      const midline = chart.addSeries(LineSeries, {
-        color: 'rgba(59,130,246,0.5)',
-        lineWidth: 1,
-        lineStyle: 2,
-        priceLineVisible: false,
-        lastValueVisible: false,
-        crosshairMarkerVisible: false,
-      }) as any
-
-      const t = Math.floor(activeRange.startTime / 1000) as any
-      midline.setData([{ time: t, value: activeRange.midpoint }])
-      midlineRef.current = midline
+      series.attachPrimitive(midlinePrim as any)
+      primitivesRef.current.push(midlinePrim)
     } catch {}
 
     // Price band primitive for Premium / Discount zones
-    const rangeCopy = { ...activeRange }
+    const rangeCopy = { ...activeRange } as typeof activeRange
     const priceBand = {
       draw(ctx: CanvasRenderingContext2D) {
         try {
@@ -70,20 +72,14 @@ export default function RangeLayer({ chart, series }: Props) {
 
     try {
       series.attachPrimitive(priceBand as any)
-      primitiveRef.current = priceBand
+      primitivesRef.current.push(priceBand)
     } catch {}
 
     return () => {
-      if (midlineRef.current) {
-        try { chart.removeSeries(midlineRef.current) } catch {}
-        midlineRef.current = null
-      }
-      if (primitiveRef.current) {
-        try { series.detachPrimitive(primitiveRef.current) } catch {}
-        primitiveRef.current = null
-      }
+      primitivesRef.current.forEach(p => { try { series.detachPrimitive(p) } catch {} })
+      primitivesRef.current = []
     }
-  }, [activeRange, visible, chart, series])
+  }, [activeRange, visible, series])
 
   return null
 }

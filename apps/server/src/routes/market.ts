@@ -8,9 +8,30 @@ import { parseTF } from '../utils/timeframe'
 import { cascadeScan } from '../services/confluenceEngine'
 import type { Direction } from '@market/shared'
 import { analyzeSymbol } from '../services/liveAnalysisEngine'
+import { fetchCandles } from '../services/binanceService'
 
 const router = Router()
 const analysisCache = new Map<string, any>()
+const candlesCache = new Map<string, { data: any; ts: number }>()
+
+// GET /api/market/:symbol/:tf/candles?limit=200
+router.get('/:symbol/:timeframe/candles', async (req: Request, res: Response) => {
+  try {
+    const symbol = (req.params['symbol'] as string).toUpperCase()
+    const timeframe = req.params['timeframe'] as string
+    const limit = parseInt(String(req.query['limit'] ?? '200'))
+    const cacheKey = `${symbol}:${timeframe}:${limit}`
+    const cached = candlesCache.get(cacheKey)
+    if (cached && Date.now() - cached.ts < 30_000) {
+      return res.json(cached.data)
+    }
+    const candles = await fetchCandles(symbol, timeframe, limit)
+    candlesCache.set(cacheKey, { data: candles, ts: Date.now() })
+    res.json(candles)
+  } catch (err: any) {
+    res.status(500).json({ error: err.message })
+  }
+})
 
 // GET /api/market/:symbol/:timeframe/state — full current state for chart
 router.get('/:symbol/:timeframe/state', (req: Request, res: Response) => {

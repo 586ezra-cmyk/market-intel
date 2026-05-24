@@ -26,7 +26,7 @@ export default function DetailPanel({ alertId, onClose }: Props) {
   const score = alert.score ?? 0
 
   return (
-    <div className="absolute top-4 left-4 z-50 w-80 card shadow-2xl border-brand-600/30">
+    <div className="absolute top-4 right-4 z-50 w-80 card shadow-2xl border-brand-600/30">
       {/* Header */}
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">

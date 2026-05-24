@@ -89,6 +89,24 @@ export default function AnalysisOverlayLayer({ chart, series }: Props) {
   return null
 }
 
+// ─── roundRect polyfill ───────────────────────────────────────────────────────
+function roundRect(
+  ctx: CanvasRenderingContext2D,
+  x: number, y: number, w: number, h: number, r: number,
+) {
+  ctx.beginPath()
+  ctx.moveTo(x + r, y)
+  ctx.lineTo(x + w - r, y)
+  ctx.arcTo(x + w, y, x + w, y + r, r)
+  ctx.lineTo(x + w, y + h - r)
+  ctx.arcTo(x + w, y + h, x + w - r, y + h, r)
+  ctx.lineTo(x + r, y + h)
+  ctx.arcTo(x, y + h, x, y + h - r, r)
+  ctx.lineTo(x, y + r)
+  ctx.arcTo(x, y, x + r, y, r)
+  ctx.closePath()
+}
+
 // ─── Primitive factories ──────────────────────────────────────────────────────
 
 function makePriceBand(
@@ -216,16 +234,14 @@ function makePriceMarker(
         // Badge background
         ctx.globalAlpha = 0.92
         ctx.fillStyle = '#0f1117'
-        ctx.beginPath()
-        ctx.roundRect(bx, by, bw, bh, 4)
+        roundRect(ctx, bx, by, bw, bh, 4)
         ctx.fill()
 
         // Badge border
         ctx.strokeStyle = color
         ctx.lineWidth = 1.5
         ctx.globalAlpha = 0.9
-        ctx.beginPath()
-        ctx.roundRect(bx, by, bw, bh, 4)
+        roundRect(ctx, bx, by, bw, bh, 4)
         ctx.stroke()
 
         // Text
