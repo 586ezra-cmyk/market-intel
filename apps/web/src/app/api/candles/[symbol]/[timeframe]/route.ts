@@ -32,20 +32,20 @@ export async function GET(
   const interval = TF_MAP[timeframe] ?? '15m'
   const sym = symbol.toUpperCase()
 
-  // 1. Binance Futures (fapi) — most reliable, works for BTC/ETH/SOL perpetuals
-  const futuresUrl = `https://fapi.binance.com/fapi/v1/klines?symbol=${sym}&interval=${interval}&limit=${limit}`
-  let data = await tryFetch(futuresUrl)
+  // 1. Binance Spot — real market price (what you see on TradingView)
+  const spotUrl = `https://api.binance.com/api/v3/klines?symbol=${sym}&interval=${interval}&limit=${limit}`
+  let data = await tryFetch(spotUrl)
 
-  // 2. Binance Spot — fallback for non-perpetual symbols
-  if (!data) {
-    const spotUrl = `https://api.binance.com/api/v3/klines?symbol=${sym}&interval=${interval}&limit=${limit}`
-    data = await tryFetch(spotUrl)
-  }
-
-  // 3. Binance US — final fallback (US-based servers)
+  // 2. Binance US — fallback if .com is blocked from server
   if (!data) {
     const usUrl = `https://api.binance.us/api/v3/klines?symbol=${sym}&interval=${interval}&limit=${limit}`
     data = await tryFetch(usUrl)
+  }
+
+  // 3. Binance Futures — last resort (prices may differ slightly from spot)
+  if (!data) {
+    const futuresUrl = `https://fapi.binance.com/fapi/v1/klines?symbol=${sym}&interval=${interval}&limit=${limit}`
+    data = await tryFetch(futuresUrl)
   }
 
   if (!data || !Array.isArray(data) || data.length === 0) {
