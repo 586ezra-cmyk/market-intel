@@ -18,7 +18,7 @@ interface ChartState {
   candleSeries: ISeriesApi<'Candlestick'>
 }
 
-const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001'
+const SERVER_API = process.env.NEXT_PUBLIC_API_URL ?? ''
 
 export default function TradingChart() {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -97,15 +97,26 @@ export default function TradingChart() {
     if (!cs) return
     cs.candleSeries.setData([])
     setCandlesLoading(true)
-    fetch(`${API}/api/market/${encodeURIComponent(symbol)}/${timeframe}/candles?limit=200`)
-      .then(r => r.ok ? r.json() : Promise.reject(r.status))
-      .then((candles: Array<{ time: number; open: number; high: number; low: number; close: number; volume: number }>) => {
+
+    // Try internal Next.js API route first (fetches directly from Binance — always available)
+    const localUrl = `/api/candles/${encodeURIComponent(symbol)}/${timeframe}?limit=300`
+    // Fallback: Railway server endpoint
+    const serverUrl = SERVER_API
+      ? `${SERVER_API}/api/market/${encodeURIComponent(symbol)}/${timeframe}/candles?limit=300`
+      : null
+
+    const doFetch = (url: string) =>
+      fetch(url).then(r => r.ok ? r.json() : Promise.reject(r.status))
+
+    doFetch(localUrl)
+      .catch(() => serverUrl ? doFetch(serverUrl) : Promise.reject('no server'))
+      .then((candles: Array<{ time: number; open: number; high: number; low: number; close: number }>) => {
         if (!chartRef.current) return
         chartRef.current.candleSeries.setData(
           candles.map(c => ({ time: c.time as any, open: c.open, high: c.high, low: c.low, close: c.close }))
         )
       })
-      .catch(() => { /* non-crypto symbol — candles stay empty */ })
+      .catch(() => { /* symbol not found — chart stays empty */ })
       .finally(() => setCandlesLoading(false))
   }, [symbol, timeframe])
 
