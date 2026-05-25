@@ -1,0 +1,29 @@
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Copy root workspace files
+COPY package.json package-lock.json ./
+COPY packages/shared/package.json ./packages/shared/
+COPY apps/web/package.json ./apps/web/
+
+# Install all workspace deps
+RUN npm ci
+
+# Copy source
+COPY packages/shared/ ./packages/shared/
+COPY apps/web/ ./apps/web/
+
+# Build shared package first
+RUN npm run build -w packages/shared
+
+# Build Next.js app
+ENV NEXT_TELEMETRY_DISABLED=1
+RUN npm run build -w apps/web
+
+EXPOSE 3005
+
+ENV NODE_ENV=production
+ENV PORT=3005
+
+CMD ["npm", "run", "start", "--workspace=apps/web"]
