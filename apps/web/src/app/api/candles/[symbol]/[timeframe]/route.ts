@@ -52,15 +52,29 @@ export async function GET(
     return NextResponse.json({ error: `No data for ${sym}` }, { status: 404 })
   }
 
+  const candles = data.map((k: any) => ({
+    time:   Math.floor(Number(k[0]) / 1000),
+    open:   parseFloat(k[1]),
+    high:   parseFloat(k[2]),
+    low:    parseFloat(k[3]),
+    close:  parseFloat(k[4]),
+    volume: parseFloat(k[5]),
+  }))
+
+  // Filter out bad data points (flash spikes where high/low ratio > 2.5x)
+  const cleaned = candles.filter((c, i) => {
+    if (c.low <= 0) return false
+    if (c.high / c.low > 2.5) return false // obvious bad candle
+    // Also check vs neighbors: if a candle is 4x the price of prev/next, skip it
+    const prev = candles[i - 1]
+    const next = candles[i + 1]
+    if (prev && c.high > prev.high * 4) return false
+    if (next && c.high > next.high * 4) return false
+    return true
+  })
+
   return NextResponse.json(
-    data.map((k: any) => ({
-      time:   Math.floor(Number(k[0]) / 1000), // unix seconds for LW Charts
-      open:   parseFloat(k[1]),
-      high:   parseFloat(k[2]),
-      low:    parseFloat(k[3]),
-      close:  parseFloat(k[4]),
-      volume: parseFloat(k[5]),
-    })),
+    cleaned,
     {
       headers: {
         'Cache-Control': 's-maxage=30, stale-while-revalidate=60',
