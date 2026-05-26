@@ -17,6 +17,7 @@ import TabNotes from '@/components/tabs/TabNotes'
 import TabReports from '@/components/tabs/TabReports'
 import TabQuickConfluence from '@/components/tabs/TabQuickConfluence'
 import TabLearning from '@/components/tabs/TabLearning'
+import TabConnections from '@/components/tabs/TabConnections'
 import { useWebSocket } from '@/hooks/useWebSocket'
 
 export type TabId =
@@ -24,8 +25,10 @@ export type TabId =
   | 'journal' | 'backtest' | 'watchlist' | 'matrix'
   | 'history-scan' | 'economic-calendar' | 'knowledge-base'
   | 'notes' | 'reports' | 'quick-confluence' | 'learning'
+  | 'connections'
 
 const TABS: Array<{ id: TabId; label: string; icon: string }> = [
+  { id: 'connections',        label: 'חיבורים',          icon: '🔌' },
   { id: 'dashboard',         label: 'דשבורד',          icon: '📊' },
   { id: 'alerts',            label: 'התראות',           icon: '🔔' },
   { id: 'stats',             label: 'סטטיסטיקה',        icon: '📈' },
@@ -80,6 +83,7 @@ export default function HomePage() {
         {activeTab === 'dashboard'         && <TabDashboard />}
         {activeTab !== 'dashboard' && (
           <main className="h-full overflow-auto">
+            {activeTab === 'connections'        && <TabConnections />}
             {activeTab === 'alerts'            && <TabAlerts />}
             {activeTab === 'stats'             && <TabStats />}
             {activeTab === 'alert-settings'    && <TabAlertSettings />}

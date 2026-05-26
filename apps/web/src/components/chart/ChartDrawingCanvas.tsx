@@ -267,20 +267,21 @@ export default function ChartDrawingCanvas({ chart, series }: Props) {
     removeDrawing,
   } = useMarketStore()
 
-  // ── Resize canvas to match container ───────────────────────────────────────
+  // ── Resize canvas to match container (excluding 44px toolbar) ─────────────
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
     const parent = canvas.parentElement
     if (!parent) return
 
-    const ro = new ResizeObserver(() => {
-      canvas.width  = parent.clientWidth
+    const TOOLBAR_W = 44
+    const sync = () => {
+      canvas.width  = Math.max(0, parent.clientWidth  - TOOLBAR_W)
       canvas.height = parent.clientHeight
-    })
+    }
+    const ro = new ResizeObserver(sync)
     ro.observe(parent)
-    canvas.width  = parent.clientWidth
-    canvas.height = parent.clientHeight
+    sync()
     return () => ro.disconnect()
   }, [])
 
@@ -499,15 +500,16 @@ export default function ChartDrawingCanvas({ chart, series }: Props) {
   return (
     <canvas
       ref={canvasRef}
-      className="absolute inset-0 w-full h-full"
+      className="absolute top-0 bottom-0 right-0"
       style={{
+        left: 44,                                   // start after drawing toolbar
         pointerEvents: isPassive ? 'none' : 'auto',
         cursor: activeTool === 'eraser'
           ? 'crosshair'
           : activeTool === 'cursor'
           ? 'default'
           : 'crosshair',
-        zIndex: 10,
+        zIndex: 15,                                 // above chart, below toolbar (z-20)
       }}
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}

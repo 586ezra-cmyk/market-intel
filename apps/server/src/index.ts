@@ -11,6 +11,7 @@ import economicRouter from './routes/economic'
 import backtestRouter from './routes/backtest'
 import journalRouter from './routes/journal'
 import settingsRouter, { telegramTestRouter } from './routes/settings'
+import connectionsRouter from './routes/connections'
 import watchlistRouter from './routes/watchlist'
 import statsRouter from './routes/stats'
 import notesRouter from './routes/notes'
@@ -32,6 +33,7 @@ app.use('/api/briefing', economicRouter)
 app.use('/api/backtest', backtestRouter)
 app.use('/api/journal', journalRouter)
 app.use('/api/settings', settingsRouter)
+app.use('/api/connections', connectionsRouter)
 app.use('/api/telegram', telegramTestRouter)
 app.use('/api/watchlist', watchlistRouter)
 app.use('/api/stats', statsRouter)

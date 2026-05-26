@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express'
 import { z } from 'zod'
 import { config } from '../config'
 import { getDb } from '../db/client'
+import { getWebhookSecret } from './connections'
 import { broadcastWS } from '../websocket'
 import { upsertRange } from '../services/rangeEngine'
 import { upsertStructure } from '../services/structureEngine'
@@ -113,10 +114,11 @@ const AnyEventSchema = z.discriminatedUnion('event', [
 // ─── Auth middleware ──────────────────────────────────────────────────────────
 
 function verifySecret(req: Request, res: Response): boolean {
-  const header = req.headers['x-tv-secret']
-  const bodySecret = (req.body as any)?.secret
+  const header     = req.headers['x-tv-secret'] as string | undefined
+  const bodySecret = (req.body as any)?.secret   as string | undefined
+  const expected   = getWebhookSecret()           // DB first, then ENV, then 'dev-secret'
 
-  if (header !== config.webhookSecret && bodySecret !== config.webhookSecret) {
+  if (header !== expected && bodySecret !== expected) {
     res.status(401).json({ error: 'Unauthorized' })
     return false
   }

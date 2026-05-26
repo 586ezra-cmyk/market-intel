@@ -16,6 +16,7 @@ RUN npm ci
 # Copy source files
 COPY packages/shared/ ./packages/shared/
 COPY apps/server/ ./apps/server/
+COPY pine/ ./pine/
 
 # Build
 RUN npm run build -w packages/shared
