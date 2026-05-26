@@ -157,9 +157,8 @@ export default function DrawingToolbar() {
 
   return (
     <div
-      className="absolute right-0 top-0 h-full z-20 flex flex-col items-center
-                 bg-[#0f1117] border-l border-[#1e2533] py-1 gap-0.5 overflow-y-auto
-                 scrollbar-thin scrollbar-thumb-gray-700"
+      className="absolute left-0 top-0 h-full z-20 flex flex-col items-center
+                 bg-[#161b27] border-r border-[#1e2533] py-1 gap-0.5 overflow-y-auto"
       style={{ width: 44 }}
     >
       {/* Drawing tools */}

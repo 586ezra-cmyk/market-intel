@@ -128,8 +128,15 @@ export default function TradingChart() {
 
   return (
     <div className="relative w-full h-full">
-      {/* Chart canvas */}
-      <div ref={containerRef} className="chart-ltr w-full h-full" />
+      {/* Drawing toolbar — left side, 44px wide */}
+      <DrawingToolbar />
+
+      {/* Chart canvas — offset 44px from left so toolbar doesn't overlap */}
+      <div
+        ref={containerRef}
+        className="chart-ltr absolute top-0 bottom-0 right-0"
+        style={{ left: 44 }}
+      />
 
       {/* Loading indicator */}
       {candlesLoading && (
@@ -162,9 +169,6 @@ export default function TradingChart() {
           <ChartDrawingCanvas  chart={cs.chart} series={cs.candleSeries} />
         </>
       )}
-
-      {/* Drawing toolbar */}
-      <DrawingToolbar />
 
       {selectedAlertId && (
         <DetailPanel alertId={selectedAlertId} onClose={() => setSelectedAlert(null)} />
