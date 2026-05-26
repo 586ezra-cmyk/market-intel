@@ -21,7 +21,17 @@ import { startOutcomeTracker } from './services/outcomeTracker'
 const app = express()
 
 // ─── Middleware ───────────────────────────────────────────────────────────────
-app.use(cors({ origin: process.env.CORS_ORIGIN ?? 'http://localhost:3000' }))
+app.use(cors({
+  origin: (origin, callback) => {
+    // Allow: no origin (curl/Postman), localhost, our Vercel app, any vercel.app preview
+    if (!origin || origin.includes('localhost') || origin.includes('vercel.app') || origin === process.env.CORS_ORIGIN) {
+      callback(null, true)
+    } else {
+      callback(null, false)
+    }
+  },
+  credentials: true,
+}))
 app.use(express.json({ limit: '1mb' }))
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
