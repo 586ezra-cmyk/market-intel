@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { Alert, FVG, Structure, Range, Liquidity, SMTSignal, WyckoffPhase } from '@market/shared'
 import type { DrawingLayer } from '@/hooks/useAnalysis'
+import type { DrawingTool, Drawing } from '@/types/drawing'
 
 // ─── Layer visibility ─────────────────────────────────────────────────────────
 export type LayerId =
@@ -69,6 +70,20 @@ interface MarketStore {
   analysisLayers: DrawingLayer[]
   setAnalysisLayers: (layers: DrawingLayer[]) => void
 
+  // Drawing state
+  activeTool: DrawingTool
+  drawingColor: string
+  drawingLineWidth: number
+  drawings: Drawing[]
+  drawingsVisible: boolean
+  setActiveTool: (t: DrawingTool) => void
+  setDrawingColor: (c: string) => void
+  setDrawingLineWidth: (w: number) => void
+  addDrawing: (d: Drawing) => void
+  removeDrawing: (id: string) => void
+  clearDrawings: () => void
+  toggleDrawingsVisible: () => void
+
   // UI state
   selectedAlertId: string | null
   setSelectedAlert: (id: string | null) => void
@@ -126,6 +141,20 @@ export const useMarketStore = create<MarketStore>()(
       analysisLayers: [],
       setAnalysisLayers: (layers) => set({ analysisLayers: layers }),
 
+      // Drawing state
+      activeTool: 'cursor',
+      drawingColor: '#ffffff',
+      drawingLineWidth: 1,
+      drawings: [],
+      drawingsVisible: true,
+      setActiveTool: (t) => set({ activeTool: t }),
+      setDrawingColor: (c) => set({ drawingColor: c }),
+      setDrawingLineWidth: (w) => set({ drawingLineWidth: w }),
+      addDrawing: (d) => set((s) => ({ drawings: [...s.drawings, d] })),
+      removeDrawing: (id) => set((s) => ({ drawings: s.drawings.filter(d => d.id !== id) })),
+      clearDrawings: () => set({ drawings: [] }),
+      toggleDrawingsVisible: () => set((s) => ({ drawingsVisible: !s.drawingsVisible })),
+
       selectedAlertId: null,
       setSelectedAlert: (id) => set({ selectedAlertId: id }),
       wsConnected: false,
@@ -133,7 +162,14 @@ export const useMarketStore = create<MarketStore>()(
     }),
     {
       name: 'market-store',
-      partialize: (s) => ({ symbol: s.symbol, timeframe: s.timeframe, layers: s.layers }),
+      partialize: (s) => ({
+        symbol: s.symbol,
+        timeframe: s.timeframe,
+        layers: s.layers,
+        drawings: s.drawings,
+        drawingColor: s.drawingColor,
+        drawingLineWidth: s.drawingLineWidth,
+      }),
     },
   ),
 )

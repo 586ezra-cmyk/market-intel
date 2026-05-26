@@ -11,6 +11,8 @@ import SMTLayer from './layers/SMTLayer'
 import KillZoneLayer from './layers/KillZoneLayer'
 import AnalysisOverlayLayer from './layers/AnalysisOverlayLayer'
 import DetailPanel from './DetailPanel'
+import DrawingToolbar from './DrawingToolbar'
+import ChartDrawingCanvas from './ChartDrawingCanvas'
 
 interface ChartState {
   chart: IChartApi
@@ -157,8 +159,12 @@ export default function TradingChart() {
           <SMTLayer            chart={cs.chart} series={cs.candleSeries} />
           <KillZoneLayer       chart={cs.chart} series={cs.candleSeries} />
           <AnalysisOverlayLayer chart={cs.chart} series={cs.candleSeries} />
+          <ChartDrawingCanvas  chart={cs.chart} series={cs.candleSeries} />
         </>
       )}
+
+      {/* Drawing toolbar */}
+      <DrawingToolbar />
 
       {selectedAlertId && (
         <DetailPanel alertId={selectedAlertId} onClose={() => setSelectedAlert(null)} />
