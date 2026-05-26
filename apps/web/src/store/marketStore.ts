@@ -6,33 +6,46 @@ import type { DrawingTool, Drawing } from '@/types/drawing'
 
 // ─── Layer visibility ─────────────────────────────────────────────────────────
 export type LayerId =
-  | 'structure' | 'liquidity' | 'fvg' | 'range' | 'killZone'
-  | 'wyckoff' | 'smt' | 'inducement' | 'repricing' | 'session'
+  | 'structure' | 'liquidity' | 'fvg' | 'ifvg' | 'range' | 'killZone'
+  | 'wyckoff' | 'smt' | 'ismt' | 'ob' | 'bollinger'
+  | 'inducement' | 'repricing' | 'session' | 'judas' | 'po3'
 
 export const LAYER_LABELS: Record<LayerId, string> = {
   structure:  'מבנה שוק (BOS/CHoCH)',
   liquidity:  'נזילות',
   fvg:        'FVG',
+  ifvg:       'iFVG — ריטסט הפוך',
   range:      'טווח עסקאות',
   killZone:   'Kill Zone',
   wyckoff:    'Wyckoff',
   smt:        'SMT',
-  inducement: 'פיתוי',
+  ismt:       'iSMT (2 נרות)',
+  ob:         'Order Block',
+  bollinger:  'Bollinger Bands',
+  inducement: 'פיתוי (Inducement)',
   repricing:  'תמחור מחדש',
   session:    'גבוה/נמוך סשן',
+  judas:      'Judas Swing',
+  po3:        'Power of 3 / Opening Range',
 }
 
 export const LAYER_COLORS: Record<LayerId, string> = {
   structure:  '#6366f1',
   liquidity:  '#f59e0b',
   fvg:        '#10b981',
+  ifvg:       '#14b8a6',
   range:      '#3b82f6',
   killZone:   '#8b5cf6',
   wyckoff:    '#f97316',
   smt:        '#ec4899',
+  ismt:       '#d946ef',
+  ob:         '#f43f5e',
+  bollinger:  '#a855f7',
   inducement: '#ef4444',
-  repricing:  '#14b8a6',
+  repricing:  '#06b6d4',
   session:    '#64748b',
+  judas:      '#0d9488',
+  po3:        '#0ea5e9',
 }
 
 // ─── Selected symbol + timeframe ──────────────────────────────────────────────
@@ -100,16 +113,22 @@ export const useMarketStore = create<MarketStore>()(
       setTimeframe: (tf) => set({ timeframe: tf }),
 
       layers: {
-        structure: true,
-        liquidity: true,
-        fvg: true,
-        range: true,
-        killZone: true,
-        wyckoff: false,
-        smt: true,
+        structure:  true,
+        liquidity:  true,
+        fvg:        true,
+        ifvg:       true,
+        range:      true,
+        killZone:   true,
+        wyckoff:    false,
+        smt:        true,
+        ismt:       true,
+        ob:         true,
+        bollinger:  false,
         inducement: true,
-        repricing: true,
-        session: true,
+        repricing:  true,
+        session:    true,
+        judas:      true,
+        po3:        false,
       },
       toggleLayer: (id) =>
         set((state) => ({

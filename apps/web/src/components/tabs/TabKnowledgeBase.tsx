@@ -386,6 +386,61 @@ TP2: פרוייקציה של גובה התבנית כלפי מעלה`,
     relatedTopics: ['w-pattern', 'liquidity-sweep', 'choch', 'wyckoff'],
   },
   {
+    id: 'ifvg', titleHe: 'פער ערך הוגן הפוך', titleEn: 'Inverse Fair Value Gap', abbr: 'iFVG',
+    category: 'ICT',
+    summary: 'FVG שמחיר עבר דרכו — הופך לאזור ריטסט בכיוון הנגדי.',
+    explanation: `iFVG (Inverse FVG) נוצר כאשר מחיר ממלא FVG קיים ואז חוזר לריטסט אותו מהכיוון ההפוך.
+Bullish iFVG: היה FVG בוליש (פער למעלה). מחיר ירד דרכו (מילוי). עכשיו מחיר עולה חזרה לאזור הFVG ומריח ריטסט ← כניסה לונג.
+Bearish iFVG: היה FVG בארישי (פער למטה). מחיר עלה דרכו (מילוי). עכשיו מחיר יורד חזרה לאזור ← כניסה שורט.
+המנטליות: ה-FVG הוא אזור "חוב מחיר" — גם אחרי מילוי, הוא נשאר רמת ייחוס חשובה.
+שימוש מתקדם: iFVG + Kill Zone + OB = כניסה מדויקת מאוד.`,
+    assets: 'כל הנכסים',
+    timeframes: '5m–4h',
+    requiredConfirmations: 'FVG קודם + ריטסט + נר אישור',
+    commonMistakes: 'לבלבל בין iFVG לFVG רגיל. iFVG חייב להיות על פני FVG שכבר התמלא.',
+    relatedTopics: ['fvg', 'order-block', 'killzone'],
+  },
+  {
+    id: 'bollinger', titleHe: 'רצועות בולינגר', titleEn: 'Bollinger Bands', abbr: 'BB',
+    category: 'מוסדיים',
+    summary: 'ממוצע נע + סטיית תקן — מזהה squeeze לפני פריצה ורמות קיצון.',
+    explanation: `Bollinger Bands = ממוצע נע (20) ± 2 סטיות תקן.
+שלושה קווים: Upper Band, Basis (SMA 20), Lower Band.
+
+BB Squeeze: כאשר הרצועות מתכווצות (פחות מ-75% מהרוחב הממוצע) = אנרגיה צוברת לפני פריצה גדולה.
+Squeeze + Kill Zone + BOS = סיגנל חזק מאוד.
+
+פריצה: סגירה מעל Upper Band = momentum בוליש חזק.
+סגירה מתחת Lower Band = momentum בארישי חזק.
+
+⚠️ שימוש נכון: Bollinger Bands לבד לא מספיק — חייב קונפירמציה ממבנה שוק.
+שימוש שגוי: "מחיר נגע ב-Upper Band → מכירה". זה שגוי — בטרנד חזק מחיר יכול "לרוץ על הרצועה".`,
+    assets: 'כל הנכסים',
+    timeframes: '1h–1D',
+    requiredConfirmations: 'Squeeze + BOS/CHoCH + Kill Zone',
+    commonMistakes: 'מכירה על נגיעה ב-Upper Band בלי בדיקת מבנה שוק.',
+    relatedTopics: ['range', 'killzone', 'fvg'],
+  },
+  {
+    id: 'judas-swing', titleHe: 'תנועת יודס', titleEn: 'Judas Swing',
+    category: 'ICT',
+    summary: 'תנועה מזויפת בפתיחת סשן לפני ההיפוך האמיתי — מלכודת לסוחרים קמעונאיים.',
+    explanation: `Judas Swing הוא תנועה מכוונת בכיוון "הלא נכון" בפתיחת סשן (London/NY).
+המטרה: לשאוב סטופים ולגרום לסוחרים קמעונאיים להיכנס בכיוון הלא נכון.
+
+Bearish Judas Swing: בפתיחת London, מחיר עולה מעל Opening Range High → סוחרים קונים → מחיר מתהפך ויורד בחזקה.
+Bullish Judas Swing: בפתיחת London, מחיר יורד מתחת Opening Range Low → סוחרים מוכרים → מחיר מתהפך ועולה.
+
+זיהוי: Opening Range (15 דקות ראשונות) + פריצה ← סגירה חזרה = Judas Swing.
+כניסה: לאחר הסגירה חזרה לתוך ה-OR → FVG/CHoCH בTF נמוך ← כניסה בכיוון ההפוך.
+⚠️ לא ניתן לדעת מראש בכיוון יהיה ה-Judas. מחכים לאישור.`,
+    assets: 'כל הנכסים',
+    timeframes: '5m–15m',
+    requiredConfirmations: 'Opening Range + Sweep + CHoCH + FVG',
+    commonMistakes: 'להיכנס בכיוון ה-Judas Swing במקום בכיוון ההפוך.',
+    relatedTopics: ['po3', 'fvg', 'killzone', 'order-block'],
+  },
+  {
     id: 'vwap', titleHe: 'ממוצע משוקלל בנפח', titleEn: 'Volume Weighted Average Price', abbr: 'VWAP',
     category: 'מוסדיים',
     summary: 'ממוצע מחיר יומי משוקלל לפי נפח — רמת ייחוס מוסדית מרכזית.',
