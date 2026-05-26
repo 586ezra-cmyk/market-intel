@@ -1,8 +1,9 @@
 // ============================================================
 // ICT Master Indicator — מערכת מסחר חכמה
-// Combines: Market Structure + FVG + Liquidity + SMT + iSMT +
+// Combines: Market Structure + FVG + iFVG + Liquidity + SMT + iSMT +
 //           Wyckoff + Kill Zones + Dealing Range + Session H/L +
-//           Order Block + Po3 + Opening Range
+//           Order Block + Judas Swing + Po3 + Opening Range +
+//           Bollinger Bands
 //
 // Pine Script v6
 // Usage: Add this ONE indicator to your chart.
@@ -18,7 +19,7 @@ secret      = input.string("dev-secret", "Secret",           group=grpWebhook)
 
 grpDisplay  = "🎨 תצוגה"
 showStruct  = input.bool(true,  "מבנה שוק (BOS/CHoCH)",     group=grpDisplay)
-showFVG     = input.bool(true,  "FVG",                        group=grpDisplay)
+showFVG     = input.bool(true,  "FVG + iFVG",                group=grpDisplay)
 showLiq     = input.bool(true,  "נזילות (Equal H/L)",         group=grpDisplay)
 showRange   = input.bool(true,  "Dealing Range",               group=grpDisplay)
 showKZ      = input.bool(true,  "Kill Zones",                  group=grpDisplay)
@@ -28,11 +29,16 @@ showISMT    = input.bool(true,  "iSMT (2-candle)",            group=grpDisplay)
 showOB      = input.bool(true,  "Order Block",                 group=grpDisplay)
 showOR      = input.bool(true,  "Opening Range + Po3",         group=grpDisplay)
 
+grpBB       = "📊 Bollinger Bands"
+showBB      = input.bool(true,  "Bollinger Bands",             group=grpBB)
+bbLength    = input.int(20,     "Length",                      group=grpBB, minval=1)
+bbMult      = input.float(2.0,  "Multiplier",                  group=grpBB, minval=0.1)
+
 grpSMT      = "⚡ SMT / iSMT"
 asset2      = input.symbol("BINANCE:ETHUSDT", "Correlated asset", group=grpSMT)
 
 grpConf     = "🎯 Confluence"
-minFactors  = input.int(2, "Minimum factors for alert", minval=1, maxval=5, group=grpConf)
+minFactors  = input.int(2, "Minimum factors for alert", minval=1, maxval=6, group=grpConf)
 requireKZ   = input.bool(true, "Require Kill Zone",           group=grpConf)
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
@@ -84,6 +90,13 @@ rangeH   = isLowTF ? asianH : swingH
 rangeL   = isLowTF ? asianL : swingL
 rangeMid = not na(rangeH) and not na(rangeL) ? (rangeH + rangeL) / 2 : na
 
+// Premium / Discount relative to Dealing Range
+inPremium  = not na(rangeMid) and close > rangeMid
+inDiscount = not na(rangeMid) and close < rangeMid
+rangePos   = not na(rangeH) and not na(rangeL) and (rangeH - rangeL) > 0 ?
+             math.round((close - rangeL) / (rangeH - rangeL) * 100) : 50
+dealingZone = inPremium ? "premium" : inDiscount ? "discount" : "midpoint"
+
 if showRange and barstate.islast and not na(rangeH)
     box.new(bar_index - 80, rangeH, bar_index + 20, rangeL,
             border_color=color.new(color.blue, 60),
@@ -126,6 +139,26 @@ if showFVG
 
 hasFVG   = bullFVG or bearFVG
 fvgDir   = bullFVG ? "bullish" : "bearish"
+
+// ─── iFVG (Inverse FVG — retest of a filled gap) ─────────────────────────────
+var float bullFVGtop = na   // top of last bullish FVG (= low of bar that created it)
+var float bullFVGbot = na   // bottom of last bullish FVG (= high[2])
+var float bearFVGtop = na   // top of last bearish FVG (= low[2])
+var float bearFVGbot = na   // bottom of last bearish FVG (= high)
+
+if bullFVG then bullFVGtop := low;    bullFVGbot := high[2]
+if bearFVG then bearFVGtop := low[2]; bearFVGbot := high
+
+// Bullish iFVG: price drops back into bullish FVG zone = discount retest
+bullIFVG = showFVG and not na(bullFVGbot) and low <= bullFVGtop and close >= bullFVGbot and close > open
+// Bearish iFVG: price rises back into bearish FVG zone = premium retest
+bearIFVG = showFVG and not na(bearFVGtop) and high >= bearFVGbot and close <= bearFVGtop and close < open
+
+hasIFVG  = bullIFVG or bearIFVG
+ifvgDir  = bullIFVG ? "bullish" : "bearish"
+
+if bullIFVG then label.new(bar_index, low  - atr*0.4, "iFVG ▲", style=label.style_label_up,   color=color.new(color.teal, 30), textcolor=color.white, size=size.tiny)
+if bearIFVG then label.new(bar_index, high + atr*0.4, "iFVG ▼", style=label.style_label_down, color=color.new(color.teal, 30), textcolor=color.white, size=size.tiny)
 
 // ─── LIQUIDITY ────────────────────────────────────────────────────────────────
 tol         = close * 0.0005
@@ -179,6 +212,8 @@ wRangeH  = ta.highest(high, 20)[1]
 wRangeL  = ta.lowest(low,  20)[1]
 spring   = showWyckoff and low < wRangeL and close > wRangeL and close > open and lowVol
 upthrust = showWyckoff and high > wRangeH and close < wRangeH and close < open and lowVol
+hasWyckoff = spring or upthrust
+wyckoffPhase = spring ? "accumulation" : "distribution"
 
 if spring   then label.new(bar_index, low  - atr, "🌱 Spring",  style=label.style_label_up,   color=color.new(color.green, 20), textcolor=color.white)
 if upthrust then label.new(bar_index, high + atr, "⬆ Upthrust", style=label.style_label_down, color=color.new(color.red,   20), textcolor=color.white)
@@ -188,9 +223,27 @@ bullDisp2 = math.abs(close - open) > 1.5 * atr and close > open and close > high
 bearDisp2 = math.abs(close - open) > 1.5 * atr and close < open and close < low[1]
 bullOB2   = showOB and bullDisp2 and close[3] < open[3]
 bearOB2   = showOB and bearDisp2 and close[3] > open[3]
+hasOB     = bullOB2 or bearOB2
+obDir     = bullOB2 ? "bullish" : "bearish"
 
 if bullOB2 then box.new(bar_index - 3, math.max(open[3], close[3]), bar_index + 60, math.min(open[3], close[3]), border_color=color.new(color.green, 50), bgcolor=color.new(color.green, 90))
 if bearOB2 then box.new(bar_index - 3, math.max(open[3], close[3]), bar_index + 60, math.min(open[3], close[3]), border_color=color.new(color.red,   50), bgcolor=color.new(color.red,   90))
+
+// ─── BOLLINGER BANDS ─────────────────────────────────────────────────────────
+bbBasis  = ta.sma(close, bbLength)
+bbStdDev = ta.stdev(close, bbLength)
+bbUpper  = bbBasis + bbMult * bbStdDev
+bbLower  = bbBasis - bbMult * bbStdDev
+bbWidth  = bbUpper - bbLower
+bbWidthMA = ta.sma(bbWidth, 20)
+
+aboveBBupper = close > bbUpper
+belowBBlower = close < bbLower
+bbSqueeze    = bbWidth < bbWidthMA * 0.75   // squeeze = volatility contraction
+
+plot(showBB ? bbUpper : na, "BB Upper", color.new(color.purple, 40), 1)
+plot(showBB ? bbBasis : na, "BB Basis", color.new(color.purple, 65), 1, plot.style_cross)
+plot(showBB ? bbLower : na, "BB Lower", color.new(color.purple, 40), 1)
 
 // ─── OPENING RANGE + Po3 ─────────────────────────────────────────────────────
 var float londonORH = na; var float londonORL = na; var bool londonCap = false
@@ -217,27 +270,33 @@ judasBull = showOR and not na(londonORL) and not isLOR and low < londonORL and c
 judasBear = showOR and not na(londonORH) and not isLOR and high > londonORH and close < londonORH and close < open
 nyJBull   = showOR and not na(nyORL) and not isNOR and low < nyORL and close > nyORL and close > open
 nyJBear   = showOR and not na(nyORH) and not isNOR and high > nyORH and close < nyORH and close < open
+hasJudas  = judasBull or judasBear or nyJBull or nyJBear
 
 if judasBull or nyJBull then label.new(bar_index, low - atr, "🎭 Judas ▲", style=label.style_label_up,   color=color.new(color.teal, 20), textcolor=color.white, size=size.small)
 if judasBear or nyJBear then label.new(bar_index, high+atr, "🎭 Judas ▼", style=label.style_label_down, color=color.new(color.teal, 20), textcolor=color.white, size=size.small)
 
 // ─── CONFLUENCE ENGINE ────────────────────────────────────────────────────────
-// Determine dominant direction from most recent signal
-directionBull = (bullBOS or bullCHoCH or bullISMT or bullSMT or sweepL or judasBull or nyJBull or spring)
-directionBear = (bearBOS or bearCHoCH or bearISMT or bearSMT or sweepH or judasBear or nyJBear or upthrust)
+directionBull = (bullBOS or bullCHoCH or bullISMT or bullSMT or sweepL or judasBull or nyJBull or spring or bullIFVG or bullOB2)
+directionBear = (bearBOS or bearCHoCH or bearISMT or bearSMT or sweepH or judasBear or nyJBear or upthrust or bearIFVG or bearOB2)
 
 confluenceDir = directionBull and not directionBear ? "bullish" :
                 directionBear and not directionBull ? "bearish" : "neutral"
 
-// Count confirmed factors
-factorCount = (hasBOS ? 1 : 0) + (hasLiqSweep ? 1 : 0) + (hasFVG ? 1 : 0) +
-              (hasSMT ? 1 : 0) + (hasISMT ? 1 : 0) + (spring or upthrust ? 1 : 0)
+// Count confirmed factors (max 1 per category)
+factorCount = (hasBOS       ? 1 : 0) +
+              (hasLiqSweep  ? 1 : 0) +
+              (hasFVG        ? 1 : 0) +
+              (hasSMT        ? 1 : 0) +
+              (hasISMT       ? 1 : 0) +
+              (hasWyckoff    ? 1 : 0) +
+              (hasOB         ? 1 : 0) +
+              (hasIFVG       ? 1 : 0)
 
 confluenceOK = factorCount >= minFactors and (not requireKZ or isKZ) and confluenceDir != "neutral"
 
 // ─── ALERTS ───────────────────────────────────────────────────────────────────
-// Individual events
-alertcondition(hasBOS,      "Structure (BOS/CHoCH)",
+
+alertcondition(hasBOS, "Structure (BOS/CHoCH)",
     '{"secret":"' + secret + '","event":"structure","symbol":"' + syminfo.ticker +
     '","timeframe":"' + timeframe.period + '","time":' + str.tostring(math.round(time)) +
     ',"type":"' + (bullBOS ? "BOS" : bullCHoCH ? "CHoCH" : bearBOS ? "BOS" : "CHoCH") +
@@ -248,6 +307,11 @@ alertcondition(hasFVG, "FVG Created",
     '","timeframe":"' + timeframe.period + '","time":' + str.tostring(math.round(time)) +
     ',"direction":"' + fvgDir + '","topPrice":' + str.tostring(bullFVG ? low : low[2]) +
     ',"bottomPrice":' + str.tostring(bullFVG ? high[2] : high) + '}')
+
+alertcondition(hasIFVG, "iFVG (Inverse FVG Retest)",
+    '{"secret":"' + secret + '","event":"ifvg","symbol":"' + syminfo.ticker +
+    '","timeframe":"' + timeframe.period + '","time":' + str.tostring(math.round(time)) +
+    ',"direction":"' + ifvgDir + '","price":' + str.tostring(close) + '}')
 
 alertcondition(hasLiqSweep, "Liquidity Sweep",
     '{"secret":"' + secret + '","event":"liquidity_sweep","symbol":"' + syminfo.ticker +
@@ -272,15 +336,42 @@ alertcondition(upthrust, "Wyckoff Upthrust",
     '","timeframe":"' + timeframe.period + '","time":' + str.tostring(math.round(time)) +
     ',"phase":"distribution","confidence":0.75}')
 
-// ★ MASTER confluence alert — this is the one that triggers the full analysis
-alertcondition(confluenceOK, "★ CONFLUENCE ALERT ★",
-    '{"secret":"' + secret + '","event":"confluence","symbol":"' + syminfo.ticker +
+alertcondition(hasOB, "Order Block",
+    '{"secret":"' + secret + '","event":"order_block","symbol":"' + syminfo.ticker +
     '","timeframe":"' + timeframe.period + '","time":' + str.tostring(math.round(time)) +
+    ',"direction":"' + obDir + '","price":' + str.tostring(close) + '}')
+
+alertcondition(aboveBBupper or belowBBlower, "Bollinger Band Break",
+    '{"secret":"' + secret + '","event":"bb_break","symbol":"' + syminfo.ticker +
+    '","timeframe":"' + timeframe.period + '","time":' + str.tostring(math.round(time)) +
+    ',"direction":"' + (aboveBBupper ? "bullish" : "bearish") +
+    '","bbUpper":' + str.tostring(math.round(bbUpper, 2)) +
+    '","bbLower":' + str.tostring(math.round(bbLower, 2)) +
+    '","price":' + str.tostring(close) + '}')
+
+// ★ MASTER confluence alert — full payload with ALL elements
+alertcondition(confluenceOK, "★ CONFLUENCE ALERT ★",
+    '{"secret":"' + secret +
+    '","event":"confluence","symbol":"' + syminfo.ticker +
+    '","timeframe":"' + timeframe.period +
+    '","time":' + str.tostring(math.round(time)) +
     ',"direction":"' + confluenceDir +
     '","currentPrice":' + str.tostring(close) +
+    ',"factorCount":' + str.tostring(factorCount) +
+    ',"inKillZone":' + str.tostring(isKZ) +
+    ',"killZone":"' + (isLondon ? "london" : isNY ? "ny" : "none") +
+    '","dealingZone":"' + dealingZone +
+    '","rangePosition":' + str.tostring(rangePos) +
     ',"hasBOSorCHoCH":' + str.tostring(hasBOS) +
     ',"hasLiquiditySweep":' + str.tostring(hasLiqSweep) +
     ',"hasFVG":' + str.tostring(hasFVG) +
+    ',"hasIFVG":' + str.tostring(hasIFVG) +
     ',"hasSMT":' + str.tostring(hasSMT) +
     ',"hasISMT":' + str.tostring(hasISMT) +
-    ',"hasWyckoff":' + str.tostring(spring or upthrust) + '}')
+    ',"hasWyckoff":' + str.tostring(hasWyckoff) +
+    ',"wyckoffPhase":"' + wyckoffPhase +
+    '","hasOB":' + str.tostring(hasOB) +
+    ',"hasJudas":' + str.tostring(hasJudas) +
+    ',"aboveBBupper":' + str.tostring(aboveBBupper) +
+    ',"belowBBlower":' + str.tostring(belowBBlower) +
+    ',"bbSqueeze":' + str.tostring(bbSqueeze) + '}')

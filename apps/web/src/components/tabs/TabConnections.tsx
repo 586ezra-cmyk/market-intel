@@ -93,6 +93,28 @@ function buildTemplates(secret: string, webhookUrl: string) {
         asset2Low: '{{plot_3}}',
       }, null, 2),
     },
+    ifvg: {
+      label: 'iFVG',
+      color: 'text-teal-400',
+      desc: 'Inverse FVG — ריטסט של פער שהתמלא',
+      json: JSON.stringify({
+        ...base,
+        event: 'ifvg',
+        direction: '{{plot_0}}',   // "bullish" or "bearish"
+        price: '{{close}}',
+      }, null, 2),
+    },
+    ob: {
+      label: 'Order Block',
+      color: 'text-pink-400',
+      desc: 'Order Block — נר אחרון לפני displacement',
+      json: JSON.stringify({
+        ...base,
+        event: 'order_block',
+        direction: '{{plot_0}}',   // "bullish" or "bearish"
+        price: '{{close}}',
+      }, null, 2),
+    },
     confluence: {
       label: 'Confluence (כולם)',
       color: 'text-orange-400',
@@ -100,15 +122,26 @@ function buildTemplates(secret: string, webhookUrl: string) {
       json: JSON.stringify({
         ...base,
         event: 'confluence',
-        direction: '{{plot_0}}',        // "bullish" or "bearish"
+        direction: '{{plot_0}}',
         currentPrice: '{{close}}',
-        hasBOSorCHoCH: '{{plot_1}}',    // true/false
-        hasLiquiditySweep: '{{plot_2}}',
-        hasFVG: '{{plot_3}}',
-        hasSMT: '{{plot_4}}',
-        hasISMT: '{{plot_5}}',
-        hasWyckoff: false,
-        higherTFConfirmations: [],
+        factorCount: '{{plot_1}}',
+        inKillZone: '{{plot_2}}',
+        killZone: '{{plot_3}}',
+        dealingZone: '{{plot_4}}',
+        rangePosition: '{{plot_5}}',
+        hasBOSorCHoCH: '{{plot_6}}',
+        hasLiquiditySweep: '{{plot_7}}',
+        hasFVG: '{{plot_8}}',
+        hasIFVG: '{{plot_9}}',
+        hasSMT: '{{plot_10}}',
+        hasISMT: '{{plot_11}}',
+        hasWyckoff: '{{plot_12}}',
+        wyckoffPhase: '{{plot_13}}',
+        hasOB: '{{plot_14}}',
+        hasJudas: '{{plot_15}}',
+        aboveBBupper: '{{plot_16}}',
+        belowBBlower: '{{plot_17}}',
+        bbSqueeze: '{{plot_18}}',
       }, null, 2),
     },
   }
