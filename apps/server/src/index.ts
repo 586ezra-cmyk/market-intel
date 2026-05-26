@@ -62,7 +62,7 @@ if (config.nodeEnv !== 'test') {
 server.listen(config.port, () => {
   console.log(`[Server] Running on port ${config.port} (${config.nodeEnv})`)
   console.log(`[Server] WebSocket ready`)
-  console.log(`[Server] Routes: /api/connections, /api/alerts, /api/market, /webhook`)
+  console.log(`[Server] Routes: /api/connections /api/alerts /api/market /webhook`)
 })
 
 export default app
