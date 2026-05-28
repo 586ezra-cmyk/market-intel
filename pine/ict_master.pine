@@ -277,8 +277,8 @@ if not na(pl3b)
     pPL2 := sPL2
     sPL2 := pl3b
 
-bearSMT  = showSMT and not na(sPH1) and not na(pPH1) and sPH1 > pPH1 and not na(sPH2) and sPH2 <= pPH2
-bullSMT  = showSMT and not na(sPL1) and not na(pPL1) and sPL1 < pPL1 and not na(sPL2) and sPL2 >= pPL2
+bearSMT  = showSMT and isKZ and not na(sPH1) and not na(pPH1) and sPH1 > pPH1 and (sPH1 - pPH1) > atr * 0.3 and not na(sPH2) and sPH2 <= pPH2
+bullSMT  = showSMT and isKZ and not na(sPL1) and not na(pPL1) and sPL1 < pPL1 and (pPL1 - sPL1) > atr * 0.3 and not na(sPL2) and sPL2 >= pPL2
 hasSMT   = bearSMT or bullSMT
 smtDir   = bearSMT ? "bearish" : "bullish"
 
@@ -289,8 +289,8 @@ if bullSMT
 
 // ─── iSMT (2-candle) ─────────────────────────────────────────────────────────
 validISMTtf = timeframe.in_seconds() <= 3600
-bearISMT = showISMT and validISMTtf and high  > high[1] and close  < high[1] and not (b_h > b_h[1] and b_c > b_h[1])
-bullISMT = showISMT and validISMTtf and low   < low[1]  and close  > low[1]  and not (b_l < b_l[1] and b_c < b_l[1])
+bearISMT = showISMT and validISMTtf and isKZ and high  > high[1] and close  < high[1] and not (b_h > b_h[1] and b_c > b_h[1])
+bullISMT = showISMT and validISMTtf and isKZ and low   < low[1]  and close  > low[1]  and not (b_l < b_l[1] and b_c < b_l[1])
 hasISMT  = bearISMT or bullISMT
 ismtDir  = bearISMT ? "bearish" : "bullish"
 
