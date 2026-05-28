@@ -479,8 +479,8 @@ alertcondition(aboveBBupper or belowBBlower, "Bollinger Band Break",
     '","timeframe":"' + timeframe.period + '","time":' + str.tostring(math.round(time)) +
     ',"direction":"' + (aboveBBupper ? "bullish" : "bearish") +
     '","bbUpper":' + str.tostring(math.round(bbUpper, 2)) +
-    '","bbLower":' + str.tostring(math.round(bbLower, 2)) +
-    '","price":' + str.tostring(close) + '}')
+    ',"bbLower":' + str.tostring(math.round(bbLower, 2)) +
+    ',"price":' + str.tostring(close) + '}')
 
 // ── Volume Climax Alert ──────────────────────────────────────────────────────
 alertcondition(sellingClimax or buyingClimax, "Volume Climax (SC/BC)",
@@ -499,7 +499,7 @@ alertcondition(noSupply or noDemand, "Volume Low (No Supply / No Demand)",
     ',"type":"' + (noSupply ? "no_supply" : "no_demand") +
     '","direction":"' + (noSupply ? "bearish" : "bullish") +
     '","volRank":' + str.tostring(math.round(volRank)) +
-    '","price":' + str.tostring(close) + '}')
+    ',"price":' + str.tostring(close) + '}')
 
 // ★ MASTER confluence alert — full payload with ALL elements
 alertcondition(confluenceOK, "★ CONFLUENCE ALERT ★",
