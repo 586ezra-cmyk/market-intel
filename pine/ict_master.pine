@@ -251,8 +251,14 @@ if showLiq
 // ─── SMT ─────────────────────────────────────────────────────────────────────
 [b_h, b_l, b_c] = request.security(asset2, timeframe.period, [high, low, close])
 
-var float sPH1 = na; var float sPH2 = na; var float sPL1 = na; var float sPL2 = na
-var float pPH1 = na; var float pPH2 = na; var float pPL1 = na; var float pPL2 = na
+var float sPH1 = na
+var float sPH2 = na
+var float sPL1 = na
+var float sPL2 = na
+var float pPH1 = na
+var float pPH2 = na
+var float pPL1 = na
+var float pPL2 = na
 
 ph3  = ta.pivothigh(high, 3, 3)
 pl3  = ta.pivotlow(low, 3, 3)
@@ -349,8 +355,12 @@ plot(showBB ? bbBasis : na, "BB Basis", color.new(color.purple, 65), 1, plot.sty
 plot(showBB ? bbLower : na, "BB Lower", color.new(color.purple, 40), 1)
 
 // ─── OPENING RANGE + Po3 ─────────────────────────────────────────────────────
-var float londonORH = na; var float londonORL = na; var bool londonCap = false
-var float nyORH     = na; var float nyORL     = na; var bool nyCap     = false
+var float londonORH = na
+var float londonORL = na
+var bool  londonCap = false
+var float nyORH     = na
+var float nyORL     = na
+var bool  nyCap     = false
 
 isLOR = h == 7  and minute(time, "UTC") < 15
 isNOR = h == 13 and minute(time, "UTC") < 15
