@@ -146,8 +146,7 @@ rangeMid = not na(rangeH) and not na(rangeL) ? (rangeH + rangeL) / 2 : na
 // Premium / Discount relative to Dealing Range
 inPremium  = not na(rangeMid) and close > rangeMid
 inDiscount = not na(rangeMid) and close < rangeMid
-rangePos   = not na(rangeH) and not na(rangeL) and (rangeH - rangeL) > 0 ?
-             math.round((close - rangeL) / (rangeH - rangeL) * 100) : 50
+rangePos   = not na(rangeH) and not na(rangeL) and (rangeH - rangeL) > 0 ? math.round((close - rangeL) / (rangeH - rangeL) * 100) : 50
 dealingZone = inPremium ? "premium" : inDiscount ? "discount" : "midpoint"
 
 if showRange and barstate.islast and not na(rangeH)
@@ -406,8 +405,7 @@ if judasBear or nyJBear
 directionBull = (bullBOS or bullCHoCH or bullISMT or bullSMT or sweepL or judasBull or nyJBull or spring or wyckoffSC or bullIFVG or bullOB2)
 directionBear = (bearBOS or bearCHoCH or bearISMT or bearSMT or sweepH or judasBear or nyJBear or upthrust or wyckoffBC or bearIFVG or bearOB2)
 
-confluenceDir = directionBull and not directionBear ? "bullish" :
-                directionBear and not directionBull ? "bearish" : "neutral"
+confluenceDir = directionBull and not directionBear ? "bullish" : directionBear and not directionBull ? "bearish" : "neutral"
 
 // Volume climax adds 1 factor to confluence (strong signal)
 hasVolClimax = sellingClimax or buyingClimax
