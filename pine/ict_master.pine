@@ -85,37 +85,31 @@ bgcolor(noSupply      ? color.new(color.orange, 90) : na, title="No Supply")
 bgcolor(noDemand      ? color.new(color.lime,   90) : na, title="No Demand")
 
 // Labels for climax
-if sellingClimax
-    label.new(bar_index, low - atr * 0.8, "💥 SC",
+if sellingClimax and isKZ
+    label.new(bar_index, na, "💥 SC",
+              yloc=yloc.belowbar,
               style=label.style_label_up, color=color.new(color.red, 20),
               textcolor=color.white, size=size.small,
               tooltip="Selling Climax — ווליום קיצוני שורטי | דרגה: " + str.tostring(math.round(volRank)) + "%")
-if buyingClimax
-    label.new(bar_index, high + atr * 0.8, "💥 BC",
+if buyingClimax and isKZ
+    label.new(bar_index, na, "💥 BC",
+              yloc=yloc.abovebar,
               style=label.style_label_down, color=color.new(color.green, 20),
               textcolor=color.white, size=size.small,
               tooltip="Buying Climax — ווליום קיצוני לונגי | דרגה: " + str.tostring(math.round(volRank)) + "%")
-if noSupply
-    label.new(bar_index, high + atr * 0.5, "NS",
-              style=label.style_label_down, color=color.new(color.orange, 30),
-              textcolor=color.white, size=size.tiny,
-              tooltip="No Supply — ווליום נמוך בעליה | " + str.tostring(math.round(volRank)) + "%")
-if noDemand
-    label.new(bar_index, low - atr * 0.5, "ND",
-              style=label.style_label_up, color=color.new(color.lime, 30),
-              textcolor=color.black, size=size.tiny,
-              tooltip="No Demand — ווליום נמוך בירידה | " + str.tostring(math.round(volRank)) + "%")
 
 // ─── KILL ZONES ───────────────────────────────────────────────────────────────
 bgcolor(showKZ and isLondon ? color.new(color.blue,  92) : na, title="London KZ")
 bgcolor(showKZ and isNY     ? color.new(color.green, 92) : na, title="NY KZ")
 
 if showKZ and dispIntraday and isLondon and not isLondon[1]
-    label.new(bar_index, high + atr, "🇬🇧 London KZ",
+    label.new(bar_index, na, "🇬🇧 London KZ",
+              yloc=yloc.abovebar,
               style=label.style_label_down, color=color.new(color.blue, 40),
               textcolor=color.white, size=size.tiny)
 if showKZ and dispIntraday and isNY and not isNY[1]
-    label.new(bar_index, high + atr, "🗽 NY KZ",
+    label.new(bar_index, na, "🗽 NY KZ",
+              yloc=yloc.abovebar,
               style=label.style_label_down, color=color.new(color.green, 40),
               textcolor=color.white, size=size.tiny)
 
@@ -187,13 +181,13 @@ structDir = (bullBOS or bullCHoCH) ? "bullish" : "bearish"
 
 if showStruct
     if bullBOS
-        label.new(bar_index, low  - atr*0.5, "BOS ▲",   style=label.style_label_up,   color=color.new(color.green,  20), textcolor=color.white, size=size.tiny)
+        label.new(bar_index, na, "BOS ▲",   yloc=yloc.belowbar, style=label.style_label_up,   color=color.new(color.green,  20), textcolor=color.white, size=size.tiny)
     if bullCHoCH
-        label.new(bar_index, low  - atr*0.5, "CHoCH ▲", style=label.style_label_up,   color=color.new(color.lime,   10), textcolor=color.black, size=size.tiny)
+        label.new(bar_index, na, "CHoCH ▲", yloc=yloc.belowbar, style=label.style_label_up,   color=color.new(color.lime,   10), textcolor=color.black, size=size.tiny)
     if bearBOS
-        label.new(bar_index, high + atr*0.5, "BOS ▼",   style=label.style_label_down, color=color.new(color.red,    20), textcolor=color.white, size=size.tiny)
+        label.new(bar_index, na, "BOS ▼",   yloc=yloc.abovebar, style=label.style_label_down, color=color.new(color.red,    20), textcolor=color.white, size=size.tiny)
     if bearCHoCH
-        label.new(bar_index, high + atr*0.5, "CHoCH ▼", style=label.style_label_down, color=color.new(color.orange, 10), textcolor=color.black, size=size.tiny)
+        label.new(bar_index, na, "CHoCH ▼", yloc=yloc.abovebar, style=label.style_label_down, color=color.new(color.orange, 10), textcolor=color.black, size=size.tiny)
 
 // ─── FVG ─────────────────────────────────────────────────────────────────────
 bullFVG = low > high[2] and math.abs(close[1] - open[1]) > 1.5 * atr[1]
@@ -230,9 +224,9 @@ hasIFVG  = bullIFVG or bearIFVG
 ifvgDir  = bullIFVG ? "bullish" : "bearish"
 
 if bullIFVG
-    label.new(bar_index, low  - atr*0.4, "iFVG ▲", style=label.style_label_up,   color=color.new(color.teal, 30), textcolor=color.white, size=size.tiny)
+    label.new(bar_index, na, "iFVG ▲", yloc=yloc.belowbar, style=label.style_label_up,   color=color.new(color.teal, 30), textcolor=color.white, size=size.tiny)
 if bearIFVG
-    label.new(bar_index, high + atr*0.4, "iFVG ▼", style=label.style_label_down, color=color.new(color.teal, 30), textcolor=color.white, size=size.tiny)
+    label.new(bar_index, na, "iFVG ▼", yloc=yloc.abovebar, style=label.style_label_down, color=color.new(color.teal, 30), textcolor=color.white, size=size.tiny)
 
 // ─── LIQUIDITY ────────────────────────────────────────────────────────────────
 tol         = close * 0.0005
@@ -249,9 +243,9 @@ if showLiq
     if eqLow
         line.new(bar_index - 1, low,  bar_index + 20, low,  color=color.new(color.yellow, 40), style=line.style_dotted)
     if sweepH
-        label.new(bar_index, high + atr*0.3, "⚡ Sweep H", style=label.style_label_down, color=color.new(color.red,   30), textcolor=color.white, size=size.tiny)
+        label.new(bar_index, na, "⚡ Sweep H", yloc=yloc.abovebar, style=label.style_label_down, color=color.new(color.red,   30), textcolor=color.white, size=size.tiny)
     if sweepL
-        label.new(bar_index, low  - atr*0.3, "⚡ Sweep L", style=label.style_label_up,   color=color.new(color.green, 30), textcolor=color.white, size=size.tiny)
+        label.new(bar_index, na, "⚡ Sweep L", yloc=yloc.belowbar, style=label.style_label_up,   color=color.new(color.green, 30), textcolor=color.white, size=size.tiny)
 
 // ─── SMT ─────────────────────────────────────────────────────────────────────
 [b_h, b_l, b_c] = request.security(asset2, timeframe.period, [high, low, close])
@@ -289,9 +283,9 @@ hasSMT   = bearSMT or bullSMT
 smtDir   = bearSMT ? "bearish" : "bullish"
 
 if bearSMT and dispMidTF
-    label.new(bar_index, high + atr, "⚡ SMT ▼", style=label.style_label_down, color=color.new(color.fuchsia, 20), textcolor=color.white, size=size.small)
+    label.new(bar_index, na, "⚡ SMT ▼", yloc=yloc.abovebar, style=label.style_label_down, color=color.new(color.fuchsia, 20), textcolor=color.white, size=size.small)
 if bullSMT and dispMidTF
-    label.new(bar_index, low  - atr, "⚡ SMT ▲", style=label.style_label_up,   color=color.new(color.fuchsia, 20), textcolor=color.white, size=size.small)
+    label.new(bar_index, na, "⚡ SMT ▲", yloc=yloc.belowbar, style=label.style_label_up,   color=color.new(color.fuchsia, 20), textcolor=color.white, size=size.small)
 
 // ─── iSMT (2-candle) ─────────────────────────────────────────────────────────
 validISMTtf = timeframe.in_seconds() <= 3600
@@ -301,9 +295,9 @@ hasISMT  = bearISMT or bullISMT
 ismtDir  = bearISMT ? "bearish" : "bullish"
 
 if bearISMT
-    label.new(bar_index, high + atr*0.8, "⚡ iSMT ▼", style=label.style_label_down, color=color.new(color.fuchsia, 10), textcolor=color.white, size=size.small)
+    label.new(bar_index, na, "⚡ iSMT ▼", yloc=yloc.abovebar, style=label.style_label_down, color=color.new(color.fuchsia, 10), textcolor=color.white, size=size.small)
 if bullISMT
-    label.new(bar_index, low  - atr*0.8, "⚡ iSMT ▲", style=label.style_label_up,   color=color.new(color.fuchsia, 10), textcolor=color.white, size=size.small)
+    label.new(bar_index, na, "⚡ iSMT ▲", yloc=yloc.belowbar, style=label.style_label_up,   color=color.new(color.fuchsia, 10), textcolor=color.white, size=size.small)
 
 // ─── WYCKOFF ─────────────────────────────────────────────────────────────────
 wRangeH  = ta.highest(high, 20)[1]
@@ -322,13 +316,13 @@ hasWyckoff   = spring or upthrust or wyckoffSC or wyckoffBC
 wyckoffPhase = spring or wyckoffSC ? "accumulation" : "distribution"
 
 if spring and dispMidTF
-    label.new(bar_index, low  - atr * 1.2, "🌱 Spring",    style=label.style_label_up,   color=color.new(color.green, 20), textcolor=color.white)
+    label.new(bar_index, na, "🌱 Spring",    yloc=yloc.belowbar, style=label.style_label_up,   color=color.new(color.green, 20), textcolor=color.white)
 if upthrust and dispMidTF
-    label.new(bar_index, high + atr * 1.2, "⬆ Upthrust",   style=label.style_label_down, color=color.new(color.red,   20), textcolor=color.white)
+    label.new(bar_index, na, "⬆ Upthrust",   yloc=yloc.abovebar, style=label.style_label_down, color=color.new(color.red,   20), textcolor=color.white)
 if wyckoffSC and dispMidTF
-    label.new(bar_index, low  - atr * 1.5, "📉 Wyckoff SC", style=label.style_label_up,   color=color.new(color.red,   10), textcolor=color.white, size=size.normal)
+    label.new(bar_index, na, "📉 Wyckoff SC", yloc=yloc.belowbar, style=label.style_label_up,   color=color.new(color.red,   10), textcolor=color.white, size=size.normal)
 if wyckoffBC and dispMidTF
-    label.new(bar_index, high + atr * 1.5, "📈 Wyckoff BC", style=label.style_label_down, color=color.new(color.green, 10), textcolor=color.white, size=size.normal)
+    label.new(bar_index, na, "📈 Wyckoff BC", yloc=yloc.abovebar, style=label.style_label_down, color=color.new(color.green, 10), textcolor=color.white, size=size.normal)
 
 // ─── ORDER BLOCK ─────────────────────────────────────────────────────────────
 bullDisp2 = math.abs(close - open) > 1.5 * atr and close > open and close > high[1]
@@ -402,9 +396,9 @@ nyJBear   = showOR and not na(nyORH) and not isNOR and high > nyORH and close < 
 hasJudas  = judasBull or judasBear or nyJBull or nyJBear
 
 if (judasBull or nyJBull) and dispIntraday
-    label.new(bar_index, low - atr, "🎭 Judas ▲", style=label.style_label_up,   color=color.new(color.teal, 20), textcolor=color.white, size=size.small)
+    label.new(bar_index, na, "🎭 Judas ▲", yloc=yloc.belowbar, style=label.style_label_up,   color=color.new(color.teal, 20), textcolor=color.white, size=size.small)
 if (judasBear or nyJBear) and dispIntraday
-    label.new(bar_index, high+atr,  "🎭 Judas ▼", style=label.style_label_down, color=color.new(color.teal, 20), textcolor=color.white, size=size.small)
+    label.new(bar_index, na, "🎭 Judas ▼", yloc=yloc.abovebar, style=label.style_label_down, color=color.new(color.teal, 20), textcolor=color.white, size=size.small)
 
 // ─── CONFLUENCE ENGINE ────────────────────────────────────────────────────────
 directionBull = (bullBOS or bullCHoCH or bullISMT or bullSMT or sweepL or judasBull or nyJBull or spring or wyckoffSC or bullIFVG or bullOB2)
