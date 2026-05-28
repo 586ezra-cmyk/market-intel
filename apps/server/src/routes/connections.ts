@@ -4,7 +4,7 @@ import { getDb } from '../db/client'
 
 
 // ─── Pine Script (embedded — always in sync with server deploy) ───────────────
-// Version: v2 — Volume Climax (Percentile) + BB + iFVG + semicolon-free
+// Version: v3 — TF-adaptive display (dispIntraday / dispMidTF)
 const PINE_SCRIPT = `// ============================================================
 // ICT Master Indicator — מערכת מסחר חכמה
 // Combines: Market Structure + FVG + iFVG + Liquidity + SMT + iSMT +
@@ -65,6 +65,12 @@ isNY     = h >= 13 and h < 16
 isAsian  = h >= 20 or  h < 4
 isKZ     = isLondon or isNY
 
+// TF-adaptive display — show only signals relevant to current timeframe
+// Confluence logic variables (hasBOS, hasISMT, etc.) are UNCHANGED — still feed full synergy engine
+tfSecs       = timeframe.in_seconds()
+dispIntraday = tfSecs <= 14400   // ≤4h: KZ entry labels, OR lines, Judas labels
+dispMidTF    = tfSecs >= 3600    // ≥1h: SMT labels, OB boxes, Wyckoff labels
+
 // ─── VOLUME — Percentile-Based ────────────────────────────────────────────────
 volRank      = ta.percentrank(volume, volLookback)   // 0–100 percentile over lookback
 volIsClimax  = volRank >= volClimaxPct               // top 5% by default
@@ -111,11 +117,11 @@ if noDemand
 bgcolor(showKZ and isLondon ? color.new(color.blue,  92) : na, title="London KZ")
 bgcolor(showKZ and isNY     ? color.new(color.green, 92) : na, title="NY KZ")
 
-if showKZ and isLondon and not isLondon[1]
+if showKZ and dispIntraday and isLondon and not isLondon[1]
     label.new(bar_index, high + atr, "🇬🇧 London KZ",
               style=label.style_label_down, color=color.new(color.blue, 40),
               textcolor=color.white, size=size.tiny)
-if showKZ and isNY and not isNY[1]
+if showKZ and dispIntraday and isNY and not isNY[1]
     label.new(bar_index, high + atr, "🗽 NY KZ",
               style=label.style_label_down, color=color.new(color.green, 40),
               textcolor=color.white, size=size.tiny)
@@ -289,9 +295,9 @@ bullSMT  = showSMT and isKZ and not na(sPL1) and not na(pPL1) and sPL1 < pPL1 an
 hasSMT   = bearSMT or bullSMT
 smtDir   = bearSMT ? "bearish" : "bullish"
 
-if bearSMT
+if bearSMT and dispMidTF
     label.new(bar_index, high + atr, "⚡ SMT ▼", style=label.style_label_down, color=color.new(color.fuchsia, 20), textcolor=color.white, size=size.small)
-if bullSMT
+if bullSMT and dispMidTF
     label.new(bar_index, low  - atr, "⚡ SMT ▲", style=label.style_label_up,   color=color.new(color.fuchsia, 20), textcolor=color.white, size=size.small)
 
 // ─── iSMT (2-candle) ─────────────────────────────────────────────────────────
@@ -322,13 +328,13 @@ wyckoffBC = showWyckoff and buyingClimax  and high >= wRangeH
 hasWyckoff   = spring or upthrust or wyckoffSC or wyckoffBC
 wyckoffPhase = spring or wyckoffSC ? "accumulation" : "distribution"
 
-if spring
+if spring and dispMidTF
     label.new(bar_index, low  - atr * 1.2, "🌱 Spring",    style=label.style_label_up,   color=color.new(color.green, 20), textcolor=color.white)
-if upthrust
+if upthrust and dispMidTF
     label.new(bar_index, high + atr * 1.2, "⬆ Upthrust",   style=label.style_label_down, color=color.new(color.red,   20), textcolor=color.white)
-if wyckoffSC
+if wyckoffSC and dispMidTF
     label.new(bar_index, low  - atr * 1.5, "📉 Wyckoff SC", style=label.style_label_up,   color=color.new(color.red,   10), textcolor=color.white, size=size.normal)
-if wyckoffBC
+if wyckoffBC and dispMidTF
     label.new(bar_index, high + atr * 1.5, "📈 Wyckoff BC", style=label.style_label_down, color=color.new(color.green, 10), textcolor=color.white, size=size.normal)
 
 // ─── ORDER BLOCK ─────────────────────────────────────────────────────────────
@@ -339,9 +345,9 @@ bearOB2   = showOB and bearDisp2 and close[3] > open[3]
 hasOB     = bullOB2 or bearOB2
 obDir     = bullOB2 ? "bullish" : "bearish"
 
-if bullOB2
+if bullOB2 and dispMidTF
     box.new(bar_index - 3, math.max(open[3], close[3]), bar_index + 60, math.min(open[3], close[3]), border_color=color.new(color.green, 50), bgcolor=color.new(color.green, 90))
-if bearOB2
+if bearOB2 and dispMidTF
     box.new(bar_index - 3, math.max(open[3], close[3]), bar_index + 60, math.min(open[3], close[3]), border_color=color.new(color.red,   50), bgcolor=color.new(color.red,   90))
 
 // ─── BOLLINGER BANDS ─────────────────────────────────────────────────────────
@@ -391,10 +397,10 @@ else if isNOR
 else if not isNOR
     nyCap := false
 
-plot(showOR and not isLOR and not na(londonORH) ? londonORH : na, "London OR H", color.new(color.blue, 30),  1, plot.style_linebr)
-plot(showOR and not isLOR and not na(londonORL) ? londonORL : na, "London OR L", color.new(color.blue, 30),  1, plot.style_linebr)
-plot(showOR and not isNOR  and not na(nyORH)    ? nyORH     : na, "NY OR H",     color.new(color.green, 30), 1, plot.style_linebr)
-plot(showOR and not isNOR  and not na(nyORL)    ? nyORL     : na, "NY OR L",     color.new(color.green, 30), 1, plot.style_linebr)
+plot(showOR and dispIntraday and not isLOR and not na(londonORH) ? londonORH : na, "London OR H", color.new(color.blue, 30),  1, plot.style_linebr)
+plot(showOR and dispIntraday and not isLOR and not na(londonORL) ? londonORL : na, "London OR L", color.new(color.blue, 30),  1, plot.style_linebr)
+plot(showOR and dispIntraday and not isNOR  and not na(nyORH)    ? nyORH     : na, "NY OR H",     color.new(color.green, 30), 1, plot.style_linebr)
+plot(showOR and dispIntraday and not isNOR  and not na(nyORL)    ? nyORL     : na, "NY OR L",     color.new(color.green, 30), 1, plot.style_linebr)
 
 judasBull = showOR and not na(londonORL) and not isLOR and low < londonORL and close > londonORL and close > open
 judasBear = showOR and not na(londonORH) and not isLOR and high > londonORH and close < londonORH and close < open
@@ -402,9 +408,9 @@ nyJBull   = showOR and not na(nyORL) and not isNOR and low < nyORL and close > n
 nyJBear   = showOR and not na(nyORH) and not isNOR and high > nyORH and close < nyORH and close < open
 hasJudas  = judasBull or judasBear or nyJBull or nyJBear
 
-if judasBull or nyJBull
+if (judasBull or nyJBull) and dispIntraday
     label.new(bar_index, low - atr, "🎭 Judas ▲", style=label.style_label_up,   color=color.new(color.teal, 20), textcolor=color.white, size=size.small)
-if judasBear or nyJBear
+if (judasBear or nyJBear) and dispIntraday
     label.new(bar_index, high+atr,  "🎭 Judas ▼", style=label.style_label_down, color=color.new(color.teal, 20), textcolor=color.white, size=size.small)
 
 // ─── CONFLUENCE ENGINE ────────────────────────────────────────────────────────
