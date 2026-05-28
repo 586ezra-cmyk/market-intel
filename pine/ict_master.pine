@@ -384,11 +384,10 @@ else if isNOR
 else if not isNOR
     nyCap := false
 
-if showOR
-    plot(not isLOR and not na(londonORH) ? londonORH : na, "London OR H", color.new(color.blue, 30),  1, plot.style_linebr)
-    plot(not isLOR and not na(londonORL) ? londonORL : na, "London OR L", color.new(color.blue, 30),  1, plot.style_linebr)
-    plot(not isNOR  and not na(nyORH)    ? nyORH     : na, "NY OR H",     color.new(color.green, 30), 1, plot.style_linebr)
-    plot(not isNOR  and not na(nyORL)    ? nyORL     : na, "NY OR L",     color.new(color.green, 30), 1, plot.style_linebr)
+plot(showOR and not isLOR and not na(londonORH) ? londonORH : na, "London OR H", color.new(color.blue, 30),  1, plot.style_linebr)
+plot(showOR and not isLOR and not na(londonORL) ? londonORL : na, "London OR L", color.new(color.blue, 30),  1, plot.style_linebr)
+plot(showOR and not isNOR  and not na(nyORH)    ? nyORH     : na, "NY OR H",     color.new(color.green, 30), 1, plot.style_linebr)
+plot(showOR and not isNOR  and not na(nyORL)    ? nyORL     : na, "NY OR L",     color.new(color.green, 30), 1, plot.style_linebr)
 
 judasBull = showOR and not na(londonORL) and not isLOR and low < londonORL and close > londonORL and close > open
 judasBear = showOR and not na(londonORH) and not isLOR and high > londonORH and close < londonORH and close < open
