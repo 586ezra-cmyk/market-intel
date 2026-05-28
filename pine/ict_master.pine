@@ -423,107 +423,42 @@ factorCount = (hasBOS        ? 1 : 0) +
 confluenceOK = factorCount >= minFactors and (not requireKZ or isKZ) and confluenceDir != "neutral"
 
 // ─── ALERTS ───────────────────────────────────────────────────────────────────
+// Uses alert() (not alertcondition) — accepts dynamic series strings.
+// In TradingView: create ONE alert → condition = "any alert() call" → webhook URL.
 
-alertcondition(hasBOS, "Structure (BOS/CHoCH)",
-    '{"secret":"' + secret + '","event":"structure","symbol":"' + syminfo.ticker +
-    '","timeframe":"' + timeframe.period + '","time":' + str.tostring(math.round(time)) +
-    ',"type":"' + (bullBOS ? "BOS" : bullCHoCH ? "CHoCH" : bearBOS ? "BOS" : "CHoCH") +
-    '","direction":"' + structDir + '","price":' + str.tostring(close) + ',"confirmed":true}')
+if hasBOS
+    alert('{"secret":"' + secret + '","event":"structure","symbol":"' + syminfo.ticker + '","timeframe":"' + timeframe.period + '","time":' + str.tostring(time) + ',"type":"' + (bullBOS ? "BOS" : bullCHoCH ? "CHoCH" : bearBOS ? "BOS" : "CHoCH") + '","direction":"' + structDir + '","price":' + str.tostring(close) + ',"confirmed":true}', alert.freq_once_per_bar_close)
 
-alertcondition(hasFVG, "FVG Created",
-    '{"secret":"' + secret + '","event":"fvg_created","symbol":"' + syminfo.ticker +
-    '","timeframe":"' + timeframe.period + '","time":' + str.tostring(math.round(time)) +
-    ',"direction":"' + fvgDir + '","topPrice":' + str.tostring(bullFVG ? low : low[2]) +
-    ',"bottomPrice":' + str.tostring(bullFVG ? high[2] : high) + '}')
+if hasFVG
+    alert('{"secret":"' + secret + '","event":"fvg_created","symbol":"' + syminfo.ticker + '","timeframe":"' + timeframe.period + '","time":' + str.tostring(time) + ',"direction":"' + fvgDir + '","topPrice":' + str.tostring(bullFVG ? low : low[2]) + ',"bottomPrice":' + str.tostring(bullFVG ? high[2] : high) + '}', alert.freq_once_per_bar_close)
 
-alertcondition(hasIFVG, "iFVG (Inverse FVG Retest)",
-    '{"secret":"' + secret + '","event":"ifvg","symbol":"' + syminfo.ticker +
-    '","timeframe":"' + timeframe.period + '","time":' + str.tostring(math.round(time)) +
-    ',"direction":"' + ifvgDir + '","price":' + str.tostring(close) + '}')
+if hasIFVG
+    alert('{"secret":"' + secret + '","event":"ifvg","symbol":"' + syminfo.ticker + '","timeframe":"' + timeframe.period + '","time":' + str.tostring(time) + ',"direction":"' + ifvgDir + '","price":' + str.tostring(close) + '}', alert.freq_once_per_bar_close)
 
-alertcondition(hasLiqSweep, "Liquidity Sweep",
-    '{"secret":"' + secret + '","event":"liquidity_sweep","symbol":"' + syminfo.ticker +
-    '","timeframe":"' + timeframe.period + '","time":' + str.tostring(math.round(time)) +
-    ',"high":' + str.tostring(high) + ',"low":' + str.tostring(low) + ',"close":' + str.tostring(close) + '}')
+if hasLiqSweep
+    alert('{"secret":"' + secret + '","event":"liquidity_sweep","symbol":"' + syminfo.ticker + '","timeframe":"' + timeframe.period + '","time":' + str.tostring(time) + ',"high":' + str.tostring(high) + ',"low":' + str.tostring(low) + ',"close":' + str.tostring(close) + '}', alert.freq_once_per_bar_close)
 
-alertcondition(hasSMT or hasISMT, "SMT / iSMT",
-    '{"secret":"' + secret + '","event":"smt","symbol":"' + syminfo.ticker +
-    '","timeframe":"' + timeframe.period + '","time":' + str.tostring(math.round(time)) +
-    ',"asset1":"' + syminfo.ticker + '","asset1Price":' + str.tostring(close) +
-    ',"asset1High":' + str.tostring(high) + ',"asset1Low":' + str.tostring(low) +
-    ',"asset2":"ETHUSDT","asset2Price":' + str.tostring(b_c) +
-    ',"asset2High":' + str.tostring(b_h) + ',"asset2Low":' + str.tostring(b_l) + '}')
+if hasSMT or hasISMT
+    alert('{"secret":"' + secret + '","event":"smt","symbol":"' + syminfo.ticker + '","timeframe":"' + timeframe.period + '","time":' + str.tostring(time) + ',"asset1":"' + syminfo.ticker + '","asset1Price":' + str.tostring(close) + ',"asset2":"ETHUSDT","asset2Price":' + str.tostring(b_c) + '}', alert.freq_once_per_bar_close)
 
-alertcondition(spring or wyckoffSC, "Wyckoff Accumulation (Spring/SC)",
-    '{"secret":"' + secret + '","event":"wyckoff","symbol":"' + syminfo.ticker +
-    '","timeframe":"' + timeframe.period + '","time":' + str.tostring(math.round(time)) +
-    ',"phase":"accumulation","subtype":"' + (wyckoffSC ? "selling_climax" : "spring") +
-    '","volRank":' + str.tostring(math.round(volRank)) + ',"confidence":0.80}')
+if spring or wyckoffSC
+    alert('{"secret":"' + secret + '","event":"wyckoff","symbol":"' + syminfo.ticker + '","timeframe":"' + timeframe.period + '","time":' + str.tostring(time) + ',"phase":"accumulation","subtype":"' + (wyckoffSC ? "selling_climax" : "spring") + '","volRank":' + str.tostring(math.round(volRank)) + ',"confidence":0.80}', alert.freq_once_per_bar_close)
 
-alertcondition(upthrust or wyckoffBC, "Wyckoff Distribution (Upthrust/BC)",
-    '{"secret":"' + secret + '","event":"wyckoff","symbol":"' + syminfo.ticker +
-    '","timeframe":"' + timeframe.period + '","time":' + str.tostring(math.round(time)) +
-    ',"phase":"distribution","subtype":"' + (wyckoffBC ? "buying_climax" : "upthrust") +
-    '","volRank":' + str.tostring(math.round(volRank)) + ',"confidence":0.80}')
+if upthrust or wyckoffBC
+    alert('{"secret":"' + secret + '","event":"wyckoff","symbol":"' + syminfo.ticker + '","timeframe":"' + timeframe.period + '","time":' + str.tostring(time) + ',"phase":"distribution","subtype":"' + (wyckoffBC ? "buying_climax" : "upthrust") + '","volRank":' + str.tostring(math.round(volRank)) + ',"confidence":0.80}', alert.freq_once_per_bar_close)
 
-alertcondition(hasOB, "Order Block",
-    '{"secret":"' + secret + '","event":"order_block","symbol":"' + syminfo.ticker +
-    '","timeframe":"' + timeframe.period + '","time":' + str.tostring(math.round(time)) +
-    ',"direction":"' + obDir + '","price":' + str.tostring(close) + '}')
+if hasOB
+    alert('{"secret":"' + secret + '","event":"order_block","symbol":"' + syminfo.ticker + '","timeframe":"' + timeframe.period + '","time":' + str.tostring(time) + ',"direction":"' + obDir + '","price":' + str.tostring(close) + '}', alert.freq_once_per_bar_close)
 
-alertcondition(aboveBBupper or belowBBlower, "Bollinger Band Break",
-    '{"secret":"' + secret + '","event":"bb_break","symbol":"' + syminfo.ticker +
-    '","timeframe":"' + timeframe.period + '","time":' + str.tostring(math.round(time)) +
-    ',"direction":"' + (aboveBBupper ? "bullish" : "bearish") +
-    '","bbUpper":' + str.tostring(math.round(bbUpper, 2)) +
-    ',"bbLower":' + str.tostring(math.round(bbLower, 2)) +
-    ',"price":' + str.tostring(close) + '}')
+if aboveBBupper or belowBBlower
+    alert('{"secret":"' + secret + '","event":"bb_break","symbol":"' + syminfo.ticker + '","timeframe":"' + timeframe.period + '","time":' + str.tostring(time) + ',"direction":"' + (aboveBBupper ? "bullish" : "bearish") + '","bbUpper":' + str.tostring(math.round(bbUpper, 2)) + ',"bbLower":' + str.tostring(math.round(bbLower, 2)) + ',"price":' + str.tostring(close) + '}', alert.freq_once_per_bar_close)
 
-// ── Volume Climax Alert ──────────────────────────────────────────────────────
-alertcondition(sellingClimax or buyingClimax, "Volume Climax (SC/BC)",
-    '{"secret":"' + secret + '","event":"volume_climax","symbol":"' + syminfo.ticker +
-    '","timeframe":"' + timeframe.period + '","time":' + str.tostring(math.round(time)) +
-    ',"type":"' + (sellingClimax ? "selling_climax" : "buying_climax") +
-    '","direction":"' + (sellingClimax ? "bearish" : "bullish") +
-    '","volRank":' + str.tostring(math.round(volRank)) +
-    ',"price":' + str.tostring(close) +
-    ',"inKillZone":' + str.tostring(isKZ) +
-    ',"dealingZone":"' + dealingZone + '"}')
+if sellingClimax or buyingClimax
+    alert('{"secret":"' + secret + '","event":"volume_climax","symbol":"' + syminfo.ticker + '","timeframe":"' + timeframe.period + '","time":' + str.tostring(time) + ',"type":"' + (sellingClimax ? "selling_climax" : "buying_climax") + '","direction":"' + (sellingClimax ? "bearish" : "bullish") + '","volRank":' + str.tostring(math.round(volRank)) + ',"price":' + str.tostring(close) + ',"inKillZone":' + str.tostring(isKZ) + ',"dealingZone":"' + dealingZone + '"}', alert.freq_once_per_bar_close)
 
-alertcondition(noSupply or noDemand, "Volume Low (No Supply / No Demand)",
-    '{"secret":"' + secret + '","event":"volume_low","symbol":"' + syminfo.ticker +
-    '","timeframe":"' + timeframe.period + '","time":' + str.tostring(math.round(time)) +
-    ',"type":"' + (noSupply ? "no_supply" : "no_demand") +
-    '","direction":"' + (noSupply ? "bearish" : "bullish") +
-    '","volRank":' + str.tostring(math.round(volRank)) +
-    ',"price":' + str.tostring(close) + '}')
+if noSupply or noDemand
+    alert('{"secret":"' + secret + '","event":"volume_low","symbol":"' + syminfo.ticker + '","timeframe":"' + timeframe.period + '","time":' + str.tostring(time) + ',"type":"' + (noSupply ? "no_supply" : "no_demand") + '","direction":"' + (noSupply ? "bearish" : "bullish") + '","volRank":' + str.tostring(math.round(volRank)) + ',"price":' + str.tostring(close) + '}', alert.freq_once_per_bar_close)
 
-// ★ MASTER confluence alert — full payload with ALL elements
-alertcondition(confluenceOK, "★ CONFLUENCE ALERT ★",
-    '{"secret":"' + secret +
-    '","event":"confluence","symbol":"' + syminfo.ticker +
-    '","timeframe":"' + timeframe.period +
-    '","time":' + str.tostring(math.round(time)) +
-    ',"direction":"' + confluenceDir +
-    '","currentPrice":' + str.tostring(close) +
-    ',"factorCount":' + str.tostring(factorCount) +
-    ',"inKillZone":' + str.tostring(isKZ) +
-    ',"killZone":"' + (isLondon ? "london" : isNY ? "ny" : "none") +
-    '","dealingZone":"' + dealingZone +
-    '","rangePosition":' + str.tostring(rangePos) +
-    ',"hasBOSorCHoCH":' + str.tostring(hasBOS) +
-    ',"hasLiquiditySweep":' + str.tostring(hasLiqSweep) +
-    ',"hasFVG":' + str.tostring(hasFVG) +
-    ',"hasIFVG":' + str.tostring(hasIFVG) +
-    ',"hasSMT":' + str.tostring(hasSMT) +
-    ',"hasISMT":' + str.tostring(hasISMT) +
-    ',"hasWyckoff":' + str.tostring(hasWyckoff) +
-    ',"wyckoffPhase":"' + wyckoffPhase +
-    '","hasOB":' + str.tostring(hasOB) +
-    ',"hasJudas":' + str.tostring(hasJudas) +
-    ',"aboveBBupper":' + str.tostring(aboveBBupper) +
-    ',"belowBBlower":' + str.tostring(belowBBlower) +
-    ',"bbSqueeze":' + str.tostring(bbSqueeze) +
-    ',"volRank":' + str.tostring(math.round(volRank)) +
-    ',"hasVolClimax":' + str.tostring(hasVolClimax) +
-    ',"volType":"' + (sellingClimax ? "SC" : buyingClimax ? "BC" : noSupply ? "NS" : noDemand ? "ND" : "normal") + '"}')
+// ★ MASTER confluence alert — full payload
+if confluenceOK
+    alert('{"secret":"' + secret + '","event":"confluence","symbol":"' + syminfo.ticker + '","timeframe":"' + timeframe.period + '","time":' + str.tostring(time) + ',"direction":"' + confluenceDir + '","currentPrice":' + str.tostring(close) + ',"factorCount":' + str.tostring(factorCount) + ',"inKillZone":' + str.tostring(isKZ) + ',"killZone":"' + (isLondon ? "london" : isNY ? "ny" : "none") + '","dealingZone":"' + dealingZone + '","rangePosition":' + str.tostring(rangePos) + ',"hasBOSorCHoCH":' + str.tostring(hasBOS) + ',"hasLiquiditySweep":' + str.tostring(hasLiqSweep) + ',"hasFVG":' + str.tostring(hasFVG) + ',"hasIFVG":' + str.tostring(hasIFVG) + ',"hasSMT":' + str.tostring(hasSMT) + ',"hasISMT":' + str.tostring(hasISMT) + ',"hasWyckoff":' + str.tostring(hasWyckoff) + ',"wyckoffPhase":"' + wyckoffPhase + '","hasOB":' + str.tostring(hasOB) + ',"hasJudas":' + str.tostring(hasJudas) + ',"aboveBBupper":' + str.tostring(aboveBBupper) + ',"belowBBlower":' + str.tostring(belowBBlower) + ',"bbSqueeze":' + str.tostring(bbSqueeze) + ',"volRank":' + str.tostring(math.round(volRank)) + ',"hasVolClimax":' + str.tostring(hasVolClimax) + ',"volType":"' + (sellingClimax ? "SC" : buyingClimax ? "BC" : noSupply ? "NS" : noDemand ? "ND" : "normal") + '"}', alert.freq_once_per_bar_close)
