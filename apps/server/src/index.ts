@@ -2,6 +2,7 @@ import http from 'http'
 import express from 'express'
 import cors from 'cors'
 import { config } from './config'
+// Pine Script version: v2 (Volume Climax + BB + iFVG + semicolon fixes)
 import { getDb } from './db/client'
 import { initWebSocket } from './websocket'
 import webhookRouter from './routes/webhook'
