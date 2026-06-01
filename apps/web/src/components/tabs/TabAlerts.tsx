@@ -57,6 +57,7 @@ export default function TabAlerts() {
   const [filterSymbol, setFilterSymbol] = useState('')
   const [filterTF, setFilterTF] = useState('')
   const [filterDir, setFilterDir] = useState('')
+  const [showArchived, setShowArchived] = useState(false)
   const [rating, setRating] = useState<Record<string, number>>({})
   const [ratingNote, setRatingNote] = useState<Record<string, string>>({})
   const [expandedId, setExpandedId] = useState<string | null>(null)
@@ -65,6 +66,7 @@ export default function TabAlerts() {
   const params = new URLSearchParams()
   if (filterSymbol) params.set('symbol', filterSymbol)
   if (filterTF) params.set('timeframe', filterTF)
+  if (showArchived) params.set('archived', '1')
 
   const { data, refetch } = useApi<{ alerts: any[] }>(`/api/alerts?${params}`)
   const liveAlerts = useMarketStore(s => s.alerts)
@@ -192,12 +194,24 @@ export default function TabAlerts() {
             </button>
           ))}
 
-          <button
-            onClick={refetch}
-            className="mr-auto px-3 py-1 rounded-full text-xs border border-gray-600 bg-gray-800 text-gray-200 hover:bg-gray-700 transition-all font-bold"
-          >
-            🔄 רענן
-          </button>
+          <div className="mr-auto flex gap-2">
+            <button
+              onClick={refetch}
+              className="px-3 py-1 rounded-full text-xs border border-gray-600 bg-gray-800 text-gray-200 hover:bg-gray-700 transition-all font-bold"
+            >
+              🔄 רענן
+            </button>
+            <button
+              onClick={() => { setShowArchived(v => !v); setTimeout(refetch, 50) }}
+              className={`px-3 py-1 rounded-full text-xs border transition-all font-bold ${
+                showArchived
+                  ? 'bg-amber-700 border-amber-600 text-white'
+                  : 'bg-gray-800 border-gray-600 text-gray-400 hover:bg-gray-700'
+              }`}
+            >
+              📦 {showArchived ? 'ארכיון (פעיל)' : 'ארכיון'}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -276,6 +290,19 @@ export default function TabAlerts() {
                 </span>
 
                 <span className="text-slate-500 text-xs shrink-0">{isExpanded ? '▲' : '▼'}</span>
+
+                {/* Archive button */}
+                <button
+                  onClick={async (e) => {
+                    e.stopPropagation()
+                    await apiPost(`/api/alerts/${alert.id}/archive`, { archived: !showArchived })
+                    refetch()
+                  }}
+                  className="shrink-0 px-2 py-1 rounded text-xs border border-slate-600 bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white transition-all"
+                  title={showArchived ? 'שחזר מארכיון' : 'העבר לארכיון'}
+                >
+                  {showArchived ? '↩️' : '📦'}
+                </button>
               </button>
 
               {/* ── Expanded detail ── */}

@@ -7,10 +7,10 @@ const router = Router()
 // GET /api/alerts — recent alerts with filters
 router.get('/', (req: Request, res: Response) => {
   const db = getDb()
-  const { symbol, timeframe, limit = '50', offset = '0' } = req.query
+  const { symbol, timeframe, limit = '50', offset = '0', archived = '0' } = req.query
 
-  let query = `SELECT * FROM alerts WHERE 1=1`
-  const params: any[] = []
+  let query = `SELECT * FROM alerts WHERE archived = ?`
+  const params: any[] = [archived === '1' ? 1 : 0]
 
   if (symbol) { query += ` AND symbol = ?`; params.push(String(symbol)) }
   if (timeframe) { query += ` AND timeframe = ?`; params.push(String(timeframe)) }
@@ -72,6 +72,16 @@ router.post('/:id/rate', (req: Request, res: Response) => {
     .run(rating, outcome ?? null, notes ?? null, req.params.id)
 
   res.json({ ok: true })
+})
+
+// POST /api/alerts/:id/archive — move to archive
+router.post('/:id/archive', (req: Request, res: Response) => {
+  const db = getDb()
+  const { archived = true } = req.body
+  const result = db.prepare(`UPDATE alerts SET archived = ? WHERE id = ?`)
+    .run(archived ? 1 : 0, req.params.id)
+  if (result.changes === 0) { res.status(404).json({ error: 'Alert not found' }); return }
+  res.json({ ok: true, archived })
 })
 
 export default router
