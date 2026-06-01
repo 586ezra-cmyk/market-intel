@@ -169,7 +169,9 @@ function calcScore(input: ConfluenceInput): number {
   if (input.hasFVG) score += 0.3
   if (input.hasBOSorCHoCH) score += 0.3
   if (input.hasLiquiditySweep) score += 0.3
-  if (isInKillZone()) score += 0.3
+  // Use Pine Script's KZ state when available — avoids server-time mismatch
+  const inKZ = input.inKillZoneOverride !== undefined ? input.inKillZoneOverride : isInKillZone()
+  if (inKZ) score += 0.3
   if (input.hasSMT || input.hasISMT) score += 0.4
   if (input.hasWyckoff) score += 0.5
   if (input.hasDoubleTop || input.hasDoubleBottom) score += 0.3

@@ -85,9 +85,9 @@ function getMinScore(): number {
   try {
     const db = getDb()
     const row = db.prepare(`SELECT value FROM settings WHERE key = 'min_score'`).get() as { value: string } | undefined
-    return row ? parseFloat(row.value) : 3
+    return row ? parseFloat(row.value) : 2   // default 2 — if confluence engine approved it, send it
   } catch {
-    return 3
+    return 2
   }
 }
 
