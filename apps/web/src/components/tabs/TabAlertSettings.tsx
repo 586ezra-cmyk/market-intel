@@ -88,13 +88,17 @@ export default function TabAlertSettings() {
       {/* Telegram channels info */}
       <div className="card space-y-3">
         <h3 className="font-semibold text-sm">📦 מבנה ערוצי הטלגרם</h3>
-        <div className="space-y-2">
+
+        <p className="text-xs text-slate-500">כל alert נשלח ל-2-3 topics בו-זמנית: ה-TF הספציפי + הקטגוריה + דירוגים 7+ אם רלוונטי</p>
+
+        <div className="space-y-1">
+          <p className="text-xs text-slate-400 font-semibold pt-1">🗂️ קטגוריות</p>
           {[
-            { icon: '📅', name: 'מסחר יומי', desc: '15m, 30m, 1h — התראות real-time', topic: settings?.telegram_topic_daily ?? 6 },
-            { icon: '📈', name: 'מסחר שבועי', desc: '4h, יומי, שבועי — התראות real-time', topic: settings?.telegram_topic_weekly ?? 5 },
-            { icon: '⭐', name: 'דירוגים 7+', desc: 'כל הטווחים מעל ציון 7', topic: settings?.telegram_topic_high ?? 4 },
-            { icon: '🌅', name: 'סקירה יומית', desc: '08:00 יעדים · 23:00 סיכום', topic: settings?.telegram_topic_briefing ?? 3 },
-            { icon: '📰', name: 'דוחות כלכליים', desc: 'ForexFactory + הסברים + תזכורות', topic: settings?.telegram_topic_calendar ?? 2 },
+            { icon: '📅', name: 'מסחר יומי',    desc: '5m, 15m, 30m, 1h',           id: 2 },
+            { icon: '📈', name: 'מסחר שבועי',   desc: '4h, יומי, שבועי',            id: 3 },
+            { icon: '⭐', name: 'דירוגים 7+',   desc: 'כל ציון ≥ 7',                id: 4 },
+            { icon: '🌅', name: 'סקירה יומית',  desc: '08:00 יעדים · 23:00 סיכום', id: 5 },
+            { icon: '📰', name: 'דוחות כלכליים', desc: 'ForexFactory',              id: 6 },
           ].map(ch => (
             <div key={ch.name} className="flex items-center gap-3 p-2 bg-surface rounded-lg">
               <span className="text-lg">{ch.icon}</span>
@@ -102,7 +106,26 @@ export default function TabAlertSettings() {
                 <div className="font-medium text-sm">{ch.name}</div>
                 <div className="text-xs text-slate-400">{ch.desc}</div>
               </div>
-              <span className="text-xs text-slate-500 font-mono">#{ch.topic}</span>
+              <span className="text-xs bg-slate-700 text-slate-300 font-mono px-2 py-0.5 rounded">#{ch.id}</span>
+            </div>
+          ))}
+        </div>
+
+        <div className="space-y-1">
+          <p className="text-xs text-slate-400 font-semibold pt-1">⏱️ לפי טווח זמן</p>
+          {[
+            { name: '5 דקות',   id: 32 },
+            { name: '15 דקות',  id: 33 },
+            { name: '30 דקות',  id: 34 },
+            { name: 'שעה',      id: 35 },
+            { name: '4 שעות',   id: 36 },
+            { name: 'יומי',     id: 37 },
+            { name: 'שבועי',    id: 38 },
+          ].map(ch => (
+            <div key={ch.name} className="flex items-center gap-3 p-2 bg-surface rounded-lg">
+              <span className="text-lg">⏱️</span>
+              <div className="flex-1 font-medium text-sm">{ch.name}</div>
+              <span className="text-xs bg-slate-700 text-slate-300 font-mono px-2 py-0.5 rounded">#{ch.id}</span>
             </div>
           ))}
         </div>

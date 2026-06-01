@@ -8,36 +8,19 @@ const router = Router()
 export const telegramTestRouter = Router()
 telegramTestRouter.post('/test', async (_req: Request, res: Response) => {
   try {
-    const db = getDb()
-    const get = (key: string) => {
-      const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key) as { value: string } | undefined
-      return row?.value ?? ''
-    }
-    const token   = process.env.TELEGRAM_BOT_TOKEN ?? get('telegram_token')
-    const chatId  = process.env.TELEGRAM_CHAT_ID   ?? get('telegram_chat_id')
+    const token  = process.env.TELEGRAM_BOT_TOKEN
+    const chatId = process.env.TELEGRAM_CHAT_ID
     if (!token || !chatId) {
       return res.status(400).json({ ok: false, error: 'TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID not configured' })
     }
-    const topics: Record<string, number> = {
-      'מסחר יומי':   parseInt(get('telegram_topic_daily')    || '6'),
-      'מסחר שבועי':  parseInt(get('telegram_topic_weekly')   || '5'),
-      'דירוגים 7+':  parseInt(get('telegram_topic_high')     || '4'),
-    }
-    const results: string[] = []
-    for (const [name, id] of Object.entries(topics)) {
-      try {
-        const r = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ chat_id: chatId, message_thread_id: id, text: `🧪 בדיקה — ${name}` }),
-        })
-        const d = await r.json() as any
-        results.push(`${name}: ${d.ok ? '✅' : '❌'}`)
-      } catch {
-        results.push(`${name}: ❌`)
-      }
-    }
-    res.json({ ok: true, results })
+    // Send ONE test message to General (no topic) to verify connection only
+    const r = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text: `🧪 מערכת מסחר — בדיקת חיבור ✅\nהשרת מחובר ופעיל.` }),
+    })
+    const d = await r.json() as any
+    res.json({ ok: d.ok, results: [d.ok ? '✅ חיבור תקין' : `❌ ${d.description}`] })
   } catch (err: any) {
     res.status(500).json({ ok: false, error: err.message })
   }
