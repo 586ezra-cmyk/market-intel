@@ -67,7 +67,9 @@ export default function TabAlerts() {
 
   const allAlerts = [...liveAlerts, ...(data?.alerts ?? [])]
     .filter((a, i, arr) => arr.findIndex(x => x.id === a.id) === i)
-    .filter(a => !filterDir || a.direction === filterDir)
+    .filter(a => !filterSymbol || a.symbol === filterSymbol)
+    .filter(a => !filterTF     || a.timeframe === filterTF)
+    .filter(a => !filterDir    || a.direction === filterDir)
     .slice(0, 100)
 
   async function submitRating(alertId: string) {
