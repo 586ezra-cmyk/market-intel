@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useMarketStore } from '@/store/marketStore'
 import { useApi, apiPost } from '@/hooks/useApi'
 import { formatTime, formatPrice, scoreBadgeClass } from '@/lib/utils'
@@ -37,6 +37,8 @@ const SYMBOL_OPTIONS = [
   'XAUUSD', 'NQ', 'ES',
 ]
 
+const NEW_THRESHOLD_MS = 5 * 60 * 1000  // 5 minutes
+
 export default function TabAlerts() {
   const [filterSymbol, setFilterSymbol] = useState('')
   const [filterTF, setFilterTF] = useState('')
@@ -44,6 +46,7 @@ export default function TabAlerts() {
   const [rating, setRating] = useState<Record<string, number>>({})
   const [ratingNote, setRatingNote] = useState<Record<string, string>>({})
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [now, setNow] = useState(Date.now())
 
   const params = new URLSearchParams()
   if (filterSymbol) params.set('symbol', filterSymbol)
@@ -51,6 +54,16 @@ export default function TabAlerts() {
 
   const { data, refetch } = useApi<{ alerts: any[] }>(`/api/alerts?${params}`)
   const liveAlerts = useMarketStore(s => s.alerts)
+  const wsConnected = useMarketStore(s => s.wsConnected)
+
+  // Auto-refetch every 30s + update "now" for "חדש" badge
+  useEffect(() => {
+    const interval = setInterval(() => {
+      refetch()
+      setNow(Date.now())
+    }, 30_000)
+    return () => clearInterval(interval)
+  }, [refetch])
 
   const allAlerts = [...liveAlerts, ...(data?.alerts ?? [])]
     .filter((a, i, arr) => arr.findIndex(x => x.id === a.id) === i)
@@ -69,6 +82,17 @@ export default function TabAlerts() {
 
   return (
     <div className="p-4 space-y-4">
+
+      {/* ── WS status bar ── */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className={`w-2 h-2 rounded-full ${wsConnected ? 'bg-green-400 animate-pulse' : 'bg-red-500'}`} />
+          <span className="text-xs text-slate-400">
+            {wsConnected ? 'מחובר — מקבל התראות בזמן אמת' : 'מנותק מהשרת'}
+          </span>
+        </div>
+        <span className="text-xs text-slate-600">{allAlerts.length} התראות</span>
+      </div>
 
       {/* ── Symbol filter ── */}
       <div className="space-y-3">
@@ -161,17 +185,16 @@ export default function TabAlerts() {
         </div>
       </div>
 
-      {/* ── Alerts count ── */}
-      <div className="text-xs text-gray-400">
-        {allAlerts.length} התראות{filterSymbol ? ` עבור ${filterSymbol}` : ''}{filterTF ? ` | ${filterTF}` : ''}
-      </div>
-
       {/* ── Alert list ── */}
       {allAlerts.length === 0 && (
         <div className="text-center text-slate-500 py-16 flex flex-col items-center gap-2">
           <span className="text-3xl">🔔</span>
           <span>אין התראות עדיין</span>
-          <span className="text-xs">ההתראות יופיעו כאן כשהמערכת תזהה קונפלואנס</span>
+          <span className="text-xs">
+            {wsConnected
+              ? 'ממתין ל-signal מ-TradingView — וודא שה-alert מוגדר עם Webhook URL'
+              : 'בדוק שהשרת רץ ב-Railway'}
+          </span>
         </div>
       )}
 
@@ -179,6 +202,7 @@ export default function TabAlerts() {
         {allAlerts.map(alert => {
           const isExpanded = expandedId === alert.id
           const isBull = alert.direction === 'bullish'
+          const isNew = (now - (alert.triggeredAt ?? alert.createdAt ?? 0)) < NEW_THRESHOLD_MS
 
           return (
             <div
@@ -187,7 +211,7 @@ export default function TabAlerts() {
                 isBull
                   ? 'border-green-800/50 bg-green-950/20'
                   : 'border-red-800/50 bg-red-950/20'
-              }`}
+              } ${isNew ? 'ring-1 ring-blue-500/40' : ''}`}
             >
               {/* ── Main row ── */}
               <button
@@ -195,9 +219,16 @@ export default function TabAlerts() {
                 onClick={() => setExpandedId(isExpanded ? null : alert.id)}
               >
                 {/* Score badge */}
-                <span className={`score-badge shrink-0 ${scoreBadgeClass(alert.score ?? 0)}`}>
-                  {(alert.score ?? 0).toFixed(1)}
-                </span>
+                <div className="flex flex-col items-center gap-1 shrink-0">
+                  <span className={`score-badge ${scoreBadgeClass(alert.score ?? 0)}`}>
+                    {(alert.score ?? 0).toFixed(1)}
+                  </span>
+                  {isNew && (
+                    <span className="px-1 py-0.5 text-xs bg-blue-600 text-white rounded-full leading-none font-bold">
+                      חדש
+                    </span>
+                  )}
+                </div>
 
                 {/* Symbol + TF */}
                 <div className="flex-1 text-right">
