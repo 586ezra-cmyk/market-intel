@@ -29,6 +29,8 @@ export interface ConfluenceInput {
   direction: Direction
   currentPrice: number
   time: number
+  // Pine Script's Kill Zone state — authoritative (avoids server-time mismatch)
+  inKillZoneOverride?: boolean
   hasBOSorCHoCH: boolean
   hasLiquiditySweep: boolean
   hasFVG: boolean
@@ -200,7 +202,9 @@ export async function evaluateConfluence(input: ConfluenceInput): Promise<Alert 
   if (input.hasWyckoff) factors.push('Wyckoff')
 
   // Gate: require ≥2 factors AND kill zone
-  if (factors.length < 2 || !isInKillZone()) return null
+  // Use Pine Script's inKillZone flag when available (avoids server-time mismatch on daily/weekly candles)
+  const inKZ = input.inKillZoneOverride !== undefined ? input.inKillZoneOverride : isInKillZone()
+  if (factors.length < 2 || !inKZ) return null
 
   const score = calcScore(input)
   const premiumDiscount = calcPremiumDiscount(input.symbol, input.timeframe, input.currentPrice)
@@ -213,7 +217,7 @@ export async function evaluateConfluence(input: ConfluenceInput): Promise<Alert 
 
   const context: AlertContext = {
     premiumDiscount,
-    inKillZone: true,
+    inKillZone: inKZ,
     session,
     stopLoss: sl,
     tp1: targets.tp1?.price ?? null,

@@ -70,26 +70,80 @@ const SMTSchema = BaseSchema.extend({
   event: z.literal('smt'),
   asset1: z.string(),
   asset1Price: z.number(),
-  asset1High: z.number(),
-  asset1Low: z.number(),
+  asset1High: z.number().optional(),
+  asset1Low: z.number().optional(),
   asset2: z.string(),
   asset2Price: z.number(),
-  asset2High: z.number(),
-  asset2Low: z.number(),
+  asset2High: z.number().optional(),
+  asset2Low: z.number().optional(),
 })
 
 const ConfluenceSchema = BaseSchema.extend({
   event: z.literal('confluence'),
   direction: z.enum(['bullish', 'bearish']),
   currentPrice: z.number(),
+  // Pine Script confluence flags
+  factorCount: z.number().optional(),
+  inKillZone: z.boolean().default(false),   // Pine Script's KZ state (authoritative)
+  killZone: z.string().optional(),
+  dealingZone: z.string().optional(),
+  rangePosition: z.number().optional(),
   hasBOSorCHoCH: z.boolean().default(false),
   hasLiquiditySweep: z.boolean().default(false),
   hasFVG: z.boolean().default(false),
+  hasIFVG: z.boolean().default(false),
   hasSMT: z.boolean().default(false),
   hasISMT: z.boolean().default(false),
   hasWyckoff: z.boolean().default(false),
   wyckoffPhase: z.string().optional(),
+  hasOB: z.boolean().default(false),
+  hasJudas: z.boolean().default(false),
+  aboveBBupper: z.boolean().default(false),
+  belowBBlower: z.boolean().default(false),
+  bbSqueeze: z.boolean().default(false),
+  volRank: z.number().optional(),
+  hasVolClimax: z.boolean().default(false),
+  volType: z.string().optional(),
   higherTFConfirmations: z.array(z.string()).optional(),
+})
+
+// ── Extra events Pine Script sends ───────────────────────────────────────────
+const IFVGSchema = BaseSchema.extend({
+  event: z.literal('ifvg'),
+  direction: z.enum(['bullish', 'bearish']),
+  price: z.number(),
+})
+
+const OrderBlockSchema = BaseSchema.extend({
+  event: z.literal('order_block'),
+  direction: z.enum(['bullish', 'bearish']),
+  price: z.number(),
+})
+
+const BBBreakSchema = BaseSchema.extend({
+  event: z.literal('bb_break'),
+  direction: z.enum(['bullish', 'bearish']),
+  bbUpper: z.number(),
+  bbLower: z.number(),
+  price: z.number(),
+})
+
+const VolumeClimaxSchema = BaseSchema.extend({
+  event: z.literal('volume_climax'),
+  type: z.enum(['selling_climax', 'buying_climax']),
+  direction: z.enum(['bullish', 'bearish']),
+  volRank: z.number(),
+  price: z.number(),
+  inKillZone: z.boolean().default(false),
+  dealingZone: z.string().optional(),
+})
+
+const VolumeLowSchema = BaseSchema.extend({
+  event: z.literal('volume_low'),
+  type: z.enum(['no_supply', 'no_demand']),
+  direction: z.enum(['bullish', 'bearish']),
+  volRank: z.number(),
+  price: z.number(),
 })
 
 const WyckoffSchema = BaseSchema.extend({
@@ -104,11 +158,16 @@ const AnyEventSchema = z.discriminatedUnion('event', [
   StructureSchema,
   FVGSchema,
   FVGFilledSchema,
+  IFVGSchema,
   LiquiditySchema,
   LiquiditySweepSchema,
   SMTSchema,
   ConfluenceSchema,
   WyckoffSchema,
+  OrderBlockSchema,
+  BBBreakSchema,
+  VolumeClimaxSchema,
+  VolumeLowSchema,
 ])
 
 // ─── Auth middleware ──────────────────────────────────────────────────────────
@@ -228,12 +287,12 @@ router.post('/tradingview', async (req: Request, res: Response) => {
           time: data.time,
           asset1: data.asset1,
           asset1Price: data.asset1Price,
-          asset1High: data.asset1High,
-          asset1Low: data.asset1Low,
+          asset1High: data.asset1High ?? data.asset1Price,
+          asset1Low: data.asset1Low ?? data.asset1Price,
           asset2: data.asset2,
           asset2Price: data.asset2Price,
-          asset2High: data.asset2High,
-          asset2Low: data.asset2Low,
+          asset2High: data.asset2High ?? data.asset2Price,
+          asset2Low: data.asset2Low ?? data.asset2Price,
         })
         if (smt) broadcastWS({ type: 'smt', payload: smt })
         res.json({ ok: true, detected: !!smt, signal: smt })
@@ -247,16 +306,49 @@ router.post('/tradingview', async (req: Request, res: Response) => {
           direction: data.direction as Direction,
           currentPrice: data.currentPrice,
           time: data.time,
+          inKillZoneOverride: data.inKillZone,  // use Pine Script's KZ state
           hasBOSorCHoCH: data.hasBOSorCHoCH,
           hasLiquiditySweep: data.hasLiquiditySweep,
-          hasFVG: data.hasFVG,
+          hasFVG: data.hasFVG || data.hasIFVG,
           hasSMT: data.hasSMT,
           hasISMT: data.hasISMT,
           hasWyckoff: data.hasWyckoff,
           wyckoffPhase: data.wyckoffPhase,
+          hasOrderBlock: data.hasOB,
           higherTFConfirmations: data.higherTFConfirmations as Timeframe[] | undefined,
         })
         res.json({ ok: true, alerted: !!alert, alert })
+        break
+      }
+
+      case 'ifvg': {
+        // Inverse FVG retest — log + broadcast only
+        broadcastWS({ type: 'ifvg' as any, payload: { symbol: data.symbol, timeframe: tf, direction: data.direction, price: data.price, time: data.time } })
+        res.json({ ok: true })
+        break
+      }
+
+      case 'order_block': {
+        broadcastWS({ type: 'ob' as any, payload: { symbol: data.symbol, timeframe: tf, direction: data.direction, price: data.price, time: data.time } })
+        res.json({ ok: true })
+        break
+      }
+
+      case 'bb_break': {
+        broadcastWS({ type: 'bb_break' as any, payload: { symbol: data.symbol, timeframe: tf, direction: data.direction, price: data.price, time: data.time } })
+        res.json({ ok: true })
+        break
+      }
+
+      case 'volume_climax': {
+        broadcastWS({ type: 'volume_climax' as any, payload: { symbol: data.symbol, timeframe: tf, type: data.type, direction: data.direction, volRank: data.volRank, price: data.price, time: data.time } as any })
+        res.json({ ok: true })
+        break
+      }
+
+      case 'volume_low': {
+        broadcastWS({ type: 'volume_low' as any, payload: { symbol: data.symbol, timeframe: tf, direction: data.direction, volRank: data.volRank, price: data.price, time: data.time } as any })
+        res.json({ ok: true })
         break
       }
 
