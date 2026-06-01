@@ -105,44 +105,68 @@ export function getAlertById(id: string): Alert | null {
 
 // ─── Telegram ────────────────────────────────────────────────────────────────
 
-const TELEGRAM_TOKEN = process.env.TELEGRAM_BOT_TOKEN
+const TELEGRAM_TOKEN   = process.env.TELEGRAM_BOT_TOKEN
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID
 
-// Topic IDs (Telegram supergroup topic thread IDs)
-const TOPIC_DAILY = process.env.TELEGRAM_TOPIC_DAILY     // 15m, 30m, 1h
-const TOPIC_WEEKLY = process.env.TELEGRAM_TOPIC_WEEKLY   // 4h, 1D, 1W
-const TOPIC_HIGH = process.env.TELEGRAM_TOPIC_HIGH       // score ≥ 7
-const TOPIC_BRIEFING = process.env.TELEGRAM_TOPIC_BRIEFING // morning/evening
+// ── Category topics ──────────────────────────────────────────────────────────
+// מסחר יומי  (5m / 15m / 30m / 1h)
+const TOPIC_DAILY    = process.env.TELEGRAM_TOPIC_DAILY    ?? '2'
+// מסחר שבועי (4h / 1D / 1W)
+const TOPIC_WEEKLY   = process.env.TELEGRAM_TOPIC_WEEKLY   ?? '3'
+// דירוגים 7+ (score ≥ 7, all TFs)
+const TOPIC_HIGH     = process.env.TELEGRAM_TOPIC_HIGH     ?? '4'
+// סקירה יומית (briefing/summary)
+const TOPIC_BRIEFING = process.env.TELEGRAM_TOPIC_BRIEFING ?? '5'
+// דוחות כלכליים
+const TOPIC_ECONOMIC = process.env.TELEGRAM_TOPIC_ECONOMIC ?? '6'
 
-const DAILY_TFS: Timeframe[] = ['15m', '30m', '1h']
-const WEEKLY_TFS: Timeframe[] = ['4h', '1D', '1W', '1M']
-
-function getTopicId(timeframe: Timeframe, score: number): string | undefined {
-  if (score >= 7) return TOPIC_HIGH
-  if (DAILY_TFS.includes(timeframe)) return TOPIC_DAILY
-  if (WEEKLY_TFS.includes(timeframe)) return TOPIC_WEEKLY
-  return TOPIC_DAILY
+// ── Per-TF topics ─────────────────────────────────────────────────────────────
+const TF_TOPIC: Record<string, string> = {
+  '5m':  process.env.TELEGRAM_TOPIC_5M  ?? '32',
+  '15m': process.env.TELEGRAM_TOPIC_15M ?? '33',
+  '30m': process.env.TELEGRAM_TOPIC_30M ?? '34',
+  '1h':  process.env.TELEGRAM_TOPIC_1H  ?? '35',
+  '4h':  process.env.TELEGRAM_TOPIC_4H  ?? '36',
+  '1D':  process.env.TELEGRAM_TOPIC_1D  ?? '37',
+  '1W':  process.env.TELEGRAM_TOPIC_1W  ?? '38',
 }
 
-export async function sendTelegram(
-  text: string,
-  score = 0,
-  timeframe?: Timeframe,
-  topicId?: string,
-): Promise<void> {
-  if (!TELEGRAM_TOKEN || !TELEGRAM_CHAT_ID) {
-    console.warn('[Telegram] BOT_TOKEN or CHAT_ID not configured — skipping')
-    return
-  }
+const DAILY_TFS:  Timeframe[] = ['5m', '15m', '30m', '1h']
+const WEEKLY_TFS: Timeframe[] = ['4h', '1D', '1W', '1M']
 
-  const thread = topicId ?? (timeframe ? getTopicId(timeframe, score) : undefined)
+/**
+ * Returns ALL topic IDs an alert should be sent to:
+ * 1. Specific TF topic  (e.g. 15m → topic 33)
+ * 2. Category topic     (daily or weekly)
+ * 3. High-score topic   (if score ≥ 7)
+ */
+function getTopicIds(timeframe: Timeframe, score: number): string[] {
+  const ids = new Set<string>()
+
+  // Specific TF topic
+  const tfTopic = TF_TOPIC[timeframe]
+  if (tfTopic) ids.add(tfTopic)
+
+  // Category topic
+  if (DAILY_TFS.includes(timeframe))  ids.add(TOPIC_DAILY)
+  if (WEEKLY_TFS.includes(timeframe)) ids.add(TOPIC_WEEKLY)
+
+  // High score
+  if (score >= 7) ids.add(TOPIC_HIGH)
+
+  return [...ids]
+}
+
+/** Send one message to a single Telegram topic (or no topic = General) */
+async function sendToTopic(text: string, topicId?: string): Promise<void> {
+  if (!TELEGRAM_TOKEN || !TELEGRAM_CHAT_ID) return
 
   const body: Record<string, unknown> = {
     chat_id: TELEGRAM_CHAT_ID,
     text,
     parse_mode: 'Markdown',
   }
-  if (thread) body.message_thread_id = thread
+  if (topicId) body.message_thread_id = topicId
 
   const res = await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
     method: 'POST',
@@ -152,9 +176,43 @@ export async function sendTelegram(
 
   if (!res.ok) {
     const err = await res.text()
-    throw new Error(`Telegram API error: ${err}`)
+    throw new Error(`Telegram API error (topic ${topicId ?? 'none'}): ${err}`)
   }
 }
+
+/**
+ * Main entry point — sends alert to ALL relevant topics.
+ * Pass explicit topicId to override routing (e.g. briefing/economic).
+ */
+export async function sendTelegram(
+  text: string,
+  score = 0,
+  timeframe?: Timeframe,
+  topicId?: string,          // explicit override (briefing, economic, etc.)
+): Promise<void> {
+  if (!TELEGRAM_TOKEN || !TELEGRAM_CHAT_ID) {
+    console.warn('[Telegram] BOT_TOKEN or CHAT_ID not configured — skipping')
+    return
+  }
+
+  // Explicit override: send to one specific topic only
+  if (topicId) {
+    await sendToTopic(text, topicId)
+    return
+  }
+
+  // Alert routing: send to multiple topics in parallel
+  const topics = timeframe ? getTopicIds(timeframe, score) : []
+  if (topics.length === 0) {
+    await sendToTopic(text)   // fallback: General
+    return
+  }
+
+  await Promise.allSettled(topics.map(id => sendToTopic(text, id)))
+}
+
+// Export topic constants so scheduler can use them
+export { TOPIC_BRIEFING, TOPIC_ECONOMIC }
 
 function dbRowToAlert(r: any): Alert {
   return {

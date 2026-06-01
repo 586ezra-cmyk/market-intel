@@ -1,5 +1,5 @@
 import cron from 'node-cron'
-import { sendTelegram } from './alertDispatcher'
+import { sendTelegram, TOPIC_BRIEFING, TOPIC_ECONOMIC } from './alertDispatcher'
 import { getCachedCalendar, sendEventReminders } from './forexFactory'
 import { getDb } from '../db/client'
 
@@ -108,7 +108,7 @@ export function initScheduler(): void {
   cron.schedule('0 5 * * *', async () => {
     try {
       const text = await generateMorningBriefing()
-      await sendTelegram(text, 0, undefined, process.env.TELEGRAM_TOPIC_BRIEFING)
+      await sendTelegram(text, 0, undefined, TOPIC_BRIEFING)
       console.log('[Scheduler] Morning briefing sent')
     } catch (err) {
       console.error('[Scheduler] Morning briefing failed:', err)
@@ -119,7 +119,7 @@ export function initScheduler(): void {
   cron.schedule('0 20 * * *', async () => {
     try {
       const text = await generateEveningSummary()
-      await sendTelegram(text, 0, undefined, process.env.TELEGRAM_TOPIC_BRIEFING)
+      await sendTelegram(text, 0, undefined, TOPIC_BRIEFING)
       console.log('[Scheduler] Evening summary sent')
     } catch (err) {
       console.error('[Scheduler] Evening summary failed:', err)
@@ -148,7 +148,7 @@ export function initScheduler(): void {
         msg += `   ${e.explanationHe.slice(0, 80)}...\n\n`
       })
 
-      await sendTelegram(msg, 0, undefined, process.env.TELEGRAM_TOPIC_ECONOMIC)
+      await sendTelegram(msg, 0, undefined, TOPIC_ECONOMIC)
     } catch (err) {
       console.error('[Scheduler] Weekly calendar failed:', err)
     }
