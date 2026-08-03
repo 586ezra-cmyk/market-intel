@@ -247,6 +247,7 @@ export async function evaluateConfluence(input: ConfluenceInput): Promise<Alert 
     session: context.session,
     inKillZone: context.inKillZone,
     messageHe,
+    entryPrice: input.currentPrice,
     stopLoss: context.stopLoss,
     tp1: context.tp1,
     tp2: context.tp2,

@@ -62,9 +62,9 @@ export async function generateEveningSummary(): Promise<string> {
   const todayAlerts = db.prepare(`SELECT * FROM alerts WHERE triggered_at > ? ORDER BY triggered_at DESC`)
     .all(since) as any[]
 
-  const wins = todayAlerts.filter(a => a.user_outcome === 'worked').length
-  const losses = todayAlerts.filter(a => a.user_outcome === 'failed').length
-  const pending = todayAlerts.filter(a => !a.user_outcome || a.user_outcome === null).length
+  const wins = todayAlerts.filter(a => a.user_outcome === 'win').length
+  const losses = todayAlerts.filter(a => a.user_outcome === 'loss').length
+  const pending = todayAlerts.filter(a => !a.user_outcome || a.user_outcome === 'pending' || a.user_outcome === null).length
 
   let msg = `🌙 *סיכום יומי — ${new Date().toLocaleDateString('he-IL', { timeZone: 'Asia/Jerusalem' })}*\n\n`
 
@@ -76,7 +76,7 @@ export async function generateEveningSummary(): Promise<string> {
     msg += `🔔 *התראות היום:*\n`
     todayAlerts.slice(0, 5).forEach((a, i) => {
       const dir = a.direction === 'bullish' ? '▲' : '▼'
-      const outcome = a.user_outcome === 'worked' ? '✅' : a.user_outcome === 'failed' ? '❌' : '⏳'
+      const outcome = a.user_outcome === 'win' ? '✅' : a.user_outcome === 'loss' ? '❌' : a.user_outcome === 'be' ? '🟰' : '⏳'
       msg += `   ${i + 1}. ${outcome} ${a.symbol} ${a.timeframe} ${dir} | ⭐${(a.score ?? 0).toFixed(1)}\n`
     })
     msg += '\n'

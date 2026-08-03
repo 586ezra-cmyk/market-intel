@@ -15,6 +15,7 @@ export interface AlertPayload {
   session: string
   inKillZone: boolean
   messageHe: string
+  entryPrice: number | null
   stopLoss: number | null
   tp1: number | null
   tp2: number | null
@@ -31,8 +32,9 @@ export async function saveAlert(payload: AlertPayload): Promise<Alert> {
   db.prepare(`INSERT INTO alerts
     (id, symbol, timeframe, triggered_at, factors, score, direction,
      recommendation, premium_discount, session, in_kill_zone,
-     message_he, stop_loss, tp1, tp2, tp3, fvg_id, structure_id, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+     message_he, stop_loss, tp1, tp2, tp3, fvg_id, structure_id, created_at,
+     entry_price, sl_price, tp1_price, tp2_price, tp3_price, factors_json, outcome)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
     .run(
       id, payload.symbol, payload.timeframe, payload.triggeredAt,
       JSON.stringify(payload.factors), payload.score, payload.direction,
@@ -40,6 +42,11 @@ export async function saveAlert(payload: AlertPayload): Promise<Alert> {
       payload.inKillZone ? 1 : 0, payload.messageHe,
       payload.stopLoss ?? null, payload.tp1 ?? null, payload.tp2 ?? null, payload.tp3 ?? null,
       payload.fvgId ?? null, payload.structureId ?? null, now,
+      payload.entryPrice ?? null,
+      payload.stopLoss ?? null,
+      payload.tp1 ?? null, payload.tp2 ?? null, payload.tp3 ?? null,
+      JSON.stringify(payload.factors),
+      'pending',
     )
 
   const alert: Alert = {
