@@ -58,6 +58,7 @@ export default function TabAlerts() {
   const [filterTF, setFilterTF] = useState('')
   const [filterDir, setFilterDir] = useState('')
   const [showArchived, setShowArchived] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
   const [rating, setRating] = useState<Record<string, number>>({})
   const [ratingNote, setRatingNote] = useState<Record<string, string>>({})
   const [expandedId, setExpandedId] = useState<string | null>(null)
@@ -67,6 +68,7 @@ export default function TabAlerts() {
   if (filterSymbol) params.set('symbol', filterSymbol)
   if (filterTF) params.set('timeframe', filterTF)
   if (showArchived) params.set('archived', '1')
+  params.set('limit', '200')
 
   const { data, refetch } = useApi<{ alerts: any[] }>(`/api/alerts?${params}`)
   const liveAlerts = useMarketStore(s => s.alerts)
@@ -81,11 +83,16 @@ export default function TabAlerts() {
     return () => clearInterval(interval)
   }, [refetch])
 
-  const allAlerts = [...liveAlerts, ...(data?.alerts ?? [])]
-    .filter((a, i, arr) => arr.findIndex(x => x.id === a.id) === i)
+  // בארכיון — רק מה-API (לא חיות מ-WS). בתצוגה רגילה — מיזוג
+  const baseAlerts = showArchived
+    ? (data?.alerts ?? [])
+    : [...liveAlerts, ...(data?.alerts ?? [])].filter((a, i, arr) => arr.findIndex(x => x.id === a.id) === i)
+
+  const allAlerts = baseAlerts
     .filter(a => !filterSymbol || a.symbol === filterSymbol)
     .filter(a => !filterTF     || a.timeframe === filterTF)
     .filter(a => !filterDir    || a.direction === filterDir)
+    .filter(a => !searchQuery  || a.symbol?.toLowerCase().includes(searchQuery.toLowerCase()) || a.messageHe?.includes(searchQuery))
     .slice(0, 100)
 
   async function submitRating(alertId: string) {
@@ -202,18 +209,35 @@ export default function TabAlerts() {
               🔄 רענן
             </button>
             <button
-              onClick={() => { setShowArchived(v => !v); setTimeout(refetch, 50) }}
+              onClick={() => { setShowArchived(v => !v); setSearchQuery(''); setTimeout(refetch, 50) }}
               className={`px-3 py-1 rounded-full text-xs border transition-all font-bold ${
                 showArchived
-                  ? 'bg-amber-700 border-amber-600 text-white'
+                  ? 'bg-amber-600 border-amber-500 text-white shadow-md shadow-amber-900/40'
                   : 'bg-gray-800 border-gray-600 text-gray-400 hover:bg-gray-700'
               }`}
             >
-              📦 {showArchived ? 'ארכיון (פעיל)' : 'ארכיון'}
+              📦 {showArchived ? '📦 ארכיון פעיל' : 'ארכיון'}
             </button>
           </div>
         </div>
       </div>
+
+      {/* ── Archive search ── */}
+      {showArchived && (
+        <div className="flex items-center gap-2 bg-amber-950/30 border border-amber-700/30 rounded-lg p-2">
+          <span className="text-amber-400 text-sm">🔍</span>
+          <input
+            type="text"
+            placeholder="חיפוש בארכיון — לפי סימבול, תוכן..."
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            className="flex-1 bg-transparent text-sm text-white placeholder-slate-500 outline-none text-right"
+          />
+          {searchQuery && (
+            <button onClick={() => setSearchQuery('')} className="text-slate-400 hover:text-white text-xs">✕</button>
+          )}
+        </div>
+      )}
 
       {/* ── Alert list ── */}
       {allAlerts.length === 0 && (
