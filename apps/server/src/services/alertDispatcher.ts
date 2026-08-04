@@ -129,7 +129,8 @@ const TOPIC_ECONOMIC = process.env.TELEGRAM_TOPIC_ECONOMIC ?? '6'
 
 // ── Per-TF topics ─────────────────────────────────────────────────────────────
 const TF_TOPIC: Record<string, string> = {
-  '5m':  process.env.TELEGRAM_TOPIC_5M  ?? '32',
+  '1m':  process.env.TELEGRAM_TOPIC_1M  ?? '191',
+  '5m':  process.env.TELEGRAM_TOPIC_5M  ?? '190',
   '15m': process.env.TELEGRAM_TOPIC_15M ?? '33',
   '30m': process.env.TELEGRAM_TOPIC_30M ?? '34',
   '1h':  process.env.TELEGRAM_TOPIC_1H  ?? '35',
@@ -138,7 +139,7 @@ const TF_TOPIC: Record<string, string> = {
   '1W':  process.env.TELEGRAM_TOPIC_1W  ?? '38',
 }
 
-const DAILY_TFS:  Timeframe[] = ['5m', '15m', '30m', '1h']
+const DAILY_TFS:  Timeframe[] = ['1m', '5m', '15m', '30m', '1h']
 const WEEKLY_TFS: Timeframe[] = ['4h', '1D', '1W', '1M']
 
 /**
