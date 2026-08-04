@@ -70,7 +70,7 @@ export default function TabAlerts() {
   if (showArchived) params.set('archived', '1')
   params.set('limit', '200')
 
-  const { data, refetch } = useApi<{ alerts: any[] }>(`/api/alerts?${params}`)
+  const { data, refetch, loading } = useApi<{ alerts: any[] }>(`/api/alerts?${params}`)
   const liveAlerts = useMarketStore(s => s.alerts)
   const wsConnected = useMarketStore(s => s.wsConnected)
 
@@ -204,9 +204,10 @@ export default function TabAlerts() {
           <div className="mr-auto flex gap-2">
             <button
               onClick={refetch}
-              className="px-3 py-1 rounded-full text-xs border border-gray-600 bg-gray-800 text-gray-200 hover:bg-gray-700 transition-all font-bold"
+              disabled={loading}
+              className="px-3 py-1 rounded-full text-xs border border-gray-600 bg-gray-800 text-gray-200 hover:bg-gray-700 transition-all font-bold disabled:opacity-50"
             >
-              🔄 רענן
+              {loading ? '⏳ טוען...' : '🔄 רענן'}
             </button>
             <button
               onClick={() => { setShowArchived(v => !v); setSearchQuery(''); setTimeout(refetch, 50) }}

@@ -10,6 +10,15 @@ import LiquidityLayer from './layers/LiquidityLayer'
 import SMTLayer from './layers/SMTLayer'
 import KillZoneLayer from './layers/KillZoneLayer'
 import AnalysisOverlayLayer from './layers/AnalysisOverlayLayer'
+import OrderBlockLayer from './layers/OrderBlockLayer'
+import IFVGLayer from './layers/IFVGLayer'
+import BollingerLayer from './layers/BollingerLayer'
+import SessionLayer from './layers/SessionLayer'
+import InducementLayer from './layers/InducementLayer'
+import JudasLayer from './layers/JudasLayer'
+import WyckoffLayer from './layers/WyckoffLayer'
+import ISMTLayer from './layers/ISMTLayer'
+import RepricingLayer from './layers/RepricingLayer'
 import DetailPanel from './DetailPanel'
 import DrawingToolbar from './DrawingToolbar'
 import ChartDrawingCanvas from './ChartDrawingCanvas'
@@ -28,6 +37,7 @@ export default function TradingChart() {
   const [candlesLoading, setCandlesLoading] = useState(false)
   const [candleError, setCandleError]       = useState(false)
 
+  const [ohlc, setOhlc] = useState<{ o: number; h: number; l: number; c: number; time: string } | null>(null)
   const { symbol, timeframe, selectedAlertId, setSelectedAlert } = useMarketStore()
 
   // ── Init chart once ────────────────────────────────────────────────────────
@@ -68,6 +78,18 @@ export default function TradingChart() {
 
     chart.subscribeClick((param) => {
       if (!param.time) setSelectedAlert(null)
+    })
+
+    chart.subscribeCrosshairMove((param) => {
+      if (!param.time || !param.seriesData) {
+        setOhlc(null)
+        return
+      }
+      const bar = param.seriesData.get(candleSeries) as any
+      if (!bar) { setOhlc(null); return }
+      const d = new Date((param.time as number) * 1000)
+      const timeStr = d.toLocaleString('he-IL', { timeZone: 'Asia/Jerusalem', hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })
+      setOhlc({ o: bar.open, h: bar.high, l: bar.low, c: bar.close, time: timeStr })
     })
 
     const ro = new ResizeObserver(() => {
@@ -152,6 +174,22 @@ export default function TradingChart() {
         </div>
       )}
 
+      {/* OHLC hover tooltip */}
+      {ohlc && (
+        <div className="absolute top-2 left-12 z-20 pointer-events-none
+                        bg-gray-900/90 border border-gray-700 rounded px-2 py-1
+                        text-[11px] font-mono flex gap-3 items-center">
+          <span className="text-gray-400">{ohlc.time}</span>
+          <span className="text-gray-300">O <span className="text-white">{ohlc.o.toLocaleString()}</span></span>
+          <span className="text-gray-300">H <span className="text-green-400">{ohlc.h.toLocaleString()}</span></span>
+          <span className="text-gray-300">L <span className="text-red-400">{ohlc.l.toLocaleString()}</span></span>
+          <span className="text-gray-300">C <span className={ohlc.c >= ohlc.o ? 'text-green-400' : 'text-red-400'}>{ohlc.c.toLocaleString()}</span></span>
+          <span className={`text-[10px] ${ohlc.c >= ohlc.o ? 'text-green-400' : 'text-red-400'}`}>
+            {ohlc.c >= ohlc.o ? '▲' : '▼'} {(Math.abs(ohlc.c - ohlc.o) / ohlc.o * 100).toFixed(2)}%
+          </span>
+        </div>
+      )}
+
       {/* Chart layers — mounted only after chart is ready */}
       {cs && (
         <>
@@ -162,6 +200,15 @@ export default function TradingChart() {
           <SMTLayer            chart={cs.chart} series={cs.candleSeries} />
           <KillZoneLayer       chart={cs.chart} series={cs.candleSeries} />
           <AnalysisOverlayLayer chart={cs.chart} series={cs.candleSeries} />
+          <OrderBlockLayer     chart={cs.chart} series={cs.candleSeries} />
+          <IFVGLayer           chart={cs.chart} series={cs.candleSeries} />
+          <BollingerLayer      chart={cs.chart} series={cs.candleSeries} />
+          <SessionLayer        chart={cs.chart} series={cs.candleSeries} />
+          <InducementLayer     chart={cs.chart} series={cs.candleSeries} />
+          <JudasLayer          chart={cs.chart} series={cs.candleSeries} />
+          <WyckoffLayer        chart={cs.chart} series={cs.candleSeries} />
+          <ISMTLayer           chart={cs.chart} series={cs.candleSeries} />
+          <RepricingLayer      chart={cs.chart} series={cs.candleSeries} />
           <ChartDrawingCanvas  chart={cs.chart} series={cs.candleSeries} />
         </>
       )}

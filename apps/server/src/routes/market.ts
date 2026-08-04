@@ -9,6 +9,7 @@ import { cascadeScan } from '../services/confluenceEngine'
 import type { Direction } from '@market/shared'
 import { analyzeSymbol } from '../services/liveAnalysisEngine'
 import { fetchCandles } from '../services/binanceService'
+import { getComputedLayers } from '../services/computedLayersEngine'
 
 const router = Router()
 const analysisCache = new Map<string, any>()
@@ -77,6 +78,18 @@ router.get('/:symbol/:timeframe/cascade', (req: Request, res: Response) => {
     res.json(scan)
   } catch (err: any) {
     res.status(400).json({ error: err.message })
+  }
+})
+
+// GET /api/market/:symbol/:tf/computed-layers
+router.get('/:symbol/:timeframe/computed-layers', async (req: Request, res: Response) => {
+  try {
+    const symbol    = (req.params['symbol'] as string).toUpperCase()
+    const timeframe = req.params['timeframe'] as string
+    const data = await getComputedLayers(symbol, timeframe)
+    res.json(data)
+  } catch (err: any) {
+    res.status(500).json({ error: err.message })
   }
 })
 
