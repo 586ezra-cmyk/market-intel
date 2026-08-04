@@ -174,7 +174,7 @@ async function sendToTopic(text: string, topicId?: string): Promise<void> {
     text,
     parse_mode: 'Markdown',
   }
-  if (topicId) body.message_thread_id = topicId
+  if (topicId) body.message_thread_id = parseInt(topicId, 10)
 
   const res = await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
     method: 'POST',
