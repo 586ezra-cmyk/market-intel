@@ -18,6 +18,7 @@ import statsRouter from './routes/stats'
 import notesRouter from './routes/notes'
 import { initScheduler } from './services/scheduler'
 import { startOutcomeTracker } from './services/outcomeTracker'
+import { startBinanceWebSocket } from './services/binanceWebSocket'
 
 const app = express()
 
@@ -65,9 +66,9 @@ getDb()
 // Start scheduler (cron jobs)
 if (config.nodeEnv !== 'test') {
   initScheduler()
-  // Start outcome tracker (self-learning feedback loop)
   const db = getDb()
   startOutcomeTracker(db)
+  startBinanceWebSocket()
 }
 
 server.listen(config.port, () => {
