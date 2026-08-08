@@ -20,21 +20,25 @@ export interface WinRateSummary {
 }
 
 export function getFactorStats(db: Database.Database): FactorStat[] {
-  // Group by factors_json and compute win rates
+  // Include manual_required and be outcomes; use user_outcome as fallback
   const rows = db.prepare(`
-    SELECT factors_json, outcome, tp1_hit, tp2_hit, tp3_hit, sl_hit
+    SELECT factors_json, outcome, user_outcome, tp1_hit, tp2_hit, tp3_hit, sl_hit
     FROM alerts
-    WHERE outcome != 'pending' AND factors_json IS NOT NULL
+    WHERE factors_json IS NOT NULL
+      AND (
+        outcome IN ('tp1','tp2','tp3','sl','be')
+        OR user_outcome IN ('win','loss','be')
+      )
   `).all() as Array<{
     factors_json: string
     outcome: string
+    user_outcome: string | null
     tp1_hit: number
     tp2_hit: number
     tp3_hit: number
     sl_hit: number
   }>
 
-  // Group by factors combination
   const grouped: Record<string, { tp1: number; tp2: number; sl: number; count: number }> = {}
 
   for (const row of rows) {
@@ -44,17 +48,23 @@ export function getFactorStats(db: Database.Database): FactorStat[] {
     } catch {
       continue
     }
-    // Use sorted join as key for grouping
     const key = [...factors].sort().join('|')
     if (!grouped[key]) grouped[key] = { tp1: 0, tp2: 0, sl: 0, count: 0 }
     grouped[key].count++
-    if (row.tp1_hit) grouped[key].tp1++
-    if (row.tp2_hit) grouped[key].tp2++
-    if (row.sl_hit)  grouped[key].sl++
+
+    // user_outcome takes priority; fall back to automated tp1_hit/sl_hit
+    const uo = row.user_outcome
+    if (uo === 'win')       grouped[key].tp1++
+    else if (uo === 'loss') grouped[key].sl++
+    else {
+      if (row.tp1_hit) grouped[key].tp1++
+      if (row.tp2_hit) grouped[key].tp2++
+      if (row.sl_hit)  grouped[key].sl++
+    }
   }
 
   return Object.entries(grouped)
-    .filter(([, v]) => v.count >= 3)  // minimum 3 samples
+    .filter(([, v]) => v.count >= 3)
     .map(([key, v]) => ({
       factors: key.split('|'),
       tp1Rate: parseFloat(((v.tp1 / v.count) * 100).toFixed(1)),
@@ -71,12 +81,41 @@ export function getTopCombinations(db: Database.Database, limit = 10): FactorSta
 
 export function getWinRateSummary(db: Database.Database): WinRateSummary {
   const total = (db.prepare('SELECT COUNT(*) as c FROM alerts').get() as { c: number }).c
-  const outcomed = (db.prepare(`SELECT COUNT(*) as c FROM alerts WHERE outcome IS NOT NULL AND outcome NOT IN ('pending','expired')`).get() as { c: number }).c
-  const tp1 = (db.prepare(`SELECT COUNT(*) as c FROM alerts WHERE tp1_hit = 1 AND outcome IS NOT NULL AND outcome NOT IN ('pending','expired')`).get() as { c: number }).c
-  const tp2 = (db.prepare(`SELECT COUNT(*) as c FROM alerts WHERE tp2_hit = 1 AND outcome IS NOT NULL AND outcome NOT IN ('pending','expired')`).get() as { c: number }).c
-  const tp3 = (db.prepare(`SELECT COUNT(*) as c FROM alerts WHERE tp3_hit = 1 AND outcome IS NOT NULL AND outcome NOT IN ('pending','expired')`).get() as { c: number }).c
-  const sl  = (db.prepare(`SELECT COUNT(*) as c FROM alerts WHERE sl_hit = 1 AND outcome IS NOT NULL AND outcome NOT IN ('pending','expired')`).get() as { c: number }).c
-  const pending = (db.prepare(`SELECT COUNT(*) as c FROM alerts WHERE outcome = 'pending' OR outcome IS NULL`).get() as { c: number }).c
+
+  // Count alerts that have ANY form of outcome (automated OR user-set)
+  const outcomed = (db.prepare(`
+    SELECT COUNT(*) as c FROM alerts
+    WHERE outcome IN ('tp1','tp2','tp3','sl','be')
+       OR user_outcome IN ('win','loss','be')
+  `).get() as { c: number }).c
+
+  // TP1 hit: automated flag OR user said win
+  const tp1 = (db.prepare(`
+    SELECT COUNT(*) as c FROM alerts
+    WHERE tp1_hit = 1 OR user_outcome = 'win'
+  `).get() as { c: number }).c
+
+  // TP2 hit: automated flag only (user doesn't distinguish tp1 vs tp2)
+  const tp2 = (db.prepare(`
+    SELECT COUNT(*) as c FROM alerts WHERE tp2_hit = 1
+  `).get() as { c: number }).c
+
+  const tp3 = (db.prepare(`
+    SELECT COUNT(*) as c FROM alerts WHERE tp3_hit = 1
+  `).get() as { c: number }).c
+
+  // SL hit: automated flag OR user said loss
+  const sl = (db.prepare(`
+    SELECT COUNT(*) as c FROM alerts
+    WHERE sl_hit = 1 OR user_outcome = 'loss'
+  `).get() as { c: number }).c
+
+  const pending = (db.prepare(`
+    SELECT COUNT(*) as c FROM alerts
+    WHERE (outcome IS NULL OR outcome = 'pending')
+      AND (user_outcome IS NULL)
+  `).get() as { c: number }).c
+
   const expired = (db.prepare(`SELECT COUNT(*) as c FROM alerts WHERE outcome = 'expired'`).get() as { c: number }).c
 
   const base = outcomed || 1

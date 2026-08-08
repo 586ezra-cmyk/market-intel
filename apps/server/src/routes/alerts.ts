@@ -79,13 +79,27 @@ router.post('/:id/rate', (req: Request, res: Response) => {
     return
   }
 
+  const newOutcome = outcome !== undefined ? outcome : (existing.user_outcome ?? null)
+
+  // Sync user_outcome → tp1_hit / sl_hit / outcome so statistics work
+  let tp1Hit = 0, tp2Hit = 0, sl_hit = 0
+  let systemOutcome = 'pending'
+  if (newOutcome === 'win')  { tp1Hit = 1; systemOutcome = 'tp1' }
+  if (newOutcome === 'be')   { tp1Hit = 0; systemOutcome = 'be' }
+  if (newOutcome === 'loss') { sl_hit  = 1; systemOutcome = 'sl' }
+
   db.prepare(`UPDATE alerts SET
-    user_rating = ?, user_outcome = ?, user_notes = ?
+    user_rating = ?, user_outcome = ?, user_notes = ?,
+    tp1_hit = ?, sl_hit = ?,
+    outcome = CASE WHEN ? IS NOT NULL THEN ? ELSE outcome END
     WHERE id = ?`)
     .run(
       rating ?? existing.user_rating ?? null,
-      outcome !== undefined ? outcome : (existing.user_outcome ?? null),
+      newOutcome,
       notes !== undefined ? notes : (existing.user_notes ?? null),
+      newOutcome ? tp1Hit : existing.tp1_hit ?? 0,
+      newOutcome ? sl_hit  : existing.sl_hit  ?? 0,
+      newOutcome, systemOutcome,
       req.params.id,
     )
 
