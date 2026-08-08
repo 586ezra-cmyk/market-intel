@@ -73,30 +73,79 @@ function calcPremiumDiscount(
   return 'midpoint'
 }
 
-// ATR-based SL buffers per TF (approximate % of price)
-const SL_BUFFER_PCT: Record<string, number> = {
-  '1m': 0.002, '3m': 0.003, '5m': 0.004, '15m': 0.006,
-  '30m': 0.008, '1h': 0.01, '4h': 0.015, '6h': 0.018,
-  '12h': 0.02, '1D': 0.025, '1W': 0.04, '1M': 0.06,
+// Small buffer beyond confirmation zone (0.05% — just to avoid exact-level stops)
+const SL_TICK_PCT = 0.0005
+
+export interface SLResult {
+  price: number
+  reason: string   // shown in UI
+  zone: string     // which confirmation anchors the SL
 }
 
+/**
+ * SL is placed BEYOND the confirmation zone that validated the trade.
+ * If that zone is broken — the setup is invalidated.
+ * Priority: FVG > OrderBlock > LiquiditySweep > Structure (BOS/CHoCH)
+ */
 function calcSL(
-  timeframe: Timeframe,
   direction: Direction,
-  price: number,
+  entry: number,
+  input: ConfluenceInput,
   structure: ReturnType<typeof getLatestStructure>,
-): number | null {
-  if (!structure) return null
-  // Use TF-appropriate buffer — avoids SL being too tight
-  const bufferPct = SL_BUFFER_PCT[timeframe] ?? 0.01
-  const buffer = price * bufferPct
+): SLResult | null {
+  const tick = entry * SL_TICK_PCT
+  const isBull = direction === 'bullish'
 
-  // SL must be beyond the structure level (not just at it)
-  const rawSL = direction === 'bullish'
-    ? Math.min(structure.price, price) - buffer
-    : Math.max(structure.price, price) + buffer
+  // 1. FVG — SL below FVG bottom (bull) or above FVG top (bear)
+  if (input.hasFVG) {
+    const fvgs = getActiveFVGs(input.symbol, input.timeframe)
+    const fvg = fvgs.find(f => f.direction === direction) ?? fvgs[0]
+    if (fvg) {
+      const level = isBull ? fvg.bottomPrice - tick : fvg.topPrice + tick
+      return {
+        price: level,
+        reason: `מתחת לתחתית ה-FVG ($${fvg.bottomPrice.toLocaleString('en-US', { maximumFractionDigits: 2 })}) — אם ה-FVG נשבר הסטאפ בוטל`,
+        zone: `FVG ${isBull ? 'bullish' : 'bearish'} ב-$${fvg.bottomPrice.toLocaleString('en-US', { maximumFractionDigits: 2 })}–$${fvg.topPrice.toLocaleString('en-US', { maximumFractionDigits: 2 })}`,
+      }
+    }
+  }
 
-  return rawSL
+  // 2. OrderBlock — SL below OB zone (approximate: entry ± small OB body)
+  if (input.hasOrderBlock) {
+    // OB price not stored precisely — use entry ± 0.3% as OB zone boundary
+    const obEdge = isBull ? entry * 0.997 - tick : entry * 1.003 + tick
+    return {
+      price: obEdge,
+      reason: `מתחת ל-Order Block (${isBull ? 'תחתית' : 'עליון'} האזור ~$${obEdge.toLocaleString('en-US', { maximumFractionDigits: 2 })}) — פריצת ה-OB מבטלת את הכניסה`,
+      zone: `Order Block ב-${input.timeframe}`,
+    }
+  }
+
+  // 3. LiquiditySweep — SL below the swept level
+  if (input.hasLiquiditySweep) {
+    const liquidity = getActiveLiquidity(input.symbol, input.timeframe)
+    const swept = liquidity[0]
+    if (swept) {
+      const level = isBull ? swept.price - tick : swept.price + tick
+      return {
+        price: level,
+        reason: `מתחת לנמוך ה-Sweep ($${swept.price.toLocaleString('en-US', { maximumFractionDigits: 2 })}) — אם ה-sweep level נשבר שוב אין היפוך`,
+        zone: `Liquidity Sweep ב-$${swept.price.toLocaleString('en-US', { maximumFractionDigits: 2 })}`,
+      }
+    }
+  }
+
+  // 4. Structure (BOS / CHoCH) — SL below the structure level
+  if (structure) {
+    const level = isBull ? structure.price - tick : structure.price + tick
+    return {
+      price: level,
+      reason: `מתחת ל-${structure.type} ב-$${structure.price.toLocaleString('en-US', { maximumFractionDigits: 2 })} — פריצה חזרה מבטלת את שינוי המבנה`,
+      zone: `${structure.type} ב-$${structure.price.toLocaleString('en-US', { maximumFractionDigits: 2 })}`,
+    }
+  }
+
+  return null
 }
 
 function calcRR(entry: number, sl: number | null, tp: number | null): string {
@@ -224,7 +273,8 @@ export async function evaluateConfluence(input: ConfluenceInput): Promise<Alert 
 
   // TP targets from liquidity engine
   const targets = getNearestLiquidityTargets(input.symbol, input.timeframe, input.direction, input.currentPrice)
-  const sl = calcSL(input.timeframe, input.direction, input.currentPrice, structure)
+  const slResult = calcSL(input.direction, input.currentPrice, input, structure)
+  const sl = slResult?.price ?? null
 
   const context: AlertContext = {
     premiumDiscount,
@@ -243,10 +293,7 @@ export async function evaluateConfluence(input: ConfluenceInput): Promise<Alert 
   }
 
   const messageHe = buildHebrewMessage(input, score, factors, context)
-
-  const slReason = structure
-    ? `מתחת ל-${structure.type} ב-$${structure.price.toLocaleString()} (+ 0.1% buffer)`
-    : null
+  const slReason = slResult?.reason ?? null
 
   // ── Build per-factor specific details ──────────────────────────────────────
   const factorDetails: Record<string, any> = {}
