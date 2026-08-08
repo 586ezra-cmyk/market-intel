@@ -203,10 +203,9 @@ export async function evaluateConfluence(input: ConfluenceInput): Promise<Alert 
   if (input.hasOrderBlock) factors.push('OrderBlock')
   if (input.hasWyckoff) factors.push('Wyckoff')
 
-  // Gate: require ≥2 factors AND kill zone
-  // Use Pine Script's inKillZone flag when available (avoids server-time mismatch on daily/weekly candles)
+  // Gate: require ≥2 factors only — KZ gating is handled by Pine Script (requireKZ param)
   const inKZ = input.inKillZoneOverride !== undefined ? input.inKillZoneOverride : isInKillZone()
-  if (factors.length < 2 || !inKZ) return null
+  if (factors.length < 2) return null
 
   const score = calcScore(input)
   const premiumDiscount = calcPremiumDiscount(input.symbol, input.timeframe, input.currentPrice)
