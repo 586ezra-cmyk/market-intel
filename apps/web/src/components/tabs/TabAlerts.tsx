@@ -1,9 +1,26 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useMarketStore } from '@/store/marketStore'
 import { useApi, apiPost } from '@/hooks/useApi'
 import { formatTime, formatPrice, scoreBadgeClass } from '@/lib/utils'
+
+const TIME_PRESETS = [
+  { label: 'שעה אחרונה', ms: 60 * 60 * 1000 },
+  { label: '6 שעות', ms: 6 * 60 * 60 * 1000 },
+  { label: '24 שעות', ms: 24 * 60 * 60 * 1000 },
+  { label: '7 ימים', ms: 7 * 24 * 60 * 60 * 1000 },
+  { label: '30 ימים', ms: 30 * 24 * 60 * 60 * 1000 },
+]
+
+const SCORE_PRESETS = [
+  { label: 'הכל', min: 0, max: 99 },
+  { label: '2–3', min: 2, max: 3 },
+  { label: '3–5', min: 3, max: 5 },
+  { label: '5–7 ⭐', min: 5, max: 7 },
+  { label: '7–9 🔥', min: 7, max: 9 },
+  { label: '9+ 💎', min: 9, max: 99 },
+]
 
 const FACTOR_HE: Record<string, string> = {
   BOS: 'BOS — שבירת מבנה',
@@ -63,6 +80,35 @@ export default function TabAlerts() {
   const [ratingNote, setRatingNote] = useState<Record<string, string>>({})
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [now, setNow] = useState(Date.now())
+  const [filterTimeMs, setFilterTimeMs] = useState<number | null>(null)
+  const [filterScoreMin, setFilterScoreMin] = useState(0)
+  const [filterScoreMax, setFilterScoreMax] = useState(99)
+  const [showTimeMenu, setShowTimeMenu] = useState(false)
+  const [showScoreMenu, setShowScoreMenu] = useState(false)
+  const timeMenuRef = useRef<HTMLDivElement>(null)
+  const scoreMenuRef = useRef<HTMLDivElement>(null)
+
+  // Close dropdowns on outside click
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (timeMenuRef.current && !timeMenuRef.current.contains(e.target as Node)) setShowTimeMenu(false)
+      if (scoreMenuRef.current && !scoreMenuRef.current.contains(e.target as Node)) setShowScoreMenu(false)
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [])
+
+  function resetAll() {
+    setFilterSymbol('')
+    setFilterTF('')
+    setFilterDir('')
+    setShowArchived(false)
+    setSearchQuery('')
+    setFilterTimeMs(null)
+    setFilterScoreMin(0)
+    setFilterScoreMax(99)
+    setTimeout(refetch, 50)
+  }
 
   const params = new URLSearchParams()
   if (filterSymbol) params.set('symbol', filterSymbol)
@@ -93,6 +139,8 @@ export default function TabAlerts() {
     .filter(a => !filterTF     || a.timeframe === filterTF)
     .filter(a => !filterDir    || a.direction === filterDir)
     .filter(a => !searchQuery  || a.symbol?.toLowerCase().includes(searchQuery.toLowerCase()) || a.messageHe?.includes(searchQuery))
+    .filter(a => !filterTimeMs || (now - (a.triggeredAt ?? a.createdAt ?? 0)) <= filterTimeMs)
+    .filter(a => (a.score ?? 0) >= filterScoreMin && (a.score ?? 0) <= filterScoreMax)
     .slice(0, 100)
 
   async function submitRating(alertId: string) {
@@ -201,13 +249,79 @@ export default function TabAlerts() {
             </button>
           ))}
 
-          <div className="mr-auto flex gap-2">
+          <div className="mr-auto flex gap-2 items-center">
+            {/* ראשי — reset all */}
+            <button
+              onClick={resetAll}
+              className="px-3 py-1 rounded-full text-xs border border-blue-600 bg-blue-700 text-white hover:bg-blue-600 transition-all font-bold"
+            >
+              🏠 ראשי
+            </button>
+
+            {/* זמן filter */}
+            <div className="relative" ref={timeMenuRef}>
+              <button
+                onClick={() => { setShowTimeMenu(v => !v); setShowScoreMenu(false) }}
+                className={`px-3 py-1 rounded-full text-xs border transition-all font-bold ${
+                  filterTimeMs
+                    ? 'bg-cyan-700 border-cyan-500 text-white'
+                    : 'bg-gray-800 border-gray-600 text-gray-400 hover:bg-gray-700'
+                }`}
+              >
+                🕐 {filterTimeMs ? TIME_PRESETS.find(p => p.ms === filterTimeMs)?.label ?? 'זמן' : 'זמן'}
+              </button>
+              {showTimeMenu && (
+                <div className="absolute left-0 top-8 z-50 bg-gray-900 border border-gray-700 rounded-xl shadow-xl p-2 min-w-[140px] space-y-1">
+                  <button
+                    onClick={() => { setFilterTimeMs(null); setShowTimeMenu(false) }}
+                    className={`w-full text-right px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${!filterTimeMs ? 'bg-cyan-700 text-white' : 'text-gray-300 hover:bg-gray-800'}`}
+                  >הכל</button>
+                  {TIME_PRESETS.map(p => (
+                    <button
+                      key={p.ms}
+                      onClick={() => { setFilterTimeMs(p.ms); setShowTimeMenu(false) }}
+                      className={`w-full text-right px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${filterTimeMs === p.ms ? 'bg-cyan-700 text-white' : 'text-gray-300 hover:bg-gray-800'}`}
+                    >{p.label}</button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* דירוג filter */}
+            <div className="relative" ref={scoreMenuRef}>
+              <button
+                onClick={() => { setShowScoreMenu(v => !v); setShowTimeMenu(false) }}
+                className={`px-3 py-1 rounded-full text-xs border transition-all font-bold ${
+                  filterScoreMin > 0
+                    ? 'bg-yellow-700 border-yellow-500 text-white'
+                    : 'bg-gray-800 border-gray-600 text-gray-400 hover:bg-gray-700'
+                }`}
+              >
+                ⭐ {filterScoreMin > 0 ? `${filterScoreMin}+` : 'דירוג'}
+              </button>
+              {showScoreMenu && (
+                <div className="absolute left-0 top-8 z-50 bg-gray-900 border border-gray-700 rounded-xl shadow-xl p-2 min-w-[130px] space-y-1">
+                  {SCORE_PRESETS.map(p => (
+                    <button
+                      key={p.label}
+                      onClick={() => { setFilterScoreMin(p.min); setFilterScoreMax(p.max); setShowScoreMenu(false) }}
+                      className={`w-full text-right px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                        filterScoreMin === p.min && filterScoreMax === p.max
+                          ? 'bg-yellow-700 text-white'
+                          : 'text-gray-300 hover:bg-gray-800'
+                      }`}
+                    >{p.label}</button>
+                  ))}
+                </div>
+              )}
+            </div>
+
             <button
               onClick={refetch}
               disabled={loading}
               className="px-3 py-1 rounded-full text-xs border border-gray-600 bg-gray-800 text-gray-200 hover:bg-gray-700 transition-all font-bold disabled:opacity-50"
             >
-              {loading ? '⏳ טוען...' : '🔄 רענן'}
+              {loading ? '⏳' : '🔄 רענן'}
             </button>
             <button
               onClick={() => { setShowArchived(v => !v); setSearchQuery(''); setTimeout(refetch, 50) }}
@@ -217,7 +331,7 @@ export default function TabAlerts() {
                   : 'bg-gray-800 border-gray-600 text-gray-400 hover:bg-gray-700'
               }`}
             >
-              📦 {showArchived ? '📦 ארכיון פעיל' : 'ארכיון'}
+              📦 {showArchived ? 'ארכיון פעיל' : 'ארכיון'}
             </button>
           </div>
         </div>
