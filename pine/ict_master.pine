@@ -46,8 +46,8 @@ grpSMT      = "⚡ SMT / iSMT"
 asset2      = input.symbol("BINANCE:ETHUSDT", "Correlated asset", group=grpSMT)
 
 grpConf     = "🎯 Confluence"
-minFactors  = input.int(2, "Minimum factors for alert", minval=1, maxval=6, group=grpConf)
-requireKZ   = input.bool(true, "Require Kill Zone",           group=grpConf)
+minFactors  = input.int(3, "Minimum factors for alert", minval=1, maxval=6, group=grpConf)
+requireKZ   = input.bool(false, "Require Kill Zone",           group=grpConf)
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
 h      = hour(time, "UTC")
