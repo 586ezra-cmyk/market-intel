@@ -238,6 +238,103 @@ export async function evaluateConfluence(input: ConfluenceInput): Promise<Alert 
     ? `מתחת ל-${structure.type} ב-$${structure.price.toLocaleString()} (+ 0.1% buffer)`
     : null
 
+  // ── Build per-factor specific details ──────────────────────────────────────
+  const factorDetails: Record<string, any> = {}
+
+  if (input.hasBOSorCHoCH && structure) {
+    factorDetails[structure.type] = {
+      price: structure.price,
+      tf: input.timeframe,
+      direction: structure.direction,
+      desc: `${structure.type} ב-$${structure.price.toLocaleString('en-US', { maximumFractionDigits: 2 })} על ה-${input.timeframe}`,
+    }
+  }
+
+  if (input.hasFVG) {
+    const fvgs = getActiveFVGs(input.symbol, input.timeframe)
+    const matchFVG = fvgs.find(f => f.direction === input.direction) ?? fvgs[0]
+    if (matchFVG) {
+      factorDetails.FVG = {
+        top: matchFVG.topPrice,
+        bottom: matchFVG.bottomPrice,
+        tf: input.timeframe,
+        direction: matchFVG.direction,
+        desc: `FVG (${matchFVG.direction === 'bullish' ? 'בולשי' : 'בארשי'}) מ-$${matchFVG.bottomPrice.toLocaleString('en-US', { maximumFractionDigits: 2 })} עד $${matchFVG.topPrice.toLocaleString('en-US', { maximumFractionDigits: 2 })} ב-${input.timeframe}`,
+      }
+    }
+  }
+
+  if (input.hasSMT || input.hasISMT) {
+    const smtSignals = getRecentSMTSignals(input.timeframe, 3)
+    const latest = smtSignals[0]
+    if (latest) {
+      factorDetails.SMT = {
+        asset1: latest.asset1,
+        asset1Price: latest.asset1Price,
+        asset2: latest.asset2,
+        asset2Price: latest.asset2Price,
+        type: latest.type,
+        tf: input.timeframe,
+        desc: `SMT דיברגנס — ${latest.asset1} ב-$${latest.asset1Price.toLocaleString('en-US', { maximumFractionDigits: 2 })} מול ${latest.asset2} ב-$${latest.asset2Price.toLocaleString('en-US', { maximumFractionDigits: 2 })} על ה-${input.timeframe}`,
+      }
+    } else {
+      factorDetails.SMT = {
+        tf: input.timeframe,
+        desc: `SMT דיברגנס על ה-${input.timeframe} — נכס מתואם לא אישר את ה-${input.direction === 'bullish' ? 'high' : 'low'} החדש`,
+      }
+    }
+  }
+
+  if (input.hasLiquiditySweep) {
+    const liquidity = getActiveLiquidity(input.symbol, input.timeframe)
+    const swept = liquidity[0]
+    if (swept) {
+      factorDetails.LiquiditySweep = {
+        price: swept.price,
+        type: swept.type,
+        tf: input.timeframe,
+        desc: `שאיבת נזילות מ-$${swept.price.toLocaleString('en-US', { maximumFractionDigits: 2 })} (${swept.type}) ב-${input.timeframe} — Stop Losses נשאבו לפני ההיפוך`,
+      }
+    } else {
+      factorDetails.LiquiditySweep = {
+        tf: input.timeframe,
+        desc: `שאיבת נזילות על ה-${input.timeframe} — המחיר פרץ swing קודם וחזר`,
+      }
+    }
+  }
+
+  if (input.hasOrderBlock) {
+    factorDetails.OrderBlock = {
+      price: input.currentPrice,
+      tf: input.timeframe,
+      desc: `Order Block על ה-${input.timeframe} — אזור פקודות מוסדיות סמוך ל-$${input.currentPrice.toLocaleString('en-US', { maximumFractionDigits: 2 })}`,
+    }
+  }
+
+  if (input.hasWyckoff && input.wyckoffPhase) {
+    factorDetails.Wyckoff = {
+      phase: input.wyckoffPhase,
+      tf: input.timeframe,
+      desc: `Wyckoff — שלב ${input.wyckoffPhase} על ה-${input.timeframe} — כסף חכם ${input.direction === 'bullish' ? 'צובר' : 'מפיץ'}`,
+    }
+  }
+
+  if (input.hasDoubleTop) {
+    factorDetails.DoubleTop = {
+      price: input.currentPrice,
+      tf: input.timeframe,
+      desc: `דאבל טופ על ה-${input.timeframe} — כישלון שני לפרוץ resistance סמוך ל-$${input.currentPrice.toLocaleString('en-US', { maximumFractionDigits: 2 })}`,
+    }
+  }
+
+  if (input.hasDoubleBottom) {
+    factorDetails.DoubleBottom = {
+      price: input.currentPrice,
+      tf: input.timeframe,
+      desc: `דאבל בוטום על ה-${input.timeframe} — כישלון שני לשבור support סמוך ל-$${input.currentPrice.toLocaleString('en-US', { maximumFractionDigits: 2 })}`,
+    }
+  }
+
   const alert = await saveAlert({
     symbol: input.symbol,
     timeframe: input.timeframe,
@@ -264,6 +361,7 @@ export async function evaluateConfluence(input: ConfluenceInput): Promise<Alert 
     r2: context.r2 !== '—' ? context.r2 : null,
     r3: context.r3 !== '—' ? context.r3 : null,
     slReason,
+    factorDetails: Object.keys(factorDetails).length > 0 ? factorDetails : null,
   })
 
   return alert

@@ -30,6 +30,8 @@ export interface AlertPayload {
   r2?: string | null
   r3?: string | null
   slReason?: string | null
+  // Per-factor specific details (prices, levels, TFs)
+  factorDetails?: Record<string, any> | null
 }
 
 export async function saveAlert(payload: AlertPayload): Promise<Alert> {
@@ -42,8 +44,8 @@ export async function saveAlert(payload: AlertPayload): Promise<Alert> {
      recommendation, premium_discount, session, in_kill_zone,
      message_he, stop_loss, tp1, tp2, tp3, fvg_id, structure_id, created_at,
      entry_price, sl_price, tp1_price, tp2_price, tp3_price, factors_json, outcome,
-     tp1_label, tp2_label, tp3_label, r1, r2, r3, sl_reason)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+     tp1_label, tp2_label, tp3_label, r1, r2, r3, sl_reason, factor_details)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
     .run(
       id, payload.symbol, payload.timeframe, payload.triggeredAt,
       JSON.stringify(payload.factors), payload.score, payload.direction,
@@ -59,6 +61,7 @@ export async function saveAlert(payload: AlertPayload): Promise<Alert> {
       payload.tp1Label ?? null, payload.tp2Label ?? null, payload.tp3Label ?? null,
       payload.r1 ?? null, payload.r2 ?? null, payload.r3 ?? null,
       payload.slReason ?? null,
+      payload.factorDetails ? JSON.stringify(payload.factorDetails) : null,
     )
 
   const alert: Alert = {
@@ -268,5 +271,7 @@ function dbRowToAlert(r: any): Alert & { entryPrice?: number | null; tp1Label?: 
     r2: r.r2 ?? null,
     r3: r.r3 ?? null,
     slReason: r.sl_reason ?? null,
-  }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    factorDetails: r.factor_details ? (() => { try { return JSON.parse(r.factor_details) as Record<string, any> } catch { return null } })() : null,
+  } as any
 }

@@ -45,6 +45,7 @@ router.get('/', (req: Request, res: Response) => {
     r2: r.r2 ?? null,
     r3: r.r3 ?? null,
     slReason: r.sl_reason ?? null,
+    factorDetails: r.factor_details ? (() => { try { return JSON.parse(r.factor_details) } catch { return null } })() : null,
     userRating: r.user_rating ?? null,
     userOutcome: r.user_outcome ?? null,
     userNotes: r.user_notes ?? null,

@@ -610,14 +610,29 @@ export default function TabAlerts() {
                         )}
                       </div>
                       {/* Factor detail panel */}
-                      {expandedFactor && expandedFactor !== 'KZ' && FACTOR_DETAIL[expandedFactor] && (
-                        <div className="mt-3 bg-slate-800/80 border border-slate-600/40 rounded-xl p-4 space-y-2 text-right">
-                          <div className="font-bold text-white text-sm">{FACTOR_DETAIL[expandedFactor].title}</div>
-                          <div className="text-xs text-slate-300"><span className="text-slate-500">📌 מה זה: </span>{FACTOR_DETAIL[expandedFactor].what}</div>
-                          <div className="text-xs text-slate-300"><span className="text-slate-500">💡 למה חשוב: </span>{FACTOR_DETAIL[expandedFactor].why}</div>
-                          <div className="text-xs text-slate-300"><span className="text-slate-500">🎯 אות כניסה: </span>{FACTOR_DETAIL[expandedFactor].signal}</div>
-                        </div>
-                      )}
+                      {expandedFactor && expandedFactor !== 'KZ' && (() => {
+                        const specific = alert.factorDetails?.[expandedFactor]
+                        const generic = FACTOR_DETAIL[expandedFactor]
+                        return (
+                          <div className="mt-3 bg-slate-800/80 border border-slate-600/40 rounded-xl p-4 space-y-2 text-right">
+                            <div className="font-bold text-white text-sm">{generic?.title ?? expandedFactor}</div>
+                            {specific?.desc && (
+                              <div className="text-sm text-yellow-300 font-medium bg-yellow-900/20 border border-yellow-700/30 rounded-lg px-3 py-2">
+                                📍 {specific.desc}
+                              </div>
+                            )}
+                            {!specific?.desc && generic && (
+                              <div className="text-xs text-slate-300"><span className="text-slate-500">📌 מה זה: </span>{generic.what}</div>
+                            )}
+                            {generic && (
+                              <>
+                                <div className="text-xs text-slate-400"><span className="text-slate-500">💡 למה חשוב: </span>{generic.why}</div>
+                                <div className="text-xs text-slate-400"><span className="text-slate-500">🎯 אות כניסה: </span>{generic.signal}</div>
+                              </>
+                            )}
+                          </div>
+                        )
+                      })()}
                       {expandedFactor === 'KZ' && (
                         <div className="mt-3 bg-purple-900/30 border border-purple-700/30 rounded-xl p-4 space-y-2 text-right">
                           <div className="font-bold text-purple-300 text-sm">Kill Zone — אזור זמן מועדף</div>
@@ -646,9 +661,9 @@ export default function TabAlerts() {
                         {expandedFactor && upcoming.includes(expandedFactor) && FACTOR_DETAIL[expandedFactor] && (
                           <div className="mt-3 bg-slate-800/60 border border-slate-600/30 rounded-xl p-4 space-y-2 text-right">
                             <div className="font-bold text-slate-200 text-sm">{FACTOR_DETAIL[expandedFactor].title} — <span className="text-slate-400 font-normal">עדיין לא אושר</span></div>
-                            <div className="text-xs text-slate-300"><span className="text-slate-500">📌 מה לחפש: </span>{FACTOR_DETAIL[expandedFactor].what}</div>
-                            <div className="text-xs text-slate-300"><span className="text-slate-500">💡 אם יופיע: </span>{FACTOR_DETAIL[expandedFactor].why}</div>
-                            <div className="text-xs text-slate-300"><span className="text-slate-500">🎯 אות כניסה: </span>{FACTOR_DETAIL[expandedFactor].signal}</div>
+                            <div className="text-xs text-slate-400"><span className="text-slate-500">📌 מה לחפש: </span>{FACTOR_DETAIL[expandedFactor].what}</div>
+                            <div className="text-xs text-slate-400"><span className="text-slate-500">💡 אם יופיע: </span>{FACTOR_DETAIL[expandedFactor].why}</div>
+                            <div className="text-xs text-slate-400"><span className="text-slate-500">🎯 אות כניסה: </span>{FACTOR_DETAIL[expandedFactor].signal}</div>
                           </div>
                         )}
                       </div>
