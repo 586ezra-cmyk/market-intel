@@ -22,6 +22,14 @@ export interface AlertPayload {
   tp3: number | null
   fvgId: string | null
   structureId: string | null
+  // Labels and R:R ratios for UI display
+  tp1Label?: string | null
+  tp2Label?: string | null
+  tp3Label?: string | null
+  r1?: string | null
+  r2?: string | null
+  r3?: string | null
+  slReason?: string | null
 }
 
 export async function saveAlert(payload: AlertPayload): Promise<Alert> {
@@ -33,8 +41,9 @@ export async function saveAlert(payload: AlertPayload): Promise<Alert> {
     (id, symbol, timeframe, triggered_at, factors, score, direction,
      recommendation, premium_discount, session, in_kill_zone,
      message_he, stop_loss, tp1, tp2, tp3, fvg_id, structure_id, created_at,
-     entry_price, sl_price, tp1_price, tp2_price, tp3_price, factors_json, outcome)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+     entry_price, sl_price, tp1_price, tp2_price, tp3_price, factors_json, outcome,
+     tp1_label, tp2_label, tp3_label, r1, r2, r3, sl_reason)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
     .run(
       id, payload.symbol, payload.timeframe, payload.triggeredAt,
       JSON.stringify(payload.factors), payload.score, payload.direction,
@@ -47,6 +56,9 @@ export async function saveAlert(payload: AlertPayload): Promise<Alert> {
       payload.tp1 ?? null, payload.tp2 ?? null, payload.tp3 ?? null,
       JSON.stringify(payload.factors),
       'pending',
+      payload.tp1Label ?? null, payload.tp2Label ?? null, payload.tp3Label ?? null,
+      payload.r1 ?? null, payload.r2 ?? null, payload.r3 ?? null,
+      payload.slReason ?? null,
     )
 
   const alert: Alert = {
@@ -222,7 +234,7 @@ export async function sendTelegram(
 // Export topic constants so scheduler can use them
 export { TOPIC_BRIEFING, TOPIC_ECONOMIC }
 
-function dbRowToAlert(r: any): Alert {
+function dbRowToAlert(r: any): Alert & { entryPrice?: number | null; tp1Label?: string | null; tp2Label?: string | null; tp3Label?: string | null; r1?: string | null; r2?: string | null; r3?: string | null; slReason?: string | null } {
   return {
     id: r.id,
     symbol: r.symbol,
@@ -243,6 +255,18 @@ function dbRowToAlert(r: any): Alert {
     sent: r.sent === 1,
     fvgId: r.fvg_id ?? null,
     structureId: r.structure_id ?? null,
+    userRating: r.user_rating ?? null,
+    userOutcome: r.user_outcome ?? null,
+    userNotes: r.user_notes ?? null,
     createdAt: r.created_at,
+    // Extended display fields
+    entryPrice: r.entry_price ?? null,
+    tp1Label: r.tp1_label ?? null,
+    tp2Label: r.tp2_label ?? null,
+    tp3Label: r.tp3_label ?? null,
+    r1: r.r1 ?? null,
+    r2: r.r2 ?? null,
+    r3: r.r3 ?? null,
+    slReason: r.sl_reason ?? null,
   }
 }

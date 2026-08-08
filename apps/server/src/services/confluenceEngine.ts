@@ -235,6 +235,10 @@ export async function evaluateConfluence(input: ConfluenceInput): Promise<Alert 
 
   const messageHe = buildHebrewMessage(input, score, factors, context)
 
+  const slReason = structure
+    ? `מתחת ל-${structure.type} ב-$${structure.price.toLocaleString()} (+ 0.1% buffer)`
+    : null
+
   const alert = await saveAlert({
     symbol: input.symbol,
     timeframe: input.timeframe,
@@ -254,6 +258,13 @@ export async function evaluateConfluence(input: ConfluenceInput): Promise<Alert 
     tp3: context.tp3,
     fvgId: null,
     structureId: structure?.id ?? null,
+    tp1Label: context.tp1Label || null,
+    tp2Label: context.tp2Label || null,
+    tp3Label: context.tp3Label || null,
+    r1: context.r1 !== '—' ? context.r1 : null,
+    r2: context.r2 !== '—' ? context.r2 : null,
+    r3: context.r3 !== '—' ? context.r3 : null,
+    slReason,
   })
 
   return alert

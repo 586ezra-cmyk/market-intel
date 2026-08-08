@@ -33,10 +33,21 @@ router.get('/', (req: Request, res: Response) => {
     session: r.session,
     inKillZone: r.in_kill_zone === 1,
     messageHe: r.message_he,
-    stopLoss: r.stop_loss,
-    tp1: r.tp1,
-    tp2: r.tp2,
-    tp3: r.tp3,
+    entryPrice: r.entry_price ?? null,
+    stopLoss: r.stop_loss ?? null,
+    tp1: r.tp1 ?? null,
+    tp2: r.tp2 ?? null,
+    tp3: r.tp3 ?? null,
+    tp1Label: r.tp1_label ?? null,
+    tp2Label: r.tp2_label ?? null,
+    tp3Label: r.tp3_label ?? null,
+    r1: r.r1 ?? null,
+    r2: r.r2 ?? null,
+    r3: r.r3 ?? null,
+    slReason: r.sl_reason ?? null,
+    userRating: r.user_rating ?? null,
+    userOutcome: r.user_outcome ?? null,
+    userNotes: r.user_notes ?? null,
   }))
 
   res.json({ alerts, total: alerts.length })
@@ -52,24 +63,31 @@ router.get('/:id', (req: Request, res: Response) => {
   res.json(alert)
 })
 
-// POST /api/alerts/:id/rate — user feedback
+// POST /api/alerts/:id/rate — user feedback (rating, outcome, notes — all optional)
 router.post('/:id/rate', (req: Request, res: Response) => {
   const db = getDb()
   const { rating, outcome, notes } = req.body
 
-  if (!rating || rating < 1 || rating > 5) {
+  if (rating !== undefined && (rating < 1 || rating > 5)) {
     res.status(400).json({ error: 'Rating must be 1-5' })
     return
   }
 
-  const existing = db.prepare(`SELECT id FROM alerts WHERE id = ?`).get(req.params.id)
+  const existing = db.prepare(`SELECT id, user_rating, user_outcome, user_notes FROM alerts WHERE id = ?`).get(req.params.id) as any
   if (!existing) {
     res.status(404).json({ error: 'Alert not found' })
     return
   }
 
-  db.prepare(`UPDATE alerts SET user_rating = ?, user_outcome = ?, user_notes = ? WHERE id = ?`)
-    .run(rating, outcome ?? null, notes ?? null, req.params.id)
+  db.prepare(`UPDATE alerts SET
+    user_rating = ?, user_outcome = ?, user_notes = ?
+    WHERE id = ?`)
+    .run(
+      rating ?? existing.user_rating ?? null,
+      outcome !== undefined ? outcome : (existing.user_outcome ?? null),
+      notes !== undefined ? notes : (existing.user_notes ?? null),
+      req.params.id,
+    )
 
   res.json({ ok: true })
 })

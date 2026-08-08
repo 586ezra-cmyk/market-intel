@@ -34,6 +34,63 @@ const FACTOR_HE: Record<string, string> = {
   OrderBlock: 'Order Block',
 }
 
+const FACTOR_DETAIL: Record<string, { title: string; what: string; why: string; signal: string }> = {
+  BOS: {
+    title: 'Break of Structure',
+    what: 'המחיר שבר high/low משמעותי קודם — זה אומר שהמבנה השתנה',
+    why: 'BOS מאשר שינוי כיוון — שחקנים גדולים הזזו את המחיר מעבר לרמה מרכזית',
+    signal: 'כניסה בכיוון השבירה בריטרסט הראשון',
+  },
+  CHoCH: {
+    title: 'Change of Character',
+    what: 'שינוי בדפוס ה-highs/lows — הסימן הראשון להיפוך מגמה',
+    why: 'CHoCH מקדים BOS — מציין נקודת פיבוט לפני האישור הסופי',
+    signal: 'כניסה מוקדמת עם SL הדוק מתחת/מעל ל-CHoCH',
+  },
+  LiquiditySweep: {
+    title: 'Liquidity Sweep — שאיבת נזילות',
+    what: 'המחיר עלה/ירד מעבר ל-swing קודם כדי לטרוף Stop Losses ואז חזר',
+    why: 'שחקנים גדולים זקוקים לנזילות כדי למלא פוזיציות — הם "שואבים" את ה-stops לפני ההיפוך',
+    signal: 'כניסה בכיוון ההיפוך מיד אחרי ה-sweep',
+  },
+  FVG: {
+    title: 'Fair Value Gap — פער מחיר',
+    what: 'שלושה קנדלים שיצרו gap — אזור שהמחיר לא נסחר בו ועלול לחזור למלא',
+    why: 'FVG מייצג חוסר איזון — המוסדיים ממלאים פוזיציות בתוכו',
+    signal: 'כניסה כשהמחיר חוזר ל-50% של ה-FVG',
+  },
+  SMT: {
+    title: 'SMT Divergence',
+    what: 'נכס מתואם (ETH/BTC) עשה high/low חדש אבל הנכס הנוכחי לא — דיברגנס',
+    why: 'חוסר אישור בין נכסים מתואמים מסמן חולשה/כוח חבוי',
+    signal: 'כניסה בכיוון הנכס שנכשל לאשר',
+  },
+  DoubleTop: {
+    title: 'Double Top',
+    what: 'שני peaks באותה רמה — כשל לשבור resistance פעמיים',
+    why: 'מוכרים הגנו על הרמה פעמיים — עצירת המגמה הבולשית',
+    signal: 'שורט מתחת לצוואר עם יעד לאורך גובה ה-pattern',
+  },
+  DoubleBottom: {
+    title: 'Double Bottom',
+    what: 'שתי נקודות תחתית באותה רמה — כשל לשבור support פעמיים',
+    why: 'קונים הגנו על הרמה פעמיים — עצירת המגמה הדובית',
+    signal: 'לונג מעל הצוואר עם יעד לאורך גובה ה-pattern',
+  },
+  Wyckoff: {
+    title: 'Wyckoff Phase',
+    what: 'דפוס מצטבר/מפיץ — שחקנים גדולים קונים/מוכרים בנפח גבוה',
+    why: 'Wyckoff מראה איפה הכסף החכם נמצא ולאן הוא רוצה ללכת',
+    signal: 'כניסה בסוף שלב ה-Spring/UTAD בכיוון ה-markup/markdown',
+  },
+  OrderBlock: {
+    title: 'Order Block',
+    what: 'אזור שבו מוסדיים ביצעו פקודות גדולות — גורם למהלך חד',
+    why: 'המוסדיים חוזרים ל-OB שלהם כדי "לטעון" פוזיציות נוספות',
+    signal: 'כניסה בגוף האחרון של ה-OB עם SL מחוץ לאזור',
+  },
+}
+
 const FACTOR_HE_SHORT: Record<string, string> = {
   BOS: 'BOS', CHoCH: 'CHoCH', LiquiditySweep: 'שאיבת נזילות',
   FVG: 'FVG', SMT: 'SMT', DoubleTop: 'דאבל טופ',
@@ -78,6 +135,7 @@ export default function TabAlerts() {
   const [searchQuery, setSearchQuery] = useState('')
   const [rating, setRating] = useState<Record<string, number>>({})
   const [ratingNote, setRatingNote] = useState<Record<string, string>>({})
+  const [expandedFactor, setExpandedFactor] = useState<string | null>(null)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [now, setNow] = useState(Date.now())
   const [filterTimeMs, setFilterTimeMs] = useState<number | null>(null)
@@ -143,11 +201,12 @@ export default function TabAlerts() {
     .filter(a => (a.score ?? 0) >= filterScoreMin && (a.score ?? 0) <= filterScoreMax)
     .slice(0, 100)
 
-  async function submitRating(alertId: string) {
+  async function submitRating(alertId: string, extra?: { outcome?: string }) {
     try {
       await apiPost(`/api/alerts/${alertId}/rate`, {
-        rating: rating[alertId],
-        notes: ratingNote[alertId] ?? '',
+        ...(rating[alertId] ? { rating: rating[alertId] } : {}),
+        ...(ratingNote[alertId] !== undefined ? { notes: ratingNote[alertId] } : {}),
+        ...extra,
       })
       refetch()
     } catch {}
@@ -484,95 +543,168 @@ export default function TabAlerts() {
                       </div>
                     </div>
 
-                    {/* ── Row 2: SL / TP ── */}
-                    <div className={`grid gap-3 ${[alert.tp1, alert.tp2, alert.tp3].filter(Boolean).length === 0 ? 'grid-cols-1' : 'grid-cols-4'}`}>
-                      {alert.stopLoss && (
-                        <div className="bg-red-950/40 border border-red-800/30 rounded-xl p-3 text-center">
-                          <div className="text-sm text-red-400 font-semibold mb-1">🛑 Stop Loss</div>
-                          <div className="text-xl font-mono font-bold text-red-300">${formatPrice(alert.stopLoss)}</div>
-                          <div className="text-xs text-slate-500 mt-1">מתחת לסווינג</div>
+                    {/* ── Row 2: entry / SL / TP ── */}
+                    {(alert.entryPrice || alert.stopLoss || alert.tp1 || alert.tp2 || alert.tp3) && (
+                      <div className="space-y-2">
+                        <div className="text-xs text-slate-400 font-semibold">💰 יעדים</div>
+                        <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${[alert.stopLoss, alert.tp1, alert.tp2, alert.tp3].filter(Boolean).length + (alert.entryPrice ? 1 : 0)}, 1fr)` }}>
+                          {alert.entryPrice && (
+                            <div className="bg-blue-950/40 border border-blue-800/30 rounded-xl p-3 text-center">
+                              <div className="text-sm text-blue-400 font-semibold mb-1">📍 כניסה</div>
+                              <div className="text-xl font-mono font-bold text-blue-300">${formatPrice(alert.entryPrice)}</div>
+                              <div className="text-xs text-slate-500 mt-1">מחיר בזמן ההתראה</div>
+                            </div>
+                          )}
+                          {alert.stopLoss && (
+                            <div className="bg-red-950/40 border border-red-800/30 rounded-xl p-3 text-center">
+                              <div className="text-sm text-red-400 font-semibold mb-1">🛑 Stop Loss</div>
+                              <div className="text-xl font-mono font-bold text-red-300">${formatPrice(alert.stopLoss)}</div>
+                              <div className="text-xs text-slate-500 mt-1 leading-tight">{alert.slReason ?? 'מתחת לסווינג אחרון'}</div>
+                            </div>
+                          )}
+                          {alert.tp1 && (
+                            <div className="bg-green-950/40 border border-green-800/30 rounded-xl p-3 text-center">
+                              <div className="text-sm text-green-400 font-semibold mb-1">🎯 TP1{alert.r1 ? ` · ${alert.r1}` : ''}</div>
+                              <div className="text-xl font-mono font-bold text-green-300">${formatPrice(alert.tp1)}</div>
+                              <div className="text-xs text-slate-500 mt-1 leading-tight">{alert.tp1Label ?? 'נזילות פנימית'}</div>
+                            </div>
+                          )}
+                          {alert.tp2 && (
+                            <div className="bg-green-950/40 border border-green-800/30 rounded-xl p-3 text-center">
+                              <div className="text-sm text-green-400 font-semibold mb-1">🎯 TP2{alert.r2 ? ` · ${alert.r2}` : ''}</div>
+                              <div className="text-xl font-mono font-bold text-green-300">${formatPrice(alert.tp2)}</div>
+                              <div className="text-xs text-slate-500 mt-1 leading-tight">{alert.tp2Label ?? 'נזילות חיצונית'}</div>
+                            </div>
+                          )}
+                          {alert.tp3 && (
+                            <div className="bg-green-950/40 border border-green-800/30 rounded-xl p-3 text-center">
+                              <div className="text-sm text-green-400 font-semibold mb-1">🎯 TP3{alert.r3 ? ` · ${alert.r3}` : ''}</div>
+                              <div className="text-xl font-mono font-bold text-green-300">${formatPrice(alert.tp3)}</div>
+                              <div className="text-xs text-slate-500 mt-1 leading-tight">{alert.tp3Label ?? 'נזילות רחוקה'}</div>
+                            </div>
+                          )}
                         </div>
-                      )}
-                      {alert.tp1 && (
-                        <div className="bg-green-950/40 border border-green-800/30 rounded-xl p-3 text-center">
-                          <div className="text-sm text-green-400 font-semibold mb-1">🎯 TP1</div>
-                          <div className="text-xl font-mono font-bold text-green-300">${formatPrice(alert.tp1)}</div>
-                          <div className="text-xs text-slate-500 mt-1">נזילות פנימית</div>
-                        </div>
-                      )}
-                      {alert.tp2 && (
-                        <div className="bg-green-950/40 border border-green-800/30 rounded-xl p-3 text-center">
-                          <div className="text-sm text-green-400 font-semibold mb-1">🎯 TP2</div>
-                          <div className="text-xl font-mono font-bold text-green-300">${formatPrice(alert.tp2)}</div>
-                          <div className="text-xs text-slate-500 mt-1">נזילות חיצונית</div>
-                        </div>
-                      )}
-                      {alert.tp3 && (
-                        <div className="bg-green-950/40 border border-green-800/30 rounded-xl p-3 text-center">
-                          <div className="text-sm text-green-400 font-semibold mb-1">🎯 TP3</div>
-                          <div className="text-xl font-mono font-bold text-green-300">${formatPrice(alert.tp3)}</div>
-                          <div className="text-xs text-slate-500 mt-1">נזילות רחוקה</div>
-                        </div>
-                      )}
-                    </div>
+                      </div>
+                    )}
 
                     {/* ── Row 3: present factors ── */}
                     <div>
-                      <div className="text-xs text-slate-400 font-semibold mb-2">✅ אישורים קיימים</div>
+                      <div className="text-xs text-slate-400 font-semibold mb-2">✅ אישורים קיימים <span className="text-slate-600 font-normal">(לחץ לפרטים)</span></div>
                       <div className="flex flex-wrap gap-2">
                         {presentFactors.map((f: string) => (
-                          <span key={f} className={`px-3 py-1.5 text-sm rounded-lg font-medium ${FACTOR_COLOR[f] ?? 'bg-slate-800 text-slate-300'}`}>
+                          <button
+                            key={f}
+                            onClick={() => setExpandedFactor(expandedFactor === f ? null : f)}
+                            className={`px-3 py-1.5 text-sm rounded-lg font-medium transition-all ${FACTOR_COLOR[f] ?? 'bg-slate-800 text-slate-300'} ${expandedFactor === f ? 'ring-2 ring-white/30' : 'hover:brightness-125'}`}
+                          >
                             {FACTOR_HE_SHORT[f] ?? f}
-                          </span>
+                          </button>
                         ))}
                         {alert.inKillZone && (
-                          <span className="px-3 py-1.5 bg-purple-900/40 text-purple-300 border border-purple-700/40 text-sm rounded-lg font-medium">
+                          <button
+                            onClick={() => setExpandedFactor(expandedFactor === 'KZ' ? null : 'KZ')}
+                            className={`px-3 py-1.5 bg-purple-900/40 text-purple-300 border border-purple-700/40 text-sm rounded-lg font-medium hover:brightness-125 transition-all ${expandedFactor === 'KZ' ? 'ring-2 ring-white/30' : ''}`}
+                          >
                             🕐 Kill Zone
-                          </span>
+                          </button>
                         )}
                       </div>
+                      {/* Factor detail panel */}
+                      {expandedFactor && expandedFactor !== 'KZ' && FACTOR_DETAIL[expandedFactor] && (
+                        <div className="mt-3 bg-slate-800/80 border border-slate-600/40 rounded-xl p-4 space-y-2 text-right">
+                          <div className="font-bold text-white text-sm">{FACTOR_DETAIL[expandedFactor].title}</div>
+                          <div className="text-xs text-slate-300"><span className="text-slate-500">📌 מה זה: </span>{FACTOR_DETAIL[expandedFactor].what}</div>
+                          <div className="text-xs text-slate-300"><span className="text-slate-500">💡 למה חשוב: </span>{FACTOR_DETAIL[expandedFactor].why}</div>
+                          <div className="text-xs text-slate-300"><span className="text-slate-500">🎯 אות כניסה: </span>{FACTOR_DETAIL[expandedFactor].signal}</div>
+                        </div>
+                      )}
+                      {expandedFactor === 'KZ' && (
+                        <div className="mt-3 bg-purple-900/30 border border-purple-700/30 rounded-xl p-4 space-y-2 text-right">
+                          <div className="font-bold text-purple-300 text-sm">Kill Zone — אזור זמן מועדף</div>
+                          <div className="text-xs text-slate-300"><span className="text-slate-500">📌 מה זה: </span>שעות בהן נפח המסחר גבוה — לונדון (07-11 UTC) ו-NY (13-16 UTC)</div>
+                          <div className="text-xs text-slate-300"><span className="text-slate-500">💡 למה חשוב: </span>המוסדיים פעילים בשעות אלו — סיגנלים בתוכן אמינים יותר</div>
+                          <div className="text-xs text-slate-300"><span className="text-slate-500">🎯 אות כניסה: </span>כניסה בתוך ה-KZ מגדילה את הסתברות ההצלחה</div>
+                        </div>
+                      )}
                     </div>
 
                     {/* ── Row 4: upcoming confirmations ── */}
                     {upcoming.length > 0 && (
                       <div>
-                        <div className="text-xs text-slate-400 font-semibold mb-2">⏳ אישורים שיחזקו את הסיגנל</div>
+                        <div className="text-xs text-slate-400 font-semibold mb-2">⏳ אישורים שיחזקו את הסיגנל <span className="text-slate-600 font-normal">(לחץ לפרטים)</span></div>
                         <div className="flex flex-wrap gap-2">
                           {upcoming.map(f => (
-                            <span key={f} className="px-3 py-1.5 bg-slate-800/40 border border-slate-600/30 text-slate-400 text-sm rounded-lg">
+                            <button
+                              key={f}
+                              onClick={() => setExpandedFactor(expandedFactor === f ? null : f)}
+                              className={`px-3 py-1.5 bg-slate-800/40 border border-slate-600/30 text-slate-400 text-sm rounded-lg hover:bg-slate-700/50 transition-all ${expandedFactor === f ? 'ring-2 ring-white/20' : ''}`}
+                            >
                               {FACTOR_HE_SHORT[f]}
-                            </span>
+                            </button>
                           ))}
                         </div>
+                        {expandedFactor && upcoming.includes(expandedFactor) && FACTOR_DETAIL[expandedFactor] && (
+                          <div className="mt-3 bg-slate-800/60 border border-slate-600/30 rounded-xl p-4 space-y-2 text-right">
+                            <div className="font-bold text-slate-200 text-sm">{FACTOR_DETAIL[expandedFactor].title} — <span className="text-slate-400 font-normal">עדיין לא אושר</span></div>
+                            <div className="text-xs text-slate-300"><span className="text-slate-500">📌 מה לחפש: </span>{FACTOR_DETAIL[expandedFactor].what}</div>
+                            <div className="text-xs text-slate-300"><span className="text-slate-500">💡 אם יופיע: </span>{FACTOR_DETAIL[expandedFactor].why}</div>
+                            <div className="text-xs text-slate-300"><span className="text-slate-500">🎯 אות כניסה: </span>{FACTOR_DETAIL[expandedFactor].signal}</div>
+                          </div>
+                        )}
                       </div>
                     )}
 
-                    {/* ── Row 5: rating ── */}
-                    <div className="flex items-center gap-3 pt-1 border-t border-white/5">
-                      <span className="text-sm text-slate-400 shrink-0">דרג:</span>
-                      <div className="flex gap-1">
-                        {[1, 2, 3, 4, 5].map(n => (
-                          <button
-                            key={n}
-                            onClick={() => setRating(r => ({ ...r, [alert.id]: n }))}
-                            className={`text-2xl transition-colors leading-none ${
-                              (rating[alert.id] ?? alert.userRating ?? 0) >= n
-                                ? 'text-yellow-400' : 'text-slate-700'
-                            }`}
-                          >★</button>
-                        ))}
+                    {/* ── Row 5: outcome + rating + notes ── */}
+                    <div className="space-y-3 pt-1 border-t border-white/5">
+                      {/* Outcome buttons */}
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-slate-400 shrink-0">תוצאה:</span>
+                        {[
+                          { v: 'win',  label: '✅ נכון',       cls: 'border-green-600 bg-green-900/40 text-green-300', activeCls: 'bg-green-600 text-white' },
+                          { v: 'loss', label: '❌ לא נכון',    cls: 'border-red-700 bg-red-900/40 text-red-300',     activeCls: 'bg-red-600 text-white' },
+                          { v: 'be',   label: '🟡 Break Even', cls: 'border-yellow-700 bg-yellow-900/30 text-yellow-300', activeCls: 'bg-yellow-600 text-white' },
+                        ].map(({ v, label, cls, activeCls }) => {
+                          const current = alert.userOutcome
+                          const isActive = current === v
+                          return (
+                            <button
+                              key={v}
+                              onClick={() => submitRating(alert.id, { outcome: isActive ? undefined : v })}
+                              className={`px-3 py-1 rounded-lg text-xs font-bold border transition-all ${isActive ? activeCls + ' border-transparent' : cls + ' hover:brightness-125'}`}
+                            >{label}</button>
+                          )
+                        })}
                       </div>
-                      <input
-                        className="input flex-1 text-sm py-1.5"
-                        placeholder="הערה אישית..."
-                        value={ratingNote[alert.id] ?? alert.userNotes ?? ''}
-                        onChange={e => setRatingNote(r => ({ ...r, [alert.id]: e.target.value }))}
-                      />
-                      {rating[alert.id] && (
-                        <button onClick={() => submitRating(alert.id)} className="btn-primary text-sm px-4 py-1.5">
-                          שמור
-                        </button>
-                      )}
+                      {/* Stars + note + save */}
+                      <div className="flex items-center gap-3">
+                        <span className="text-xs text-slate-400 shrink-0">דרג:</span>
+                        <div className="flex gap-1">
+                          {[1, 2, 3, 4, 5].map(n => (
+                            <button
+                              key={n}
+                              onClick={() => setRating(r => ({ ...r, [alert.id]: n }))}
+                              className={`text-xl transition-colors leading-none ${
+                                (rating[alert.id] ?? alert.userRating ?? 0) >= n
+                                  ? 'text-yellow-400' : 'text-slate-700'
+                              }`}
+                            >★</button>
+                          ))}
+                        </div>
+                        <input
+                          className="input flex-1 text-sm py-1.5"
+                          placeholder="הערה אישית — מה ראית? מה פספסת?"
+                          value={ratingNote[alert.id] ?? alert.userNotes ?? ''}
+                          onChange={e => setRatingNote(r => ({ ...r, [alert.id]: e.target.value }))}
+                          onBlur={() => {
+                            if (ratingNote[alert.id] !== undefined) submitRating(alert.id)
+                          }}
+                        />
+                        {(rating[alert.id] || ratingNote[alert.id] !== undefined) && (
+                          <button onClick={() => submitRating(alert.id)} className="btn-primary text-sm px-4 py-1.5 shrink-0">
+                            שמור
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 )
