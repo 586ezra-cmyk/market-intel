@@ -20,14 +20,14 @@ export interface WinRateSummary {
 }
 
 export function getFactorStats(db: Database.Database): FactorStat[] {
-  // Include manual_required and be outcomes; use user_outcome as fallback
+  // Only count alerts that have user_outcome (manual) OR both sl_price AND tp1_price (auto-trackable)
   const rows = db.prepare(`
     SELECT factors_json, outcome, user_outcome, tp1_hit, tp2_hit, tp3_hit, sl_hit
     FROM alerts
     WHERE factors_json IS NOT NULL
       AND (
-        outcome IN ('tp1','tp2','tp3','sl','be')
-        OR user_outcome IN ('win','loss','be')
+        user_outcome IN ('win','loss','be')
+        OR (outcome IN ('tp1','tp2','tp3','sl') AND tp1_price IS NOT NULL AND sl_price IS NOT NULL)
       )
   `).all() as Array<{
     factors_json: string
@@ -82,11 +82,11 @@ export function getTopCombinations(db: Database.Database, limit = 10): FactorSta
 export function getWinRateSummary(db: Database.Database): WinRateSummary {
   const total = (db.prepare('SELECT COUNT(*) as c FROM alerts').get() as { c: number }).c
 
-  // Count alerts that have ANY form of outcome (automated OR user-set)
+  // Only count alerts with complete data (user-set OR both sl+tp auto-trackable)
   const outcomed = (db.prepare(`
     SELECT COUNT(*) as c FROM alerts
-    WHERE outcome IN ('tp1','tp2','tp3','sl','be')
-       OR user_outcome IN ('win','loss','be')
+    WHERE user_outcome IN ('win','loss','be')
+       OR (outcome IN ('tp1','tp2','tp3','sl') AND tp1_price IS NOT NULL AND sl_price IS NOT NULL)
   `).get() as { c: number }).c
 
   // TP1 hit: automated flag OR user said win

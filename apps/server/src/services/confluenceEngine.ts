@@ -73,6 +73,13 @@ function calcPremiumDiscount(
   return 'midpoint'
 }
 
+// ATR-based SL buffers per TF (approximate % of price)
+const SL_BUFFER_PCT: Record<string, number> = {
+  '1m': 0.002, '3m': 0.003, '5m': 0.004, '15m': 0.006,
+  '30m': 0.008, '1h': 0.01, '4h': 0.015, '6h': 0.018,
+  '12h': 0.02, '1D': 0.025, '1W': 0.04, '1M': 0.06,
+}
+
 function calcSL(
   timeframe: Timeframe,
   direction: Direction,
@@ -80,13 +87,16 @@ function calcSL(
   structure: ReturnType<typeof getLatestStructure>,
 ): number | null {
   if (!structure) return null
-  const buffer = price * 0.001 // 0.1% buffer
+  // Use TF-appropriate buffer — avoids SL being too tight
+  const bufferPct = SL_BUFFER_PCT[timeframe] ?? 0.01
+  const buffer = price * bufferPct
 
-  if (direction === 'bullish') {
-    return structure.price - buffer
-  } else {
-    return structure.price + buffer
-  }
+  // SL must be beyond the structure level (not just at it)
+  const rawSL = direction === 'bullish'
+    ? Math.min(structure.price, price) - buffer
+    : Math.max(structure.price, price) + buffer
+
+  return rawSL
 }
 
 function calcRR(entry: number, sl: number | null, tp: number | null): string {
