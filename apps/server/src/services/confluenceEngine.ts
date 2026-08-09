@@ -110,13 +110,12 @@ function calcSL(
     }
   }
 
-  // 2. OrderBlock — SL below OB zone (approximate: entry ± small OB body)
+  // 2. OrderBlock — SL below OB zone
   if (input.hasOrderBlock) {
-    // OB price not stored precisely — use entry ± 0.3% as OB zone boundary
     const obEdge = isBull ? entry * 0.997 - tick : entry * 1.003 + tick
     return {
       price: obEdge,
-      reason: `מתחת ל-Order Block (${isBull ? 'תחתית' : 'עליון'} האזור ~$${obEdge.toLocaleString('en-US', { maximumFractionDigits: 2 })}) — פריצת ה-OB מבטלת את הכניסה`,
+      reason: `מתחת ל-Order Block (~$${obEdge.toLocaleString('en-US', { maximumFractionDigits: 2 })}) — פריצת ה-OB מבטלת את הכניסה`,
       zone: `Order Block ב-${input.timeframe}`,
     }
   }
@@ -129,13 +128,58 @@ function calcSL(
       const level = isBull ? swept.price - tick : swept.price + tick
       return {
         price: level,
-        reason: `מתחת לנמוך ה-Sweep ($${swept.price.toLocaleString('en-US', { maximumFractionDigits: 2 })}) — אם ה-sweep level נשבר שוב אין היפוך`,
+        reason: `מתחת לנמוך ה-Sweep ($${swept.price.toLocaleString('en-US', { maximumFractionDigits: 2 })}) — אם ה-sweep נשבר שוב אין היפוך`,
         zone: `Liquidity Sweep ב-$${swept.price.toLocaleString('en-US', { maximumFractionDigits: 2 })}`,
       }
     }
   }
 
-  // 4. Structure (BOS / CHoCH) — SL below the structure level
+  // 4. SMT Divergence — SL beyond the divergence extreme
+  if (input.hasSMT || input.hasISMT) {
+    const smtSignals = getRecentSMTSignals(input.timeframe, 3)
+    const smt = smtSignals[0]
+    if (smt) {
+      const extremePrice = smt.asset1Price
+      const level = isBull ? extremePrice - tick : extremePrice + tick
+      return {
+        price: level,
+        reason: `${isBull ? 'מתחת' : 'מעל'} לנקודת ה-SMT של ${smt.asset1} ($${extremePrice.toLocaleString('en-US', { maximumFractionDigits: 2 })}) — אם הדיברגנס נכשל הכיוון בוטל`,
+        zone: `SMT ${smt.asset1}/${smt.asset2} ב-$${extremePrice.toLocaleString('en-US', { maximumFractionDigits: 2 })}`,
+      }
+    }
+  }
+
+  // 5. DoubleTop / DoubleBottom — SL beyond the pattern peak
+  if (input.hasDoubleTop && !isBull) {
+    const topLevel = entry * 1.002 + tick
+    return {
+      price: topLevel,
+      reason: `מעל לדאבל טופ (~$${topLevel.toLocaleString('en-US', { maximumFractionDigits: 2 })}) — פריצה מעל שני ה-peaks מבטלת את הסטאפ`,
+      zone: `Double Top ב-${input.timeframe}`,
+    }
+  }
+  if (input.hasDoubleBottom && isBull) {
+    const botLevel = entry * 0.998 - tick
+    return {
+      price: botLevel,
+      reason: `מתחת לדאבל בוטום (~$${botLevel.toLocaleString('en-US', { maximumFractionDigits: 2 })}) — פריצה מתחת לשני ה-lows מבטלת את הסטאפ`,
+      zone: `Double Bottom ב-${input.timeframe}`,
+    }
+  }
+
+  // 6. Wyckoff — SL beyond the phase extreme
+  if (input.hasWyckoff && input.wyckoffPhase) {
+    const isAccumulation = ['accumulation', 'markup'].includes(input.wyckoffPhase)
+    const level = isAccumulation ? entry * 0.995 - tick : entry * 1.005 + tick
+    const phaseHe: Record<string, string> = { accumulation: 'צבירה', markup: 'עלייה', distribution: 'הפצה', markdown: 'ירידה' }
+    return {
+      price: level,
+      reason: `${isAccumulation ? 'מתחת' : 'מעל'} לקצה שלב Wyckoff ${phaseHe[input.wyckoffPhase] ?? input.wyckoffPhase} (~$${level.toLocaleString('en-US', { maximumFractionDigits: 2 })}) — יציאה מהשלב מבטלת את ההנחה`,
+      zone: `Wyckoff ${phaseHe[input.wyckoffPhase] ?? input.wyckoffPhase} ב-${input.timeframe}`,
+    }
+  }
+
+  // 7. Structure (BOS / CHoCH) — fallback
   if (structure) {
     const level = isBull ? structure.price - tick : structure.price + tick
     return {
