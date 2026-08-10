@@ -13,22 +13,29 @@ export interface KlineCandle {
   isClosed:  boolean
 }
 
-const SYMBOLS    = ['ETHUSDT']
-const TIMEFRAMES = ['1m', '5m', '15m', '30m', '1h', '4h', '1d', '1w']
+// Bybit public WebSocket — no geo-restrictions, free to use
+const BYBIT_WS_URL = 'wss://stream.bybit.com/v5/public/spot'
 
+// Symbols & timeframes to track
+const SYMBOLS    = ['ETHUSDT', 'BTCUSDT']
+const TIMEFRAMES = ['1', '5', '15', '30', '60', '240', 'D', 'W']
+
+// Bybit interval → our internal TF label
 const TF_MAP: Record<string, string> = {
-  '1m': '1m', '5m': '5m', '15m': '15m', '30m': '30m',
-  '1h': '1h', '4h': '4h', '1d': '1D', '1w': '1W',
+  '1': '1m', '3': '3m', '5': '5m', '15': '15m', '30': '30m',
+  '60': '1h', '120': '2h', '240': '4h', '360': '6h', '720': '12h',
+  'D': '1D', 'W': '1W', 'M': '1M',
 }
 
 let wsInstance: WebSocket | null = null
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+let pingTimer: ReturnType<typeof setInterval> | null = null
 
-function buildStreamUrl(): string {
-  const streams = SYMBOLS.flatMap(sym =>
-    TIMEFRAMES.map(tf => `${sym.toLowerCase()}@kline_${tf}`)
+function buildSubscribeMsg() {
+  const args = SYMBOLS.flatMap(sym =>
+    TIMEFRAMES.map(tf => `kline.${tf}.${sym}`)
   )
-  return `wss://stream.binance.com:9443/stream?streams=${streams.join('/')}`
+  return JSON.stringify({ op: 'subscribe', args })
 }
 
 function connect(): void {
@@ -36,59 +43,81 @@ function connect(): void {
     try { wsInstance.terminate() } catch {}
     wsInstance = null
   }
+  if (pingTimer) { clearInterval(pingTimer); pingTimer = null }
 
-  const ws = new WebSocket(buildStreamUrl())
+  const ws = new WebSocket(BYBIT_WS_URL)
   wsInstance = ws
 
   ws.on('open', () => {
-    console.log('[BinanceWS] Connected — streaming', SYMBOLS.join(', '), TIMEFRAMES.join('/'))
+    console.log('[BybitWS] Connected — streaming', SYMBOLS.join(', '))
+    ws.send(buildSubscribeMsg())
     if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null }
+
+    // Bybit requires ping every 20s to keep connection alive
+    pingTimer = setInterval(() => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ op: 'ping' }))
+      }
+    }, 20_000)
   })
 
   ws.on('message', (raw: Buffer) => {
     try {
       const msg = JSON.parse(raw.toString())
-      const k = msg?.data?.k
-      if (!k) return
 
-      const candle: KlineCandle = {
-        symbol:    k.s,
-        timeframe: TF_MAP[k.i] ?? k.i,
-        time:      Math.floor(k.t / 1000),
-        open:      parseFloat(k.o),
-        high:      parseFloat(k.h),
-        low:       parseFloat(k.l),
-        close:     parseFloat(k.c),
-        volume:    parseFloat(k.v),
-        isClosed:  k.x,
-      }
+      // Skip pong / subscription confirmations
+      if (msg.op === 'pong' || msg.op === 'subscribe') return
 
-      // Only run detection on closed candles
-      if (candle.isClosed) {
-        runRealtimeDetector(candle).catch(err =>
-          console.error('[BinanceWS] detector error:', err)
-        )
+      // Bybit kline format: topic = "kline.5.ETHUSDT", data = array of candle objects
+      const topic: string = msg.topic ?? ''
+      if (!topic.startsWith('kline.')) return
+
+      const parts = topic.split('.')
+      const bybitTf = parts[1]
+      const rawSymbol = parts[2]
+
+      const klines: any[] = Array.isArray(msg.data) ? msg.data : []
+      for (const k of klines) {
+        const candle: KlineCandle = {
+          symbol:    rawSymbol,
+          timeframe: TF_MAP[bybitTf] ?? bybitTf,
+          time:      Math.floor(parseInt(k.start) / 1000),
+          open:      parseFloat(k.open),
+          high:      parseFloat(k.high),
+          low:       parseFloat(k.low),
+          close:     parseFloat(k.close),
+          volume:    parseFloat(k.volume),
+          isClosed:  k.confirm === true,
+        }
+
+        if (candle.isClosed) {
+          runRealtimeDetector(candle).catch(err =>
+            console.error('[BybitWS] detector error:', err)
+          )
+        }
       }
     } catch {}
   })
 
   ws.on('error', err => {
-    console.error('[BinanceWS] error:', err.message)
+    console.error('[BybitWS] error:', err.message)
   })
 
   ws.on('close', () => {
-    console.warn('[BinanceWS] Disconnected — reconnecting in 5s')
+    console.warn('[BybitWS] Disconnected — reconnecting in 5s')
     wsInstance = null
+    if (pingTimer) { clearInterval(pingTimer); pingTimer = null }
     reconnectTimer = setTimeout(connect, 5_000)
   })
 }
 
 export function startBinanceWebSocket(): void {
-  console.log('[BinanceWS] Starting real-time candle stream...')
+  console.log('[BybitWS] Starting real-time candle stream (Bybit — no geo-restrictions)...')
   connect()
 }
 
 export function stopBinanceWebSocket(): void {
   if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null }
+  if (pingTimer) { clearInterval(pingTimer); pingTimer = null }
   if (wsInstance) { try { wsInstance.terminate() } catch {} wsInstance = null }
 }
