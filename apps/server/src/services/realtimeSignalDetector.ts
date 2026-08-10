@@ -2,9 +2,14 @@ import type { KlineCandle } from './binanceWebSocket'
 import { getDb } from '../db/client'
 import { sendTelegram } from './alertDispatcher'
 import { getActiveFVGs } from './fvgEngine'
-import { getRecentSMTSignals } from './smtEngine'
+import { detectSMT, getRecentSMTSignals } from './smtEngine'
 import { getLatestStructure, getRecentStructures } from './structureEngine'
 import { getActiveLiquidity } from './liquidityEngine'
+
+// SMT pairs for live cross-asset detection (Bybit feed)
+const LIVE_SMT_PAIRS: Array<[string, string]> = [
+  ['ETHUSDT', 'BTCUSDT'],
+]
 
 // ─── Candle buffer (rolling 300 candles per symbol+TF) ───────────────────────
 
@@ -309,6 +314,40 @@ export async function runRealtimeDetector(candle: KlineCandle): Promise<void> {
   if (enabledSignals.includes('session')) {
     const sh = detectSessionHL(buf, candle.timeframe)
     if (sh) detectedLocal.push(sh)
+  }
+
+  // Live SMT detection between correlated pairs (ETH ↔ BTC)
+  if (enabledSignals.includes('smt')) {
+    for (const [a1, a2] of LIVE_SMT_PAIRS) {
+      if (candle.symbol !== a1 && candle.symbol !== a2) continue
+      const otherSym = candle.symbol === a1 ? a2 : a1
+      const otherBuf = getBuffer(otherSym, candle.timeframe)
+      if (otherBuf.length < 2) continue
+      const other = otherBuf[otherBuf.length - 1]
+      const smtResult = detectSMT({
+        timeframe: candle.timeframe as any,
+        time: candle.time,
+        asset1: candle.symbol,
+        asset1Price: candle.close,
+        asset1High: candle.high,
+        asset1Low: candle.low,
+        asset2: otherSym,
+        asset2Price: other.close,
+        asset2High: other.high,
+        asset2Low: other.low,
+      })
+      if (smtResult) {
+        const smtDir: 'bullish' | 'bearish' = smtResult.type === 'bullish_smt' ? 'bullish' : 'bearish'
+        detectedLocal.push({
+          type: 'smt',
+          label: `SMT — ${candle.symbol} vs ${otherSym}`,
+          emoji: '⚡',
+          direction: smtDir,
+          timeframe: candle.timeframe,
+          score: 1.5,
+        })
+      }
+    }
   }
 
   if (detectedLocal.length === 0) return
