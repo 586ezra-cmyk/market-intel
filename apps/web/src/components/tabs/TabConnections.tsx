@@ -21,6 +21,22 @@ interface ConnectionsData {
   }
 }
 
+interface SymbolStatus {
+  symbol: string
+  total: number
+  last_at: number
+}
+
+// Symbols the user cares about — shown even if no alerts yet
+const TRACKED_SYMBOLS = [
+  { id: 'BTCUSDT',    label: 'Bitcoin',       emoji: '₿',  tvTicker: 'BINANCE:BTCUSDT' },
+  { id: 'ETHUSDT',    label: 'Ethereum',      emoji: 'Ξ',  tvTicker: 'BINANCE:ETHUSDT' },
+  { id: 'NQU2026',    label: 'Nasdaq (NQ)',   emoji: '📈', tvTicker: 'CME_MINI:NQU2026' },
+  { id: 'SPX500',     label: 'S&P 500 (ES)',  emoji: '📊', tvTicker: 'CME_MINI:ESU2026' },
+  { id: 'XAUUSD',     label: 'Gold',          emoji: '🥇', tvTicker: 'OANDA:XAUUSD' },
+  { id: 'SOLUSDT',    label: 'Solana',        emoji: '◎',  tvTicker: 'BINANCE:SOLUSDT' },
+]
+
 // ─── Pine Script templates ────────────────────────────────────────────────────
 
 function buildTemplates(secret: string, webhookUrl: string) {
@@ -219,6 +235,8 @@ export default function TabConnections() {
   const [regenerating, setRegenerating] = useState(false)
   const [testing, setTesting]         = useState(false)
   const [testResult, setTestResult]   = useState<string | null>(null)
+  const [symbolStatus, setSymbolStatus] = useState<SymbolStatus[]>([])
+  const [expandedSymbol, setExpandedSymbol] = useState<string | null>(null)
 
   // Telegram form state
   const [tgToken,   setTgToken]   = useState('')
@@ -232,7 +250,10 @@ export default function TabConnections() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const r = await fetch(`${API}/api/connections`)
+      const [r, rs] = await Promise.all([
+        fetch(`${API}/api/connections`),
+        fetch(`${API}/api/connections/symbol-status`),
+      ])
       if (!r.ok) throw new Error(`HTTP ${r.status}`)
       const d: ConnectionsData = await r.json()
       setData(d)
@@ -242,6 +263,10 @@ export default function TabConnections() {
       setTgWeekly(d.telegram.topics.weekly || '')
       setTgHigh(d.telegram.topics.high || '')
       setTgNews(d.telegram.topics.news || '')
+      if (rs.ok) {
+        const sd = await rs.json()
+        setSymbolStatus(sd.symbols ?? [])
+      }
     } catch (e: any) {
       setError(e.message)
     } finally {
@@ -372,6 +397,71 @@ export default function TabConnections() {
         <h2 className="text-lg font-bold text-gray-100">🔌 חיבורים</h2>
         <button onClick={load} className="text-xs text-gray-500 hover:text-gray-300">רענן</button>
       </div>
+
+      {/* ── Symbol Connections ──────────────────────────────────────────── */}
+      <SectionCard title="📡 חיבורים לפי נכס" status={symbolStatus.length > 0 ? 'ok' : 'warn'}>
+        <p className="text-xs text-gray-500 mb-3">
+          לכל נכס צריך Alert נפרד ב-TradingView עם אותו Webhook URL. לחץ על נכס להוראות.
+        </p>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+          {TRACKED_SYMBOLS.map(sym => {
+            const status = symbolStatus.find(s =>
+              s.symbol.toUpperCase().includes(sym.id.replace('USDT','').toUpperCase()) ||
+              s.symbol.toUpperCase() === sym.id.toUpperCase()
+            )
+            const active = status && (Date.now() - status.last_at < 24 * 60 * 60 * 1000)
+            const lastStr = status
+              ? new Date(status.last_at).toLocaleString('he-IL', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })
+              : null
+            const isExpanded = expandedSymbol === sym.id
+
+            return (
+              <div key={sym.id}>
+                <button
+                  onClick={() => setExpandedSymbol(isExpanded ? null : sym.id)}
+                  className={`w-full text-right p-3 rounded-lg border transition-colors ${
+                    isExpanded
+                      ? 'bg-blue-900/40 border-blue-600'
+                      : 'bg-gray-900 border-gray-700 hover:border-gray-500'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <div className={`w-2 h-2 rounded-full flex-shrink-0 ${active ? 'bg-green-500' : 'bg-red-500'}`} />
+                    <span className="text-base">{sym.emoji}</span>
+                  </div>
+                  <div className="text-xs font-semibold text-gray-200">{sym.label}</div>
+                  <div className="text-xs text-gray-500 font-mono">{sym.id}</div>
+                  {status ? (
+                    <div className="text-xs text-gray-500 mt-1">{status.total} התראות · {lastStr}</div>
+                  ) : (
+                    <div className="text-xs text-red-400 mt-1">לא מחובר</div>
+                  )}
+                </button>
+
+                {isExpanded && (
+                  <div className="mt-1 p-3 bg-gray-900 border border-blue-700 rounded-lg text-xs space-y-2">
+                    <p className="text-gray-300 font-semibold">הגדרת Alert ב-TradingView:</p>
+                    <ol className="space-y-1 text-gray-400 list-none">
+                      <li>1. פתח גרף <code className="bg-gray-700 px-1 rounded">{sym.tvTicker}</code></li>
+                      <li>2. ודא שה-Pine Script טעון על הגרף</li>
+                      <li>3. לחץ על שעון ⏰ → צור Alert</li>
+                      <li>4. Condition: <strong className="text-gray-300">ICT Master → Any alert() call</strong></li>
+                      <li>5. Webhook URL: העתק מלמעלה</li>
+                      <li>6. Message: השאר ברירת מחדל (מהתבנית Confluence)</li>
+                    </ol>
+                    <div className="flex items-center gap-2 pt-1">
+                      <code className="flex-1 text-green-300 bg-gray-800 rounded px-2 py-1 font-mono text-xs overflow-x-auto whitespace-nowrap">
+                        {webhookUrl || 'טוען...'}
+                      </code>
+                      {webhookUrl && <CopyButton text={webhookUrl} />}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      </SectionCard>
 
       {/* ── TradingView Webhook ─────────────────────────────────────────── */}
       <SectionCard

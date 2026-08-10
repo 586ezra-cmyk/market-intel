@@ -610,6 +610,26 @@ router.get('/pine-script', (_req: Request, res: Response) => {
 // ─── POST /api/connections/test-webhook ──────────────────────────────────────
 // Injects a fake webhook_log entry so the user sees the inbox working
 
+// ─── GET /api/connections/symbol-status ──────────────────────────────────────
+// Per-symbol: last alert time + count (last 7 days)
+
+router.get('/symbol-status', (_req: Request, res: Response) => {
+  const db = getDb()
+  const since = Date.now() - 7 * 24 * 60 * 60 * 1000
+
+  const rows = db.prepare(`
+    SELECT symbol,
+           COUNT(*) as total,
+           MAX(triggered_at) as last_at
+    FROM alerts
+    WHERE triggered_at > ?
+    GROUP BY symbol
+    ORDER BY last_at DESC
+  `).all(since) as Array<{ symbol: string; total: number; last_at: number }>
+
+  res.json({ symbols: rows })
+})
+
 router.post('/test-webhook', (_req: Request, res: Response) => {
   const db = getDb()
   const testPayload = JSON.stringify({
