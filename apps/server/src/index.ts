@@ -19,6 +19,7 @@ import notesRouter from './routes/notes'
 import { initScheduler } from './services/scheduler'
 import { startOutcomeTracker } from './services/outcomeTracker'
 import { startBinanceWebSocket } from './services/binanceWebSocket'
+import { startYahooFeed } from './services/yahooFeed'
 
 const app = express()
 
@@ -69,6 +70,7 @@ if (config.nodeEnv !== 'test') {
   const db = getDb()
   startOutcomeTracker(db)
   startBinanceWebSocket()
+  startYahooFeed()
 }
 
 server.listen(config.port, () => {

@@ -9,9 +9,12 @@ import { scanAndStoreLiquidity, selectTargets } from './liquidityDetector'
 import { toAlertFactor, toAlertFactors } from './factorMapping'
 import { detectFVG, detectStructure, detectWyckoff } from './candlePatternDetectors'
 
-// SMT pairs for live cross-asset detection (Bybit feed)
+// The only correlated pairs defined in the knowledge base. A symbol absent
+// from this list (SOLUSDT) has nothing to diverge against and therefore
+// produces neither SMT nor iSMT.
 const LIVE_SMT_PAIRS: Array<[string, string]> = [
-  ['ETHUSDT', 'BTCUSDT'],
+  ['ETHUSDT', 'BTCUSDT'],   // crypto — Bybit socket
+  ['NQU2026', 'SPX500'],    // indices — Yahoo feed
 ]
 
 // ─── Candle buffer (rolling 300 candles per symbol+TF) ───────────────────────
@@ -209,18 +212,66 @@ function detectOB(buf: KlineCandle[], tf: string): DetectedSignal | null {
   return null
 }
 
-function detectISMT(buf: KlineCandle[], tf: string): DetectedSignal | null {
-  if (buf.length < 3) return null
-  const [prev, curr, next] = buf.slice(-3)
+/**
+ * iSMT — Intermarket SMT, the fast form of SMT across exactly two consecutive
+ * candles of a CORRELATED PAIR.
+ *
+ * Bearish: on candle 2, asset A takes out candle 1's high and closes back below
+ * it (a sweep), while asset B fails to confirm — it either does not take its own
+ * candle 1 high, or closes down as well.
+ * Bullish: the mirror image on lows.
+ *
+ * This requires both assets. A symbol with no pair (SOLUSDT) cannot produce it.
+ */
+function detectISMT(
+  bufA: KlineCandle[],
+  bufB: KlineCandle[],
+  tf: string,
+  symbolA: string,
+  symbolB: string,
+): DetectedSignal | null {
+  if (bufA.length < 2 || bufB.length < 2) return null
 
-  // Bearish iSMT
-  if (curr.high > prev.high && next.high < curr.high && next.close < curr.open) {
-    return { type: 'ismt', label: 'iSMT (דיברגנס 2 נרות)', emoji: '🔀', direction: 'bearish', timeframe: tf, score: 1.0 }
+  const [a1, a2] = bufA.slice(-2)
+  const [b1, b2] = bufB.slice(-2)
+
+  // Both assets must be on the same candle for the comparison to mean anything
+  if (a2.time !== b2.time) return null
+
+  // Bearish: A sweeps its own high and closes back under it, while B never
+  // reached a new high at all. Merely closing lower is not divergence — B has
+  // to fail to make the move, or the signal fires on ~38% of candles.
+  if (a2.high > a1.high && a2.close < a1.high) {
+    if (b2.high <= b1.high) {
+      return {
+        type: 'ismt',
+        label: `iSMT — ${symbolA} מול ${symbolB}`,
+        emoji: '🔀',
+        direction: 'bearish',
+        timeframe: tf,
+        score: 1.0,
+        detail: `${symbolA} חטף את $${a1.high.toLocaleString()} וסגר מתחתיו — ${symbolB} לא אישר`,
+        at: a2.time,
+      }
+    }
   }
-  // Bullish iSMT
-  if (curr.low < prev.low && next.low > curr.low && next.close > curr.open) {
-    return { type: 'ismt', label: 'iSMT (דיברגנס 2 נרות)', emoji: '🔀', direction: 'bullish', timeframe: tf, score: 1.0 }
+
+  // Bullish: mirror image — A takes a new low, B never does
+  if (a2.low < a1.low && a2.close > a1.low) {
+    if (b2.low >= b1.low) {
+      return {
+        type: 'ismt',
+        label: `iSMT — ${symbolA} מול ${symbolB}`,
+        emoji: '🔀',
+        direction: 'bullish',
+        timeframe: tf,
+        score: 1.0,
+        detail: `${symbolA} חטף את $${a1.low.toLocaleString()} וסגר מעליו — ${symbolB} לא אישר`,
+        at: a2.time,
+      }
+    }
   }
+
   return null
 }
 
@@ -487,9 +538,17 @@ export async function runRealtimeDetector(candle: KlineCandle): Promise<void> {
     const ob = detectOB(buf, candle.timeframe)
     if (ob) detectedLocal.push(ob)
   }
+  // iSMT needs the correlated asset — a symbol with no pair produces none.
   if (enabledSignals.includes('ismt')) {
-    const ismt = detectISMT(buf, candle.timeframe)
-    if (ismt) detectedLocal.push(ismt)
+    for (const [a1, a2] of LIVE_SMT_PAIRS) {
+      if (candle.symbol !== a1 && candle.symbol !== a2) continue
+      const otherSym = candle.symbol === a1 ? a2 : a1
+      const ismt = detectISMT(
+        buf, getBuffer(otherSym, candle.timeframe),
+        candle.timeframe, candle.symbol, otherSym,
+      )
+      if (ismt) detectedLocal.push(ismt)
+    }
   }
   if (enabledSignals.includes('doubletop') || enabledSignals.includes('doublebottom')) {
     const dp = detectDoublePattern(buf, candle.timeframe)
