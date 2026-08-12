@@ -4,7 +4,8 @@ import { sendTelegram } from './alertDispatcher'
 import { getActiveFVGs } from './fvgEngine'
 import { detectSMT, getRecentSMTSignals } from './smtEngine'
 import { getLatestStructure, getRecentStructures } from './structureEngine'
-import { getActiveLiquidity } from './liquidityEngine'
+import { getActiveLiquidity, checkLiquiditySweep } from './liquidityEngine'
+import { scanAndStoreLiquidity } from './liquidityDetector'
 
 // SMT pairs for live cross-asset detection (Bybit feed)
 const LIVE_SMT_PAIRS: Array<[string, string]> = [
@@ -64,6 +65,7 @@ interface LastSent {
 
 const detectorStats = {
   candlesProcessed: 0,
+  liquidityLevels: 0,
   sent: 0,
   lastCandleAt: 0 as number,
   lastSent: null as LastSent | null,
@@ -137,6 +139,15 @@ const SIGNAL_WHY: Record<string, string> = {
   fvg:          'פער מחיר שהשוק נוטה לחזור למלא',
   liquidity:    'רמה שבה מרוכזות הוראות סטופ',
   wyckoff:      'שלב במחזור צבירה/הפצה של כסף חכם',
+}
+
+/** Human labels for the liquidity level types. */
+const LIQ_LABEL: Record<string, string> = {
+  equal_highs: 'שיאים שווים', equal_lows: 'שפלים שווים',
+  swing_high:  'שיא סווינג',  swing_low:  'שפל סווינג',
+  pdh: 'שיא אתמול (PDH)',     pdl: 'שפל אתמול (PDL)',
+  pwh: 'שיא השבוע (PWH)',     pwl: 'שפל השבוע (PWL)',
+  session_high: 'שיא הסשן',   session_low: 'שפל הסשן',
 }
 
 function fmtTime(sec?: number): string {
@@ -378,8 +389,41 @@ export async function runRealtimeDetector(candle: KlineCandle): Promise<void> {
   const buf = getBuffer(candle.symbol, candle.timeframe)
   if (buf.length < 5) return
 
+
   const enabledSignals = settings.signals
   const detectedLocal: DetectedSignal[] = []
+
+  // Register resting liquidity before the other detectors run, so sweeps and
+  // TP targets in this same pass can see the levels.
+  try {
+    detectorStats.liquidityLevels += scanAndStoreLiquidity(
+      candle.symbol, candle.timeframe, buf,
+      getBuffer(candle.symbol, '1D'),
+      getBuffer(candle.symbol, '1W'),
+    )
+
+    if (enabledSignals.includes('liquidity')) {
+      const swept = checkLiquiditySweep(
+        candle.symbol, candle.timeframe as any,
+        candle.high, candle.low, candle.close, candle.time,
+      )
+      for (const liq of swept) {
+        detectedLocal.push({
+          type: 'liquidity',
+          label: 'שאיבת נזילות',
+          emoji: '💧',
+          // Buy-side taken above price → bearish; sell-side taken below → bullish
+          direction: liq.price > candle.close ? 'bearish' : 'bullish',
+          timeframe: candle.timeframe,
+          score: 1.3,
+          detail: `נשאבה ${LIQ_LABEL[liq.type] ?? liq.type} ב-$${liq.price.toLocaleString()}`,
+          at: candle.time,
+        })
+      }
+    }
+  } catch (err: any) {
+    console.error('[Detector] liquidity scan failed:', err.message)
+  }
 
   // Run local detectors
   if (enabledSignals.includes('ob')) {
