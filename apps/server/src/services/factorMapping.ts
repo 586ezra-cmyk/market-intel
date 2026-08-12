@@ -13,9 +13,11 @@ const DETECTOR_TO_FACTOR: Record<string, AlertFactor> = {
   liquidity:    'LiquiditySweep',
   fvg:          'FVG',
   smt:          'SMT',
-  // iSMT is the two-candle form of the same divergence idea; the UI has no
-  // separate entry for it, so it maps onto SMT rather than being dropped.
-  ismt:         'SMT',
+  // iSMT is a two-candle divergence within ONE asset. Folding it into SMT
+  // claimed a cross-asset divergence that never happened — SOLUSDT is not in
+  // any SMT pair yet showed an SMT factor.
+  ismt:         'iSMT',
+  ifvg:         'iFVG',
   ob:           'OrderBlock',
   doubletop:    'DoubleTop',
   doublebottom: 'DoubleBottom',
@@ -26,7 +28,7 @@ const DETECTOR_TO_FACTOR: Record<string, AlertFactor> = {
  * Signals with no AlertFactor equivalent. They still contribute to scoring and
  * appear in the Telegram message, but cannot be stored as factors.
  */
-export const UNMAPPED_SIGNALS = ['judas', 'session', 'ifvg', 'inducement', 'repricing']
+export const UNMAPPED_SIGNALS = ['judas', 'session', 'inducement', 'repricing']
 
 export function toAlertFactor(detectorType: string): AlertFactor | null {
   return DETECTOR_TO_FACTOR[detectorType] ?? null

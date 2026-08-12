@@ -25,6 +25,7 @@ export function getFactorStats(db: Database.Database): FactorStat[] {
     SELECT factors_json, outcome, user_outcome, tp1_hit, tp2_hit, tp3_hit, sl_hit
     FROM alerts
     WHERE factors_json IS NOT NULL
+      AND COALESCE(stats_excluded, 0) = 0
       AND (
         user_outcome IN ('win','loss','be')
         OR outcome IN ('tp1','tp2','tp3','sl')
@@ -80,42 +81,53 @@ export function getTopCombinations(db: Database.Database, limit = 10): FactorSta
 }
 
 export function getWinRateSummary(db: Database.Database): WinRateSummary {
-  const total = (db.prepare('SELECT COUNT(*) as c FROM alerts').get() as { c: number }).c
+  // Every count below is scoped to non-excluded alerts so the baseline reset
+  // applies uniformly; mixing scopes would produce rates above 100%.
+  const total = (db.prepare(
+    'SELECT COUNT(*) as c FROM alerts WHERE COALESCE(stats_excluded, 0) = 0'
+  ).get() as { c: number }).c
 
   const outcomed = (db.prepare(`
     SELECT COUNT(*) as c FROM alerts
-    WHERE user_outcome IN ('win','loss','be')
-       OR outcome IN ('tp1','tp2','tp3','sl')
+    WHERE COALESCE(stats_excluded, 0) = 0
+      AND (user_outcome IN ('win','loss','be')
+        OR outcome IN ('tp1','tp2','tp3','sl'))
   `).get() as { c: number }).c
 
   // TP1 hit: automated flag OR user said win
   const tp1 = (db.prepare(`
     SELECT COUNT(*) as c FROM alerts
-    WHERE tp1_hit = 1 OR user_outcome = 'win'
+    WHERE COALESCE(stats_excluded, 0) = 0
+      AND (tp1_hit = 1 OR user_outcome = 'win')
   `).get() as { c: number }).c
 
   // TP2 hit: automated flag only (user doesn't distinguish tp1 vs tp2)
   const tp2 = (db.prepare(`
-    SELECT COUNT(*) as c FROM alerts WHERE tp2_hit = 1
+    SELECT COUNT(*) as c FROM alerts
+    WHERE COALESCE(stats_excluded, 0) = 0 AND tp2_hit = 1
   `).get() as { c: number }).c
 
   const tp3 = (db.prepare(`
-    SELECT COUNT(*) as c FROM alerts WHERE tp3_hit = 1
+    SELECT COUNT(*) as c FROM alerts
+    WHERE COALESCE(stats_excluded, 0) = 0 AND tp3_hit = 1
   `).get() as { c: number }).c
 
   // SL hit: automated flag OR user said loss
   const sl = (db.prepare(`
     SELECT COUNT(*) as c FROM alerts
-    WHERE sl_hit = 1 OR user_outcome = 'loss'
+    WHERE COALESCE(stats_excluded, 0) = 0
+      AND (sl_hit = 1 OR user_outcome = 'loss')
   `).get() as { c: number }).c
 
   const pending = (db.prepare(`
     SELECT COUNT(*) as c FROM alerts
-    WHERE (outcome IS NULL OR outcome = 'pending')
-      AND (user_outcome IS NULL)
+    WHERE COALESCE(stats_excluded, 0) = 0
+      AND (outcome IS NULL OR outcome = 'pending')
+      AND user_outcome IS NULL
   `).get() as { c: number }).c
 
-  const expired = (db.prepare(`SELECT COUNT(*) as c FROM alerts WHERE outcome = 'expired'`).get() as { c: number }).c
+  const expired = (db.prepare(`SELECT COUNT(*) as c FROM alerts
+     WHERE COALESCE(stats_excluded, 0) = 0 AND outcome = 'expired'`).get() as { c: number }).c
 
   const base = outcomed || 1
   return {

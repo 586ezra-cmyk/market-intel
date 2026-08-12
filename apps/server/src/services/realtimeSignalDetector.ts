@@ -7,6 +7,7 @@ import { getLatestStructure, getRecentStructures } from './structureEngine'
 import { getActiveLiquidity, checkLiquiditySweep } from './liquidityEngine'
 import { scanAndStoreLiquidity, selectTargets } from './liquidityDetector'
 import { toAlertFactor, toAlertFactors } from './factorMapping'
+import { detectFVG, detectStructure, detectWyckoff } from './candlePatternDetectors'
 
 // SMT pairs for live cross-asset detection (Bybit feed)
 const LIVE_SMT_PAIRS: Array<[string, string]> = [
@@ -411,7 +412,9 @@ function isDuplicate(key: string): boolean {
 
 export async function runRealtimeDetector(candle: KlineCandle): Promise<void> {
   const settings = getSettings()
-  if (!settings.active) return
+  // NOTE: settings.active is deliberately NOT checked here. The website switch
+  // silences Telegram only — detection and persistence keep running so the site
+  // always holds the full record. The gate lives in sendTelegram().
   if (!settings.timeframes.includes(candle.timeframe)) return
 
   detectorStats.candlesProcessed++
@@ -458,6 +461,28 @@ export async function runRealtimeDetector(candle: KlineCandle): Promise<void> {
   }
 
   // Run local detectors
+  // FVG / structure / Wyckoff previously existed only in the Pine Script, so
+  // crypto could never produce them. Derived from the buffer, they now apply
+  // to every streamed symbol.
+  for (const [signal, detect] of [
+    ['fvg',     detectFVG],
+    ['bos',     detectStructure],   // returns bos or choch; gate covers both
+    ['wyckoff', detectWyckoff],
+  ] as const) {
+    if (signal === 'bos'
+      ? !enabledSignals.includes('bos') && !enabledSignals.includes('choch')
+      : !enabledSignals.includes(signal)) continue
+
+    const r = detect(buf)
+    if (r && (r.type !== 'choch' || enabledSignals.includes('choch'))) {
+      detectedLocal.push({
+        type: r.type, label: r.label, emoji: r.emoji,
+        direction: r.direction, timeframe: candle.timeframe,
+        score: r.score, detail: r.detail, at: candle.time,
+      })
+    }
+  }
+
   if (enabledSignals.includes('ob')) {
     const ob = detectOB(buf, candle.timeframe)
     if (ob) detectedLocal.push(ob)
