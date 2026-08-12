@@ -7,7 +7,7 @@ import { getLatestStructure, getRecentStructures } from './structureEngine'
 import { getActiveLiquidity, checkLiquiditySweep } from './liquidityEngine'
 import { scanAndStoreLiquidity, selectTargets } from './liquidityDetector'
 import { toAlertFactor, toAlertFactors } from './factorMapping'
-import { detectFVG, detectStructure, detectWyckoff } from './candlePatternDetectors'
+import { detectFVG, detectStructure, detectWyckoff, classifyWyckoffPhase } from './candlePatternDetectors'
 
 // The only correlated pairs defined in the knowledge base. A symbol absent
 // from this list (SOLUSDT) has nothing to diverge against and therefore
@@ -405,6 +405,15 @@ function calcScore(signals: DetectedSignal[], baseScores: number[]): number {
 
 // ─── Message builder ─────────────────────────────────────────────────────────
 
+/** Order in which confirmations are listed — strongest evidence first. */
+const SIGNAL_RANK: Record<string, number> = {
+  smt: 1, ismt: 2, wyckoff: 3, choch: 4, bos: 5,
+  liquidity: 6, fvg: 7, ob: 8, doubletop: 9, doublebottom: 10,
+  judas: 11, session: 12,
+}
+
+const TF_ORDER = ['1m', '5m', '15m', '30m', '1h', '4h', '1D', '1W']
+
 function buildMessage(
   symbol: string,
   triggerTF: string,
@@ -413,70 +422,97 @@ function buildMessage(
   score: number,
   lastClose: number,
   dbSignals: { smts: any[]; structures: any[]; fvgs: any[]; liquidity: any[] },
+  extras: {
+    entry?: number | null
+    stopLoss?: number | null
+    tp?: { price: number; r: number; label: string } | null
+    wyckoff?: { label: string; detail: string } | null
+  } = {},
 ): string {
   const dirHe = direction === 'bullish' ? 'לונג 🟢' : 'שורט 🔴'
   const scoreEmoji = score >= 7 ? '🔥' : score >= 5 ? '⭐' : '📊'
+  const money = (n: number) => `$${n.toLocaleString('en-US', { maximumFractionDigits: 2 })}`
 
-  let msg = `🔔 *${symbol}* — ${dirHe}\n`
-  msg += `${scoreEmoji} דירוג ${score.toFixed(1)}/10  ·  ⏱ ${triggerTF}\n`
-  msg += `💰 מחיר: $${lastClose.toLocaleString()}\n`
-  msg += `🕐 ${fmtTime(allSignals.find(s => s.at)?.at ?? Math.floor(Date.now() / 1000), triggerTF)}\n\n`
-  msg += `━━━━━━━━━━━━━━━━━━━\n`
-  msg += `🧩 *אישורים שנמצאו*\n`
+  let msg = `🔔 *${symbol}* — ${dirHe}  ·  ${scoreEmoji} ${score.toFixed(1)}/10  ·  ⏱ ${triggerTF}\n`
 
-  /** One block per confirmation: what, where, what we saw, why it matters. */
-  const block = (
-    emoji: string, label: string, tf: string,
-    why?: string, detail?: string, at?: number, mtf = false,
-  ) => {
-    msg += `\n${emoji} *${label}*\n`
-    msg += `   ⏱ ${tf}${mtf ? ' _(טווח נוסף)_' : ''}${at ? ` · ${fmtTime(at, tf)}` : ''}\n`
-    if (detail) msg += `   👁 ${detail}\n`
-    if (why)    msg += `   ↳ _${why}_\n`
+  // Bottom line first: what to actually do, on one line.
+  if (extras.entry && extras.stopLoss) {
+    msg += `📍 כניסה ${money(extras.entry)}  ·  🛑 SL ${money(extras.stopLoss)}`
+    msg += extras.tp ? `  ·  🎯 TP ${money(extras.tp.price)} (${extras.tp.r}R)\n` : `  ·  🎯 אין יעד ≥1R\n`
+  } else {
+    msg += `💰 ${money(lastClose)}\n`
   }
 
-  // Signals from Pine Script webhooks (NQ/SPX)
-  for (const s of dbSignals.structures.slice(0, 2)) {
-    block('📐', s.type === 'CHoCH' ? 'CHoCH — שינוי אופי' : 'BOS — שבירת מבנה', triggerTF,
-      SIGNAL_WHY[s.type === 'CHoCH' ? 'choch' : 'bos'],
-      s.price ? `נשבר ב-$${Number(s.price).toLocaleString()}` : undefined)
-  }
-  for (const f of dbSignals.fvgs.slice(0, 1)) {
-    block('🕳', 'FVG — פער מחיר', triggerTF, SIGNAL_WHY.fvg,
-      f.bottomPrice && f.topPrice
-        ? `הפער בין $${Number(f.bottomPrice).toLocaleString()} ל-$${Number(f.topPrice).toLocaleString()}`
-        : undefined)
-  }
-  for (const l of dbSignals.liquidity.slice(0, 1)) {
-    block('💧', 'שאיבת נזילות', triggerTF, SIGNAL_WHY.liquidity,
-      l.price ? `הרמה ב-$${Number(l.price).toLocaleString()}` : undefined)
-  }
-  for (const s of dbSignals.smts.slice(0, 1)) {
-    block('⚡', 'SMT — דיברגנס', s.timeframe ?? triggerTF, SIGNAL_WHY.smt,
-      s.asset1 && s.asset2 ? `${s.asset1} מול ${s.asset2}` : undefined, s.time)
+  if (extras.wyckoff) {
+    msg += `📚 Wyckoff: *${extras.wyckoff.label}* — ${extras.wyckoff.detail}\n`
   }
 
-  // Signals computed from the candle buffer (crypto), trigger timeframe first
-  const ordered = [...allSignals].sort((a, b) =>
-    (a.timeframe === triggerTF ? 0 : 1) - (b.timeframe === triggerTF ? 0 : 1))
+  msg += `\n`
 
-  for (const s of ordered) {
-    block(s.emoji, s.label, s.timeframe, SIGNAL_WHY[s.type], s.detail, s.at,
-      s.timeframe !== triggerTF)
+  /**
+   * Group identical confirmations across timeframes into one line, and collapse
+   * repeats of the same level. A break of one price re-reported on every new
+   * candle produced nine identical BOS entries in a single message.
+   */
+  const groups = new Map<string, {
+    emoji: string; label: string; type: string
+    tfs: Set<string>; latest: number; detail?: string; score: number
+  }>()
+
+  for (const s of allSignals) {
+    // Same signal at the same level is one event, however many candles report it
+    const levelKey = s.detail?.match(/\$[\d,.]+/)?.[0] ?? ''
+    const key = `${s.type}|${levelKey}`
+    const g = groups.get(key)
+    if (g) {
+      g.tfs.add(s.timeframe)
+      if ((s.at ?? 0) > g.latest) { g.latest = s.at ?? 0; g.detail = s.detail ?? g.detail }
+      g.score = Math.max(g.score, s.score)
+    } else {
+      groups.set(key, {
+        emoji: s.emoji, label: s.label.replace(/ — .*$/, ''), type: s.type,
+        tfs: new Set([s.timeframe]), latest: s.at ?? 0, detail: s.detail, score: s.score,
+      })
+    }
   }
 
-  // MTF summary
-  const tfs = [...new Set(allSignals.map(s => s.timeframe))].sort()
-  if (tfs.length > 1) {
-    msg += `\n━━━━━━━━━━━━━━━━━━━\n`
-    msg += `📡 *סינרגיה בין טווחי זמן:*\n`
-    const allTFs = ['1m','5m','15m','30m','1h','4h','1D','1W']
-    const activeTFs = allTFs.filter(tf => tfs.includes(tf) || tf === triggerTF)
-    msg += `   ${activeTFs.map(tf => tfs.includes(tf) ? `${tf} ✅` : `${tf} ⬜`).join(' | ')}\n`
+  const ordered = [...groups.values()].sort((a, b) =>
+    (SIGNAL_RANK[a.type] ?? 99) - (SIGNAL_RANK[b.type] ?? 99) || b.score - a.score)
+
+  const SHOWN = 6
+  msg += `🧩 *אישורים*\n`
+  for (const g of ordered.slice(0, SHOWN)) {
+    const tfs = TF_ORDER.filter(t => g.tfs.has(t)).join(' ')
+    const when = g.latest ? ` · ${fmtTime(g.latest, [...g.tfs][0])}` : ''
+    msg += `${g.emoji} *${g.label}* · ${tfs}${when}\n`
+    if (g.detail) msg += `   ${g.detail}\n`
   }
+  if (ordered.length > SHOWN) {
+    msg += `_+${ordered.length - SHOWN} אישורים נוספים — ראה באתר_\n`
+  }
+
+  // Synergy: which timeframes agree on the direction, and which oppose it
+  const byTF = new Map<string, { bull: number; bear: number }>()
+  for (const s of allSignals) {
+    const e = byTF.get(s.timeframe) ?? { bull: 0, bear: 0 }
+    if (s.direction === 'bullish') e.bull++; else e.bear++
+    byTF.set(s.timeframe, e)
+  }
+  const agree: string[] = []
+  const oppose: string[] = []
+  for (const tf of TF_ORDER) {
+    const e = byTF.get(tf)
+    if (!e) continue
+    const tfDir = e.bull >= e.bear ? 'bullish' : 'bearish'
+    ;(tfDir === direction ? agree : oppose).push(tf)
+  }
+
+  msg += `\n📡 *סינרגיה:* ${dirHe}\n`
+  if (agree.length)  msg += `   ✅ מסכימים: ${agree.join(' ')}\n`
+  if (oppose.length) msg += `   ⚠️ מנוגדים: ${oppose.join(' ')}\n`
+  if (!oppose.length && agree.length > 1) msg += `   כל הטווחים מיושרים\n`
 
   msg += `\n_מערכת מסחר חכמה | ICT + Wyckoff_`
-
   return msg
 }
 
@@ -655,8 +691,13 @@ export async function runRealtimeDetector(candle: KlineCandle): Promise<void> {
   }
 
   // MTF signals in same direction
+  const HOUR = 3600
+  const nowSec = candle.time
   const mtfSignals = getMTFSignals(symbol)
     .filter(s => s.direction === direction && s.timeframe !== tf)
+    // Only context from the last hour — older confirmations have usually been
+    // invalidated by price and only inflate the message.
+    .filter(s => !s.at || nowSec - s.at <= HOUR)
 
   const allSignals = [...detectedLocal, ...mtfSignals]
 
@@ -671,13 +712,12 @@ export async function runRealtimeDetector(candle: KlineCandle): Promise<void> {
   const dedupKey = `${symbol}:${tf}:${direction}:${detectedLocal.map(s => s.type).sort().join(',')}`
   if (isDuplicate(dedupKey)) return
 
-  const msg = buildMessage(symbol, tf, direction, allSignals, score, candle.close, dbSignals)
-
   // Persist before notifying. Until now this path called sendTelegram directly
   // and skipped saveAlert, so crypto alerts existed only in Telegram — absent
   // from the website, the statistics and the TP/SL outcome tracker.
   const factors = toAlertFactors(detectedLocal.map(s => s.type))
   const sl = buildStopLoss(buf, direction, candle.close)
+  const wyckoffPhase = classifyWyckoffPhase(buf)
 
   // Targets must beat the stop distance — the nearest level is usually
   // internal liquidity a few ticks away, which would make every trade sub-1R.
@@ -686,6 +726,13 @@ export async function runRealtimeDetector(candle: KlineCandle): Promise<void> {
     candle.close, sl?.price ?? null, direction,
   )
   const [t1, t2, t3] = targets
+
+  const msg = buildMessage(symbol, tf, direction, allSignals, score, candle.close, dbSignals, {
+    entry: candle.close,
+    stopLoss: sl?.price ?? null,
+    tp: t1 ? { price: t1.price, r: t1.r, label: LIQ_LABEL[t1.type] ?? t1.type } : null,
+    wyckoff: wyckoffPhase,
+  })
 
   try {
     await saveAlert({

@@ -196,3 +196,53 @@ export function detectWyckoff(buf: KlineCandle[]): PatternResult | null {
 
   return null
 }
+
+/**
+ * Current Wyckoff phase — always returns one.
+ *
+ * detectWyckoff only fires on Spring/UTAD, which are rare, so most alerts
+ * carried no Wyckoff information at all. Every alert should state where in the
+ * cycle price currently sits, independent of whether an event just triggered.
+ */
+export function classifyWyckoffPhase(buf: KlineCandle[]): {
+  phase: 'accumulation' | 'markup' | 'distribution' | 'markdown'
+  label: string
+  detail: string
+} | null {
+  if (buf.length < 30) return null
+
+  const recent = buf.slice(-30)
+  const last   = recent[recent.length - 1]
+  const high   = Math.max(...recent.map(c => c.high))
+  const low    = Math.min(...recent.map(c => c.low))
+  const height = high - low
+  if (height <= 0) return null
+
+  // Where price sits inside the recent range
+  const pos = (last.close - low) / height
+  // Range width relative to price separates consolidation from trend
+  const tight = height / last.close < 0.05
+
+  // Trend over the window: compare the two halves
+  const firstHalf = recent.slice(0, 15)
+  const lastHalf  = recent.slice(15)
+  const avg = (a: KlineCandle[]) => a.reduce((s, c) => s + c.close, 0) / a.length
+  const rising = avg(lastHalf) > avg(firstHalf)
+
+  const pct = (n: number) => `${Math.round(n * 100)}%`
+
+  if (tight) {
+    // Consolidation — accumulation after a decline, distribution after a rally
+    return rising
+      ? { phase: 'distribution', label: 'הפצה',
+          detail: `דשדוש בראש הטווח (${pct(pos)}) אחרי עלייה — כסף חכם מוכר` }
+      : { phase: 'accumulation', label: 'צבירה',
+          detail: `דשדוש בתחתית הטווח (${pct(pos)}) אחרי ירידה — כסף חכם קונה` }
+  }
+
+  return rising
+    ? { phase: 'markup', label: 'עלייה (Markup)',
+        detail: `מגמת עלייה, מיקום ${pct(pos)} בטווח` }
+    : { phase: 'markdown', label: 'ירידה (Markdown)',
+        detail: `מגמת ירידה, מיקום ${pct(pos)} בטווח` }
+}
