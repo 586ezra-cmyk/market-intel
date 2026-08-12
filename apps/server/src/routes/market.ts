@@ -45,7 +45,7 @@ router.get('/:symbol/:timeframe/state', (req: Request, res: Response) => {
     const structures = getRecentStructures(symbol, tf, 20)
     const fvgs = getActiveFVGs(symbol, tf)
     const liquidity = getActiveLiquidity(symbol, tf)
-    const smtSignals = getRecentSMTSignals(tf, 5)
+    const smtSignals = getRecentSMTSignals(tf, symbol, 5)
 
     res.json({ range, structures, fvgs, liquidity, smtSignals })
   } catch (err: any) {

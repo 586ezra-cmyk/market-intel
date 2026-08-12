@@ -136,7 +136,7 @@ function calcSL(
 
   // 4. SMT Divergence — SL beyond the divergence extreme
   if (input.hasSMT || input.hasISMT) {
-    const smtSignals = getRecentSMTSignals(input.timeframe, 3)
+    const smtSignals = getRecentSMTSignals(input.timeframe, input.symbol, 3)
     const smt = smtSignals[0]
     if (smt) {
       const extremePrice = smt.asset1Price
@@ -368,7 +368,7 @@ export async function evaluateConfluence(input: ConfluenceInput): Promise<Alert 
   }
 
   if (input.hasSMT || input.hasISMT) {
-    const smtSignals = getRecentSMTSignals(input.timeframe, 3)
+    const smtSignals = getRecentSMTSignals(input.timeframe, input.symbol, 3)
     const latest = smtSignals[0]
     if (latest) {
       factorDetails.SMT = {

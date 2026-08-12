@@ -186,9 +186,22 @@ function buildStopLoss(
   }
 }
 
-function fmtTime(sec?: number): string {
-  if (!sec) return ''
-  return new Date(sec * 1000).toISOString().slice(11, 16) + ' UTC'
+const TF_SECONDS: Record<string, number> = {
+  '1m': 60, '5m': 300, '15m': 900, '30m': 1800,
+  '1h': 3600, '4h': 14400, '1D': 86400, '1W': 604800,
+}
+
+/**
+ * Candle times are open times, but a signal is only true once the candle
+ * closes — reporting the open made an 18:00 hourly signal look like it
+ * happened at 18:00 when it was confirmed at 19:00. Webhook payloads carry
+ * milliseconds while candle buffers carry seconds, which rendered as "27T00".
+ */
+function fmtTime(t?: number, tf?: string): string {
+  if (!t) return ''
+  const sec = t > 1e11 ? Math.floor(t / 1000) : t
+  const close = sec + (tf ? TF_SECONDS[tf] ?? 0 : 0)
+  return new Date(close * 1000).toISOString().slice(11, 16) + ' UTC'
 }
 
 function detectOB(buf: KlineCandle[], tf: string): DetectedSignal | null {
@@ -278,21 +291,40 @@ function detectISMT(
 function detectDoublePattern(buf: KlineCandle[], tf: string): DetectedSignal | null {
   if (buf.length < 20) return null
   const recent = buf.slice(-20)
-  const highs  = recent.map(c => c.high)
-  const lows   = recent.map(c => c.low)
   const last   = recent[recent.length - 1]
-  const tol    = last.close * 0.003  // 0.3% tolerance
 
-  // Double top: two highs within tolerance, last candle bearish
-  const maxH = Math.max(...highs.slice(0, -1))
+  // Tight tolerance: a double top is two touches of the SAME level. A loose
+  // band matches any nearby high and turns ordinary chop into a pattern.
+  const tol = last.close * 0.0005   // 0.05%
+
+  const prior = recent.slice(0, -1)
+
+  // The second top must be THIS candle — otherwise the pattern already played
+  // out and is history, not a trigger.
+  const maxH = Math.max(...prior.map(c => c.high))
   if (Math.abs(last.high - maxH) < tol && last.close < last.open) {
-    return { type: 'doubletop', label: 'Double Top', emoji: '🔴', direction: 'bearish', timeframe: tf, score: 1.0 }
+    const idx = prior.map(c => c.high).lastIndexOf(maxH)
+    const ago = prior.length - idx
+    return {
+      type: 'doubletop', label: 'Double Top', emoji: '🔴',
+      direction: 'bearish', timeframe: tf, score: 1.0,
+      detail: `שיא שני ב-$${last.high.toLocaleString()} — הראשון לפני ${ago} נרות`,
+      at: last.time,
+    }
   }
-  // Double bottom: two lows within tolerance, last candle bullish
-  const minL = Math.min(...lows.slice(0, -1))
+
+  const minL = Math.min(...prior.map(c => c.low))
   if (Math.abs(last.low - minL) < tol && last.close > last.open) {
-    return { type: 'doublebottom', label: 'Double Bottom', emoji: '🟢', direction: 'bullish', timeframe: tf, score: 1.0 }
+    const idx = prior.map(c => c.low).lastIndexOf(minL)
+    const ago = prior.length - idx
+    return {
+      type: 'doublebottom', label: 'Double Bottom', emoji: '🟢',
+      direction: 'bullish', timeframe: tf, score: 1.0,
+      detail: `שפל שני ב-$${last.low.toLocaleString()} — הראשון לפני ${ago} נרות`,
+      at: last.time,
+    }
   }
+
   return null
 }
 
@@ -388,7 +420,7 @@ function buildMessage(
   let msg = `🔔 *${symbol}* — ${dirHe}\n`
   msg += `${scoreEmoji} דירוג ${score.toFixed(1)}/10  ·  ⏱ ${triggerTF}\n`
   msg += `💰 מחיר: $${lastClose.toLocaleString()}\n`
-  msg += `🕐 ${fmtTime(allSignals.find(s => s.at)?.at ?? Math.floor(Date.now() / 1000))}\n\n`
+  msg += `🕐 ${fmtTime(allSignals.find(s => s.at)?.at ?? Math.floor(Date.now() / 1000), triggerTF)}\n\n`
   msg += `━━━━━━━━━━━━━━━━━━━\n`
   msg += `🧩 *אישורים שנמצאו*\n`
 
@@ -398,7 +430,7 @@ function buildMessage(
     why?: string, detail?: string, at?: number, mtf = false,
   ) => {
     msg += `\n${emoji} *${label}*\n`
-    msg += `   ⏱ ${tf}${mtf ? ' _(טווח נוסף)_' : ''}${at ? ` · ${fmtTime(at)}` : ''}\n`
+    msg += `   ⏱ ${tf}${mtf ? ' _(טווח נוסף)_' : ''}${at ? ` · ${fmtTime(at, tf)}` : ''}\n`
     if (detail) msg += `   👁 ${detail}\n`
     if (why)    msg += `   ↳ _${why}_\n`
   }
@@ -616,7 +648,7 @@ export async function runRealtimeDetector(candle: KlineCandle): Promise<void> {
   const symbol = candle.symbol
   const tf     = candle.timeframe
   const dbSignals = {
-    smts:       getRecentSMTSignals(tf as any).slice(0, 2),
+    smts:       getRecentSMTSignals(tf as any, symbol).slice(0, 2),
     structures: getRecentStructures(symbol, tf as any).filter(s => s.direction === direction).slice(0, 2),
     fvgs:       getActiveFVGs(symbol, tf as any).filter(f => f.direction === direction),
     liquidity:  getActiveLiquidity(symbol, tf as any).slice(0, 2),

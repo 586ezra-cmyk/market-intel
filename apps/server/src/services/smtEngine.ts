@@ -211,10 +211,23 @@ export function detectISMT(
   }
 }
 
-export function getRecentSMTSignals(timeframe: Timeframe, limit = 10): SMTSignal[] {
+/**
+ * Recent SMT signals. `symbol` must be supplied to keep a divergence attached
+ * to the pair that produced it — filtering on timeframe alone attached the
+ * NQ/SPX divergence to ETHUSDT alerts, and gave SOLUSDT an SMT it cannot have.
+ */
+export function getRecentSMTSignals(
+  timeframe: Timeframe,
+  symbol?: string,
+  limit = 10,
+): SMTSignal[] {
   const db = getDb()
-  const rows = db.prepare(`SELECT * FROM smt_signals WHERE timeframe = ? ORDER BY time DESC LIMIT ?`)
-    .all(timeframe, limit) as any[]
+  const rows = symbol
+    ? db.prepare(`SELECT * FROM smt_signals
+         WHERE timeframe = ? AND (asset1 = ? OR asset2 = ?)
+         ORDER BY time DESC LIMIT ?`).all(timeframe, symbol, symbol, limit) as any[]
+    : db.prepare(`SELECT * FROM smt_signals WHERE timeframe = ? ORDER BY time DESC LIMIT ?`)
+        .all(timeframe, limit) as any[]
   return rows.map(r => ({
     id: r.id,
     timeframe: r.timeframe,
