@@ -250,63 +250,72 @@ export function classifyWyckoffPhase(buf: KlineCandle[]): {
 /**
  * SMT — divergence between two correlated assets at SWING level.
  *
- * The previous implementation compared each candle against a running maximum
- * held since process start, so it implemented neither SMT nor iSMT: there was
- * no confirmed pivot and no close-back condition. Worse, the running maximum
- * reset on every deploy, which made how often SMT fired depend on server
- * uptime rather than on the market.
+ * Two correlated assets should turn together. SMT is the moment they disagree
+ * at a swing: asset A prints a Higher High while asset B fails to. There is no
+ * candle count involved — the comparison is between the last two CONFIRMED
+ * pivots, however far apart the market placed them. That is precisely what
+ * separates SMT from iSMT, which is defined on exactly two candles.
  *
- * A Higher High is a structural event: the latest confirmed swing high sits
- * above the one before it. Bearish SMT is asset A printing that Higher High
- * while asset B fails to.
+ * Arguments are ordered so that `mover` is the asset that made the extreme and
+ * `failed` is the one that did not. Per the knowledge base the entry belongs on
+ * the asset that failed to follow — it has the further to travel — so callers
+ * pass their own symbol as `failed` and receive a signal they can act on.
+ *
+ * Validity is not a fixed window. The divergence stands until either the failed
+ * asset finally makes its own extreme, or price closes beyond the swing the leg
+ * started from.
  */
 export function detectSwingSMT(
-  bufA: KlineCandle[],
-  bufB: KlineCandle[],
-  symbolA: string,
-  symbolB: string,
-): PatternResult | null {
-  if (bufA.length < 20 || bufB.length < 20) return null
+  moverBuf: KlineCandle[],
+  failedBuf: KlineCandle[],
+  moverSymbol: string,
+  failedSymbol: string,
+): (PatternResult & { madeAt: number; exceededAt: number }) | null {
+  if (moverBuf.length < 20 || failedBuf.length < 20) return null
 
-  const pa = pivots(bufA)
-  const pb = pivots(bufB)
+  const pm = pivots(moverBuf)
+  const pf = pivots(failedBuf)
 
-  // Two swings on each side of both assets are needed to compare structure
-  if (pa.highs.length < 2 || pb.highs.length < 2) return null
-  if (pa.lows.length  < 2 || pb.lows.length  < 2) return null
+  if (pm.highs.length < 2 || pf.highs.length < 2) return null
+  if (pm.lows.length  < 2 || pf.lows.length  < 2) return null
 
-  const aHigh = pa.highs[pa.highs.length - 1], aHighPrev = pa.highs[pa.highs.length - 2]
-  const bHigh = pb.highs[pb.highs.length - 1], bHighPrev = pb.highs[pb.highs.length - 2]
-  const aLow  = pa.lows[pa.lows.length - 1],   aLowPrev  = pa.lows[pa.lows.length - 2]
-  const bLow  = pb.lows[pb.lows.length - 1],   bLowPrev  = pb.lows[pb.lows.length - 2]
+  const mHigh = pm.highs[pm.highs.length - 1], mHighPrev = pm.highs[pm.highs.length - 2]
+  const fHigh = pf.highs[pf.highs.length - 1], fHighPrev = pf.highs[pf.highs.length - 2]
+  const mLow  = pm.lows[pm.lows.length - 1],   mLowPrev  = pm.lows[pm.lows.length - 2]
+  const fLow  = pf.lows[pf.lows.length - 1],   fLowPrev  = pf.lows[pf.lows.length - 2]
 
-  // Only report while the divergence is still fresh — the swing that formed it
-  // must be among the most recent candles, or this is old news.
-  const fresh = (i: number, len: number) => len - i <= 6
+  // Bearish: mover made a Higher High, the other did not follow
+  if (mHigh.price > mHighPrev.price && fHigh.price <= fHighPrev.price) {
+    // Invalidated once the failed asset finally takes its own previous high
+    const latest = failedBuf[failedBuf.length - 1]
+    if (latest.high > fHighPrev.price) return null
 
-  // Bearish: A made a Higher High, B did not
-  if (aHigh.price > aHighPrev.price && bHigh.price <= bHighPrev.price
-      && fresh(aHigh.i, bufA.length)) {
     return {
       type: 'smt',
-      label: `SMT — ${symbolA} מול ${symbolB}`,
+      label: `SMT — ${failedSymbol} מול ${moverSymbol}`,
       emoji: '⚡',
       direction: 'bearish',
       score: 1.5,
-      detail: `${symbolA} עשה Higher High ($${aHigh.price.toLocaleString()} מעל $${aHighPrev.price.toLocaleString()}) — ${symbolB} לא ($${bHigh.price.toLocaleString()} מול $${bHighPrev.price.toLocaleString()})`,
+      detail: `${moverSymbol} עשה Higher High — ${failedSymbol} לא`,
+      madeAt: moverBuf[mHigh.i].time,
+      exceededAt: moverBuf[mHighPrev.i].time,
     }
   }
 
-  // Bullish: A made a Lower Low, B did not
-  if (aLow.price < aLowPrev.price && bLow.price >= bLowPrev.price
-      && fresh(aLow.i, bufA.length)) {
+  // Bullish: mover made a Lower Low, the other did not follow
+  if (mLow.price < mLowPrev.price && fLow.price >= fLowPrev.price) {
+    const latest = failedBuf[failedBuf.length - 1]
+    if (latest.low < fLowPrev.price) return null
+
     return {
       type: 'smt',
-      label: `SMT — ${symbolA} מול ${symbolB}`,
+      label: `SMT — ${failedSymbol} מול ${moverSymbol}`,
       emoji: '⚡',
       direction: 'bullish',
       score: 1.5,
-      detail: `${symbolA} עשה Lower Low ($${aLow.price.toLocaleString()} מתחת ל-$${aLowPrev.price.toLocaleString()}) — ${symbolB} לא ($${bLow.price.toLocaleString()} מול $${bLowPrev.price.toLocaleString()})`,
+      detail: `${moverSymbol} עשה Lower Low — ${failedSymbol} לא`,
+      madeAt: moverBuf[mLow.i].time,
+      exceededAt: moverBuf[mLowPrev.i].time,
     }
   }
 

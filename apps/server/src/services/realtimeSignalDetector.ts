@@ -9,6 +9,16 @@ import { scanAndStoreLiquidity, selectTargets } from './liquidityDetector'
 import { toAlertFactor, toAlertFactors } from './factorMapping'
 import { detectFVG, detectStructure, detectWyckoff, classifyWyckoffPhase, detectSwingSMT } from './candlePatternDetectors'
 
+/** Swings already reported as SMT, so a live divergence alerts once. */
+const reportedSMT = new Map<string, number>()
+
+function alreadyReportedSMT(symbol: string, tf: string, madeAt: number): boolean {
+  const key = `${symbol}:${tf}`
+  if (reportedSMT.get(key) === madeAt) return true
+  reportedSMT.set(key, madeAt)
+  return false
+}
+
 // The only correlated pairs defined in the knowledge base. A symbol absent
 // from this list (SOLUSDT) has nothing to diverge against and therefore
 // produces neither SMT nor iSMT.
@@ -197,11 +207,24 @@ const TF_SECONDS: Record<string, number> = {
  * happened at 18:00 when it was confirmed at 19:00. Webhook payloads carry
  * milliseconds while candle buffers carry seconds, which rendered as "27T00".
  */
+/** Israel local time — 'Asia/Jerusalem' handles the summer/winter shift. */
+const TZ = 'Asia/Jerusalem'
+
 function fmtTime(t?: number, tf?: string): string {
   if (!t) return ''
   const sec = t > 1e11 ? Math.floor(t / 1000) : t
   const close = sec + (tf ? TF_SECONDS[tf] ?? 0 : 0)
-  return new Date(close * 1000).toISOString().slice(11, 16) + ' UTC'
+  return new Date(close * 1000).toLocaleTimeString('he-IL', {
+    timeZone: TZ, hour: '2-digit', minute: '2-digit',
+  })
+}
+
+function fmtDate(t?: number): string {
+  if (!t) return ''
+  const sec = t > 1e11 ? Math.floor(t / 1000) : t
+  return new Date(sec * 1000).toLocaleDateString('he-IL', {
+    timeZone: TZ, day: '2-digit', month: '2-digit',
+  })
 }
 
 function detectOB(buf: KlineCandle[], tf: string): DetectedSignal | null {
@@ -413,7 +436,7 @@ function fmtWindow(g: { earliest: number; latest: number; earliestTF: string; la
   if (!g.latest) return ''
   const from = fmtTime(g.earliest, g.earliestTF)
   const to   = fmtTime(g.latest,   g.latestTF)
-  return from && from !== to ? ` · ${from.replace(' UTC', '')}–${to}` : ` · ${to}`
+  return from && from !== to ? ` · ${from}–${to}` : ` · ${to}`
 }
 
 /**
@@ -500,9 +523,10 @@ function buildMessage(
   }>()
 
   for (const s of allSignals) {
-    // Same signal at the same level is one event, however many candles report it
-    const levelKey = s.detail?.match(/\$[\d,.]+/)?.[0] ?? ''
-    const key = `${s.type}|${levelKey}`
+    // One line per confirmation type, listing every timeframe that saw it.
+    // Keying on the level as well split a single BOS across three lines
+    // because each timeframe broke a different swing.
+    const key = s.type
     const g = groups.get(key)
     if (g) {
       g.tfs.add(s.timeframe)
@@ -681,12 +705,24 @@ export async function runRealtimeDetector(candle: KlineCandle): Promise<void> {
       if (candle.symbol !== a1 && candle.symbol !== a2) continue
       const otherSym = candle.symbol === a1 ? a2 : a1
       const otherBuf = getBuffer(otherSym, candle.timeframe)
-      const smt = detectSwingSMT(buf, otherBuf, candle.symbol, otherSym)
-      if (smt) {
+
+      // The partner is the mover, this symbol is the one that failed to follow —
+      // and the entry belongs on the asset that failed, so the alert is raised
+      // on the symbol being processed rather than on the one that broke out.
+      const smt = detectSwingSMT(otherBuf, buf, otherSym, candle.symbol)
+
+      // A divergence stays valid until invalidated, so it is present on every
+      // candle in between. Report it when it forms; after that it is context,
+      // not a new event. Keyed on the swing that created it.
+      if (smt && !alreadyReportedSMT(candle.symbol, candle.timeframe, smt.madeAt)) {
+        const made = fmtTime(smt.madeAt, candle.timeframe)
+        const prev = fmtTime(smt.exceededAt, candle.timeframe)
         detectedLocal.push({
           type: smt.type, label: smt.label, emoji: smt.emoji,
           direction: smt.direction, timeframe: candle.timeframe,
-          score: smt.score, detail: smt.detail, at: candle.time,
+          score: smt.score,
+          detail: `${smt.detail} · הנר של ${made} (${fmtDate(smt.madeAt)}) עקף את זה של ${prev}`,
+          at: candle.time,
         })
       }
     }
