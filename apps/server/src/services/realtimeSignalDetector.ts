@@ -4,8 +4,8 @@ import { saveAlert } from './alertDispatcher'
 import { getActiveFVGs } from './fvgEngine'
 import { detectSMT, getRecentSMTSignals } from './smtEngine'
 import { getLatestStructure, getRecentStructures } from './structureEngine'
-import { getActiveLiquidity, checkLiquiditySweep, getNearestLiquidityTargets } from './liquidityEngine'
-import { scanAndStoreLiquidity } from './liquidityDetector'
+import { getActiveLiquidity, checkLiquiditySweep } from './liquidityEngine'
+import { scanAndStoreLiquidity, selectTargets } from './liquidityDetector'
 import { toAlertFactor, toAlertFactors } from './factorMapping'
 
 // SMT pairs for live cross-asset detection (Bybit feed)
@@ -561,8 +561,15 @@ export async function runRealtimeDetector(candle: KlineCandle): Promise<void> {
   // and skipped saveAlert, so crypto alerts existed only in Telegram — absent
   // from the website, the statistics and the TP/SL outcome tracker.
   const factors = toAlertFactors(detectedLocal.map(s => s.type))
-  const targets = getNearestLiquidityTargets(symbol, tf as any, direction, candle.close)
   const sl = buildStopLoss(buf, direction, candle.close)
+
+  // Targets must beat the stop distance — the nearest level is usually
+  // internal liquidity a few ticks away, which would make every trade sub-1R.
+  const targets = selectTargets(
+    getActiveLiquidity(symbol, tf as any),
+    candle.close, sl?.price ?? null, direction,
+  )
+  const [t1, t2, t3] = targets
 
   try {
     await saveAlert({
@@ -579,15 +586,18 @@ export async function runRealtimeDetector(candle: KlineCandle): Promise<void> {
       messageHe: msg,
       entryPrice: candle.close,
       stopLoss: sl?.price ?? null,
-      tp1: targets.tp1?.price ?? null,
-      tp2: targets.tp2?.price ?? null,
-      tp3: targets.tp3?.price ?? null,
+      tp1: t1?.price ?? null,
+      tp2: t2?.price ?? null,
+      tp3: t3?.price ?? null,
       fvgId: null,
       structureId: null,
       slReason: sl?.reason ?? null,
-      tp1Label: targets.tp1 ? LIQ_LABEL[targets.tp1.type] ?? targets.tp1.type : null,
-      tp2Label: targets.tp2 ? LIQ_LABEL[targets.tp2.type] ?? targets.tp2.type : null,
-      tp3Label: targets.tp3 ? LIQ_LABEL[targets.tp3.type] ?? targets.tp3.type : null,
+      tp1Label: t1 ? LIQ_LABEL[t1.type] ?? t1.type : null,
+      tp2Label: t2 ? LIQ_LABEL[t2.type] ?? t2.type : null,
+      tp3Label: t3 ? LIQ_LABEL[t3.type] ?? t3.type : null,
+      r1: t1 ? `${t1.r}R` : null,
+      r2: t2 ? `${t2.r}R` : null,
+      r3: t3 ? `${t3.r}R` : null,
       factorDetails: Object.fromEntries(
         detectedLocal
           .filter(s => s.detail && toAlertFactor(s.type))

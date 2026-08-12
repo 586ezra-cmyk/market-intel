@@ -139,6 +139,57 @@ export function classifyLevel(
   return price > rangeHigh || price < rangeLow ? 'external' : 'internal'
 }
 
+export interface SelectedTarget {
+  price: number
+  type: LiquidityType
+  /** Reward divided by risk, so a caller can reject sub-1R setups. */
+  r: number
+}
+
+/**
+ * Choose take-profit levels that are actually worth taking.
+ *
+ * The nearest level in the direction of travel is usually internal liquidity
+ * sitting a few ticks away, which yields a target closer than the stop and a
+ * structurally losing trade. Targets must clear a minimum reward-to-risk,
+ * and levels holding more stops are preferred at equal distance.
+ */
+export function selectTargets(
+  levels: Array<{ price: number; type: LiquidityType; touchCount?: number }>,
+  entry: number,
+  stopLoss: number | null,
+  direction: 'bullish' | 'bearish',
+  minR = 1,
+): SelectedTarget[] {
+  if (!stopLoss) return []
+  const risk = Math.abs(entry - stopLoss)
+  if (risk <= 0) return []
+
+  const ahead = levels.filter(l =>
+    direction === 'bullish' ? l.price > entry : l.price < entry)
+
+  const scored = ahead
+    .map(l => ({
+      price: l.price,
+      type: l.type,
+      r: Math.abs(l.price - entry) / risk,
+      touches: l.touchCount ?? 1,
+    }))
+    .filter(t => t.r >= minR)
+    // Nearest qualifying target first; break ties toward the level holding
+    // more stops, which is the one price is more likely to reach for.
+    .sort((a, b) => a.r - b.r || b.touches - a.touches)
+
+  const out: SelectedTarget[] = []
+  for (const t of scored) {
+    // Keep targets meaningfully apart so TP1/TP2/TP3 are not the same level
+    if (out.some(o => Math.abs(o.price - t.price) < risk * 0.5)) continue
+    out.push({ price: t.price, type: t.type, r: parseFloat(t.r.toFixed(2)) })
+    if (out.length === 3) break
+  }
+  return out
+}
+
 /**
  * Scan a buffer and persist everything found. Safe to call on every closed
  * candle: upsertLiquidity merges levels within 0.05% instead of inserting.
