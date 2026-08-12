@@ -1,11 +1,12 @@
 import type { KlineCandle } from './binanceWebSocket'
 import { getDb } from '../db/client'
-import { sendTelegram } from './alertDispatcher'
+import { saveAlert } from './alertDispatcher'
 import { getActiveFVGs } from './fvgEngine'
 import { detectSMT, getRecentSMTSignals } from './smtEngine'
 import { getLatestStructure, getRecentStructures } from './structureEngine'
-import { getActiveLiquidity, checkLiquiditySweep } from './liquidityEngine'
+import { getActiveLiquidity, checkLiquiditySweep, getNearestLiquidityTargets } from './liquidityEngine'
 import { scanAndStoreLiquidity } from './liquidityDetector'
+import { toAlertFactor, toAlertFactors } from './factorMapping'
 
 // SMT pairs for live cross-asset detection (Bybit feed)
 const LIVE_SMT_PAIRS: Array<[string, string]> = [
@@ -66,6 +67,7 @@ interface LastSent {
 const detectorStats = {
   candlesProcessed: 0,
   liquidityLevels: 0,
+  saved: 0,
   sent: 0,
   lastCandleAt: 0 as number,
   lastSent: null as LastSent | null,
@@ -96,19 +98,6 @@ function getSettings(): { active: boolean; signals: string[]; timeframes: string
 
 const ALL_SIGNALS = ['bos','choch','fvg','ifvg','liquidity','smt','ismt','ob','doubletop','doublebottom','judas','wyckoff','session','inducement','repricing']
 const ALL_TIMEFRAMES = ['1m','5m','15m','30m','1h','4h','1D','1W']
-
-// ─── Telegram topic map ───────────────────────────────────────────────────────
-
-function topicForTF(tf: string): string {
-  const map: Record<string, string> = {
-    '5m': 'TELEGRAM_TOPIC_5M', '15m': 'TELEGRAM_TOPIC_15M',
-    '30m': 'TELEGRAM_TOPIC_30M', '1h': 'TELEGRAM_TOPIC_1H',
-    '4h': 'TELEGRAM_TOPIC_4H', '1D': 'TELEGRAM_TOPIC_1D',
-    '1W': 'TELEGRAM_TOPIC_1W',
-  }
-  const envKey = map[tf] ?? 'TELEGRAM_TOPIC_DAILY'
-  return process.env[envKey] ?? '2'
-}
 
 // ─── Local pattern detectors (run on candle buffer) ──────────────────────────
 
@@ -148,6 +137,49 @@ const LIQ_LABEL: Record<string, string> = {
   pdh: 'שיא אתמול (PDH)',     pdl: 'שפל אתמול (PDL)',
   pwh: 'שיא השבוע (PWH)',     pwl: 'שפל השבוע (PWL)',
   session_high: 'שיא הסשן',   session_low: 'שפל הסשן',
+}
+
+/** UTC hour → trading session, matching the Kill Zone windows. */
+function sessionForHour(h: number): string {
+  if (h >= 7 && h < 11)  return 'london'
+  if (h >= 13 && h < 16) return 'ny'
+  return 'asian'
+}
+
+function isKillZone(h: number): boolean {
+  return (h >= 7 && h < 11) || (h >= 13 && h < 16)
+}
+
+/**
+ * Stop loss anchored to the swing the trade is built on, not a fixed percentage:
+ * below the recent low for longs, above the recent high for shorts, plus a small
+ * buffer so a wick touching the exact level does not stop the trade out.
+ */
+function buildStopLoss(
+  buf: KlineCandle[],
+  direction: 'bullish' | 'bearish',
+  entry: number,
+): { price: number; reason: string } | null {
+  const window = buf.slice(-10)
+  if (window.length < 3) return null
+
+  const buffer = entry * 0.0005   // 0.05%
+
+  if (direction === 'bullish') {
+    const low = Math.min(...window.map(c => c.low))
+    if (low >= entry) return null
+    return {
+      price: low - buffer,
+      reason: `מתחת לשפל הסווינג ב-$${low.toLocaleString('en-US', { maximumFractionDigits: 2 })} — שבירה שלו מבטלת את הסטאפ`,
+    }
+  }
+
+  const high = Math.max(...window.map(c => c.high))
+  if (high <= entry) return null
+  return {
+    price: high + buffer,
+    reason: `מעל שיא הסווינג ב-$${high.toLocaleString('en-US', { maximumFractionDigits: 2 })} — פריצה שלו מבטלת את הסטאפ`,
+  }
 }
 
 function fmtTime(sec?: number): string {
@@ -523,17 +555,52 @@ export async function runRealtimeDetector(candle: KlineCandle): Promise<void> {
   const dedupKey = `${symbol}:${tf}:${direction}:${detectedLocal.map(s => s.type).sort().join(',')}`
   if (isDuplicate(dedupKey)) return
 
-  // Build and send message
   const msg = buildMessage(symbol, tf, direction, allSignals, score, candle.close, dbSignals)
-  const topic = topicForTF(tf)
 
-  await sendTelegram(msg, 0, undefined, String(topic))
+  // Persist before notifying. Until now this path called sendTelegram directly
+  // and skipped saveAlert, so crypto alerts existed only in Telegram — absent
+  // from the website, the statistics and the TP/SL outcome tracker.
+  const factors = toAlertFactors(detectedLocal.map(s => s.type))
+  const targets = getNearestLiquidityTargets(symbol, tf as any, direction, candle.close)
+  const sl = buildStopLoss(buf, direction, candle.close)
 
-  // Also send to high-score topic if score >= 7
-  const highTopic = process.env['TELEGRAM_TOPIC_HIGH'] ?? '4'
-  if (score >= 7) {
-    await sendTelegram(msg, 0, undefined, highTopic)
+  try {
+    await saveAlert({
+      symbol,
+      timeframe: tf as any,
+      triggeredAt: candle.time * 1000,
+      factors,
+      score: parseFloat(score.toFixed(1)),
+      direction,
+      recommendation: direction === 'bullish' ? 'long' : 'short',
+      premiumDiscount: 'midpoint',
+      session: sessionForHour(new Date(candle.time * 1000).getUTCHours()),
+      inKillZone: isKillZone(new Date(candle.time * 1000).getUTCHours()),
+      messageHe: msg,
+      entryPrice: candle.close,
+      stopLoss: sl?.price ?? null,
+      tp1: targets.tp1?.price ?? null,
+      tp2: targets.tp2?.price ?? null,
+      tp3: targets.tp3?.price ?? null,
+      fvgId: null,
+      structureId: null,
+      slReason: sl?.reason ?? null,
+      tp1Label: targets.tp1 ? LIQ_LABEL[targets.tp1.type] ?? targets.tp1.type : null,
+      tp2Label: targets.tp2 ? LIQ_LABEL[targets.tp2.type] ?? targets.tp2.type : null,
+      tp3Label: targets.tp3 ? LIQ_LABEL[targets.tp3.type] ?? targets.tp3.type : null,
+      factorDetails: Object.fromEntries(
+        detectedLocal
+          .filter(s => s.detail && toAlertFactor(s.type))
+          .map(s => [toAlertFactor(s.type)!, { desc: s.detail, timeframe: s.timeframe, at: s.at }])
+      ),
+    })
+    detectorStats.saved++
+  } catch (err: any) {
+    console.error('[Detector] saveAlert failed:', err.message)
   }
+
+  // saveAlert already routes to Telegram by timeframe and score, so sending
+  // again here would duplicate every crypto alert.
 
   detectorStats.sent++
   detectorStats.lastSent = {

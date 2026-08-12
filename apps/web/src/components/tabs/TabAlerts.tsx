@@ -89,12 +89,43 @@ const FACTOR_DETAIL: Record<string, { title: string; what: string; why: string; 
     why: 'המוסדיים חוזרים ל-OB שלהם כדי "לטעון" פוזיציות נוספות',
     signal: 'כניסה בגוף האחרון של ה-OB עם SL מחוץ לאזור',
   },
+  iSMT: {
+    title: 'iSMT — דיברגנס שני נרות',
+    what: 'נר עשה שיא/שפל חדש והנר שאחריו לא אישר וסגר לכיוון ההפוך',
+    why: 'הגרסה המהירה של SMT — מזהה היחלשות תוך שני נרות במקום להמתין לפיבוט',
+    signal: 'כניסה בכיוון הנר המאשר, SL מעבר לקצה של הנר החורג',
+  },
+  iFVG: {
+    title: 'iFVG — פער הפוך',
+    what: 'FVG שהתמלא, והמחיר חזר לבחון אותו מהצד השני',
+    why: 'פער שמולא מחליף תפקיד — תמיכה הופכת התנגדות ולהיפך',
+    signal: 'כניסה בריטסט של הפער מהצד החדש',
+  },
+  Judas: {
+    title: 'Judas Swing',
+    what: 'תנועה מזויפת בפתיחת לונדון/ניו יורק שנעה נגד הכיוון האמיתי',
+    why: 'המהלך הראשון בפתיחה נועד לאסוף נזילות ולכלוא כניסות מוקדמות',
+    signal: 'כניסה אחרי ההיפוך, לא בתנועה הראשונה',
+  },
+  Session: {
+    title: 'שיא/שפל סשן',
+    what: 'שיא או שפל חדש שנקבע בפתיחת סשן מסחר',
+    why: 'הקצוות של הסשן קובעים את טווח היום ומושכים אליהם נזילות',
+    signal: 'שימוש כרמת יעד או כגבול לטווח',
+  },
+  KillZone: {
+    title: 'Kill Zone',
+    what: 'חלון השעות שבו הנפח המוסדי מרוכז — לונדון 07:00-11:00, ניו יורק 13:00-16:00 UTC',
+    why: 'רוב המהלכים המשמעותיים נוצרים בחלונות האלה',
+    signal: 'לא אישור בפני עצמו — מגביר את המשקל של שאר האישורים',
+  },
 }
 
 const FACTOR_HE_SHORT: Record<string, string> = {
   BOS: 'BOS', CHoCH: 'CHoCH', LiquiditySweep: 'שאיבת נזילות',
   FVG: 'FVG', SMT: 'SMT', DoubleTop: 'דאבל טופ',
   DoubleBottom: 'דאבל בוטום', Wyckoff: 'Wyckoff', OrderBlock: 'OB',
+  iSMT: 'iSMT', iFVG: 'iFVG', Judas: 'Judas', Session: 'סשן', KillZone: 'Kill Zone',
 }
 
 const SESSION_HE: Record<string, string> = {

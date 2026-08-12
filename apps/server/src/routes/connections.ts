@@ -661,6 +661,8 @@ router.get('/crypto-status', (_req: Request, res: Response) => {
     candlesProcessed: stats.candlesProcessed,
     lastCandleAt: stats.lastCandleAt || null,
     alertsSent: stats.sent,
+    alertsSaved: stats.saved,
+    liquidityLevels: stats.liquidityLevels,
     lastSent: stats.lastSent,
     coverage,
   })
