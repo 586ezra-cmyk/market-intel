@@ -3,6 +3,7 @@ import { randomBytes } from 'crypto'
 import { getDb } from '../db/client'
 import { getFeedStatus } from '../services/binanceWebSocket'
 import { getDetectorStats } from '../services/realtimeSignalDetector'
+import { backfillReport } from '../services/bybitBackfill'
 
 
 // ─── Pine Script (embedded — always in sync with server deploy) ───────────────
@@ -654,6 +655,7 @@ router.get('/crypto-status', (_req: Request, res: Response) => {
 
   res.json({
     feed,
+    backfill: backfillReport,
     candlesProcessed: stats.candlesProcessed,
     lastCandleAt: stats.lastCandleAt || null,
     alertsSent: stats.sent,

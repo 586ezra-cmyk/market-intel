@@ -3,6 +3,15 @@ import { seedCandles, getBufferSize } from './realtimeSignalDetector'
 
 const BYBIT_REST = 'https://api.bybit.com/v5/market/kline'
 
+// Last backfill outcome, surfaced via /api/connections/crypto-status so the
+// cause of an empty buffer is visible without Railway logs.
+export const backfillReport = {
+  ranAt: 0 as number,
+  loaded: 0,
+  failed: 0,
+  firstError: null as string | null,
+}
+
 /**
  * Bybit returns klines newest-first as string tuples:
  * [startMs, open, high, low, close, volume, turnover]
@@ -22,7 +31,10 @@ async function fetchKlines(
 ): Promise<KlineCandle[]> {
   const url = `${BYBIT_REST}?category=spot&symbol=${symbol}&interval=${interval}&limit=${limit}`
   const res = await fetch(url)
-  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    throw new Error(`HTTP ${res.status} ${body.slice(0, 120)}`)
+  }
 
   const data: any = await res.json()
   if (data.retCode !== 0) throw new Error(data.retMsg ?? `retCode ${data.retCode}`)
@@ -76,10 +88,17 @@ export async function backfillBybitCandles(
       ok++
     } catch (err: any) {
       failed++
+      if (!backfillReport.firstError) {
+        backfillReport.firstError = `${sym} ${tfLabel}: ${err.message}`
+      }
       console.error(`[BybitBackfill] ${sym} ${tfLabel} failed: ${err.message}`)
     }
     await new Promise(r => setTimeout(r, 120))
   }
+
+  backfillReport.ranAt  = Date.now()
+  backfillReport.loaded = ok
+  backfillReport.failed = failed
 
   const summary = symbols
     .map(s => `${s}(4h:${getBufferSize(s, '4h')} 1D:${getBufferSize(s, '1D')})`)
