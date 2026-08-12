@@ -12,6 +12,7 @@ const TradingChart = dynamic(() => import('@/components/chart/TradingChart'), { 
 export default function TabDashboard() {
   const { symbol, timeframe, activeRange, alerts, structures, layers, toggleLayer } = useMarketStore()
   const [rightPanel, setRightPanel] = useState<'layers' | 'cascade' | 'missed'>('layers')
+  const [panelOpen, setPanelOpen]   = useState(true)
   const [analysisOpen, setAnalysisOpen] = useState(false)
 
   const lastAlert = alerts[0]
@@ -30,6 +31,15 @@ export default function TabDashboard() {
 
   // Missed entries: last 3 alerts in same direction
   const missed = alerts.slice(1, 5).filter(a => a.direction === lastAlert?.direction)
+
+  const activeLayerCount = (Object.keys(LAYER_LABELS) as LayerId[])
+    .filter(id => layers[id]).length
+  const hasLayerData = !!state && (
+    (state.structures?.length ?? 0) > 0 ||
+    (state.fvgs?.length ?? 0) > 0 ||
+    (state.liquidity?.length ?? 0) > 0 ||
+    (state.smtSignals?.length ?? 0) > 0
+  )
 
   // Premium/Discount context
   const range = activeRange ?? state?.range
@@ -115,11 +125,35 @@ export default function TabDashboard() {
         {/* Chart */}
         <div className="flex-1 relative overflow-hidden">
           <TradingChart />
+
+          {/* Layers draw only what the server has recorded. With layers on and
+              nothing on screen the chart looks broken, so say which it is. */}
+          {activeLayerCount > 0 && !hasLayerData && (
+            <div className="absolute bottom-3 right-3 z-10 max-w-[15rem] rounded-lg
+                            bg-surface-raised/95 border border-surface-border px-3 py-2
+                            text-[11px] text-slate-400 pointer-events-none">
+              <div className="font-semibold text-slate-200 mb-0.5">אין נתוני שכבות ל-{symbol}</div>
+              השכבות דלוקות אך לא התקבלו זיהויים לנכס הזה — צריך Alert פעיל
+              ב-TradingView על הגרף שלו.
+            </div>
+          )}
         </div>
       </div>
 
+      {/* Panel toggle — the only way to reclaim chart width on narrow screens,
+          where a permanently docked 13rem panel leaves the chart unreadable. */}
+      <button
+        onClick={() => setPanelOpen(v => !v)}
+        title={panelOpen ? 'הסתר שכבות' : 'הצג שכבות'}
+        className="shrink-0 w-6 flex items-center justify-center bg-surface-raised
+                   border-r border-surface-border text-slate-400 hover:text-white
+                   hover:bg-surface transition-colors"
+      >
+        {panelOpen ? '›' : '‹'}
+      </button>
+
       {/* ─── Right Panel ──────────────────────────────────────────────────── */}
-      <div className="w-52 shrink-0 flex flex-col bg-surface-raised border-r border-surface-border overflow-hidden">
+      <div className={`${panelOpen ? 'flex w-44 sm:w-52' : 'hidden'} shrink-0 flex-col bg-surface-raised border-r border-surface-border overflow-hidden`}>
         {/* Panel tabs */}
         <div className="flex border-b border-surface-border text-[11px] shrink-0">
           {([
