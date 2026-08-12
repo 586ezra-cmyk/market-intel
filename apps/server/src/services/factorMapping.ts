@@ -13,9 +13,9 @@ const DETECTOR_TO_FACTOR: Record<string, AlertFactor> = {
   liquidity:    'LiquiditySweep',
   fvg:          'FVG',
   smt:          'SMT',
-  // iSMT is a two-candle divergence within ONE asset. Folding it into SMT
-  // claimed a cross-asset divergence that never happened — SOLUSDT is not in
-  // any SMT pair yet showed an SMT factor.
+  // iSMT is Intermarket SMT: the two-candle sweep happens on the asset AND the
+  // correlated asset must fail to confirm. It is its own factor rather than
+  // being folded into SMT, which claimed a divergence that never happened.
   ismt:         'iSMT',
   ifvg:         'iFVG',
   ob:           'OrderBlock',

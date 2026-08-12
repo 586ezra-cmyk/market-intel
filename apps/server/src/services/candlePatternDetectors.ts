@@ -90,15 +90,36 @@ export function detectStructure(buf: KlineCandle[]): PatternResult | null {
   const lastHigh = highs[highs.length - 1]
   const lastLow  = lows[lows.length - 1]
 
-  // Trend from the last two swings on each side
-  const risingHighs = highs[highs.length - 1].price > highs[highs.length - 2].price
-  const risingLows  = lows[lows.length - 1].price  > lows[lows.length - 2].price
-  const uptrend   = risingHighs && risingLows
-  const downtrend = !risingHighs && !risingLows
+  // Trend read over three swings where available — two is noisy enough that
+  // highs and lows routinely disagree.
+  const rising = (arr: Array<{ price: number }>) => {
+    const n = arr.length
+    if (n >= 3) {
+      // Majority of the recent steps pointing the same way
+      const steps = [arr[n - 1].price > arr[n - 2].price, arr[n - 2].price > arr[n - 3].price]
+      return steps.filter(Boolean).length >= 2
+    }
+    return arr[n - 1].price > arr[n - 2].price
+  }
+  const falling = (arr: Array<{ price: number }>) => {
+    const n = arr.length
+    if (n >= 3) {
+      const steps = [arr[n - 1].price < arr[n - 2].price, arr[n - 2].price < arr[n - 3].price]
+      return steps.filter(Boolean).length >= 2
+    }
+    return arr[n - 1].price < arr[n - 2].price
+  }
+
+  const uptrend   = rising(highs)  && rising(lows)
+  const downtrend = falling(highs) && falling(lows)
+
+  // CHoCH means a break AGAINST an established trend. Deriving it as "not an
+  // uptrend" made every indeterminate market — highs rising while lows fall,
+  // which is common — resolve to CHoCH, so it outnumbered BOS.
 
   // Break above the last swing high
   if (last.close > lastHigh.price) {
-    const isBOS = uptrend
+    const isBOS = !downtrend      // reversal only when a downtrend is in place
     return {
       type: isBOS ? 'bos' : 'choch',
       label: isBOS ? 'BOS — שבירת מבנה' : 'CHoCH — שינוי אופי',
@@ -111,7 +132,7 @@ export function detectStructure(buf: KlineCandle[]): PatternResult | null {
 
   // Break below the last swing low
   if (last.close < lastLow.price) {
-    const isBOS = downtrend
+    const isBOS = !uptrend        // reversal only when an uptrend is in place
     return {
       type: isBOS ? 'bos' : 'choch',
       label: isBOS ? 'BOS — שבירת מבנה' : 'CHoCH — שינוי אופי',

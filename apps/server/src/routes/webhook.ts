@@ -12,6 +12,7 @@ import { detectSMT, detectISMT } from '../services/smtEngine'
 import { evaluateConfluence } from '../services/confluenceEngine'
 import { parseTF } from '../utils/timeframe'
 import type { Direction, Timeframe } from '@market/shared'
+import { getSetting } from './settings'
 
 const router = Router()
 
@@ -300,6 +301,16 @@ router.post('/tradingview', async (req: Request, res: Response) => {
       }
 
       case 'confluence': {
+        // NQ/SPX are now detected server-side from the Yahoo feed, which runs
+        // the same detectors as crypto. Leaving the Pine Script confluence
+        // enabled would produce a second, differently-scored alert for the same
+        // symbol. Raw signal events (fvg_created, structure, ...) are still
+        // accepted below — only alert creation is switched off.
+        if (getSetting('tv_alerts_enabled', 'false') !== 'true') {
+          res.json({ ok: true, alerted: false, skipped: 'tv_alerts_disabled' })
+          break
+        }
+
         const alert = await evaluateConfluence({
           symbol: data.symbol,
           timeframe: tf,
