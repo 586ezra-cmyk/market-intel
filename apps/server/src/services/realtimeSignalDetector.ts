@@ -7,7 +7,7 @@ import { getLatestStructure, getRecentStructures } from './structureEngine'
 import { getActiveLiquidity, checkLiquiditySweep } from './liquidityEngine'
 import { scanAndStoreLiquidity, selectTargets } from './liquidityDetector'
 import { toAlertFactor, toAlertFactors } from './factorMapping'
-import { detectFVG, detectStructure, detectWyckoff, classifyWyckoffPhase } from './candlePatternDetectors'
+import { detectFVG, detectStructure, detectWyckoff, classifyWyckoffPhase, detectSwingSMT } from './candlePatternDetectors'
 
 // The only correlated pairs defined in the knowledge base. A symbol absent
 // from this list (SOLUSDT) has nothing to diverge against and therefore
@@ -631,41 +631,18 @@ export async function runRealtimeDetector(candle: KlineCandle): Promise<void> {
     if (sh) detectedLocal.push(sh)
   }
 
-  // Live SMT detection between correlated pairs (ETH ↔ BTC)
+  // Live SMT between correlated pairs, at swing level.
   if (enabledSignals.includes('smt')) {
     for (const [a1, a2] of LIVE_SMT_PAIRS) {
       if (candle.symbol !== a1 && candle.symbol !== a2) continue
       const otherSym = candle.symbol === a1 ? a2 : a1
       const otherBuf = getBuffer(otherSym, candle.timeframe)
-      if (otherBuf.length < 2) continue
-      const other = otherBuf[otherBuf.length - 1]
-      const smtResult = detectSMT({
-        timeframe: candle.timeframe as any,
-        time: candle.time,
-        asset1: candle.symbol,
-        asset1Price: candle.close,
-        asset1High: candle.high,
-        asset1Low: candle.low,
-        asset2: otherSym,
-        asset2Price: other.close,
-        asset2High: other.high,
-        asset2Low: other.low,
-      })
-      if (smtResult) {
-        const bullish = smtResult.type === 'bullish_smt'
-        const detail = bullish
-          ? `${candle.symbol} שבר שפל חדש ($${candle.low.toLocaleString()}) — ${otherSym} לא אישר ($${other.low.toLocaleString()})`
-          : `${candle.symbol} שבר שיא חדש ($${candle.high.toLocaleString()}) — ${otherSym} לא אישר ($${other.high.toLocaleString()})`
-
+      const smt = detectSwingSMT(buf, otherBuf, candle.symbol, otherSym)
+      if (smt) {
         detectedLocal.push({
-          type: 'smt',
-          label: `SMT — ${candle.symbol} מול ${otherSym}`,
-          emoji: '⚡',
-          direction: bullish ? 'bullish' : 'bearish',
-          timeframe: candle.timeframe,
-          score: 1.5,
-          detail,
-          at: candle.time,
+          type: smt.type, label: smt.label, emoji: smt.emoji,
+          direction: smt.direction, timeframe: candle.timeframe,
+          score: smt.score, detail: smt.detail, at: candle.time,
         })
       }
     }

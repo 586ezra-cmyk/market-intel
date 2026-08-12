@@ -246,3 +246,69 @@ export function classifyWyckoffPhase(buf: KlineCandle[]): {
     : { phase: 'markdown', label: 'ירידה (Markdown)',
         detail: `מגמת ירידה, מיקום ${pct(pos)} בטווח` }
 }
+
+/**
+ * SMT — divergence between two correlated assets at SWING level.
+ *
+ * The previous implementation compared each candle against a running maximum
+ * held since process start, so it implemented neither SMT nor iSMT: there was
+ * no confirmed pivot and no close-back condition. Worse, the running maximum
+ * reset on every deploy, which made how often SMT fired depend on server
+ * uptime rather than on the market.
+ *
+ * A Higher High is a structural event: the latest confirmed swing high sits
+ * above the one before it. Bearish SMT is asset A printing that Higher High
+ * while asset B fails to.
+ */
+export function detectSwingSMT(
+  bufA: KlineCandle[],
+  bufB: KlineCandle[],
+  symbolA: string,
+  symbolB: string,
+): PatternResult | null {
+  if (bufA.length < 20 || bufB.length < 20) return null
+
+  const pa = pivots(bufA)
+  const pb = pivots(bufB)
+
+  // Two swings on each side of both assets are needed to compare structure
+  if (pa.highs.length < 2 || pb.highs.length < 2) return null
+  if (pa.lows.length  < 2 || pb.lows.length  < 2) return null
+
+  const aHigh = pa.highs[pa.highs.length - 1], aHighPrev = pa.highs[pa.highs.length - 2]
+  const bHigh = pb.highs[pb.highs.length - 1], bHighPrev = pb.highs[pb.highs.length - 2]
+  const aLow  = pa.lows[pa.lows.length - 1],   aLowPrev  = pa.lows[pa.lows.length - 2]
+  const bLow  = pb.lows[pb.lows.length - 1],   bLowPrev  = pb.lows[pb.lows.length - 2]
+
+  // Only report while the divergence is still fresh — the swing that formed it
+  // must be among the most recent candles, or this is old news.
+  const fresh = (i: number, len: number) => len - i <= 6
+
+  // Bearish: A made a Higher High, B did not
+  if (aHigh.price > aHighPrev.price && bHigh.price <= bHighPrev.price
+      && fresh(aHigh.i, bufA.length)) {
+    return {
+      type: 'smt',
+      label: `SMT — ${symbolA} מול ${symbolB}`,
+      emoji: '⚡',
+      direction: 'bearish',
+      score: 1.5,
+      detail: `${symbolA} עשה Higher High ($${aHigh.price.toLocaleString()} מעל $${aHighPrev.price.toLocaleString()}) — ${symbolB} לא ($${bHigh.price.toLocaleString()} מול $${bHighPrev.price.toLocaleString()})`,
+    }
+  }
+
+  // Bullish: A made a Lower Low, B did not
+  if (aLow.price < aLowPrev.price && bLow.price >= bLowPrev.price
+      && fresh(aLow.i, bufA.length)) {
+    return {
+      type: 'smt',
+      label: `SMT — ${symbolA} מול ${symbolB}`,
+      emoji: '⚡',
+      direction: 'bullish',
+      score: 1.5,
+      detail: `${symbolA} עשה Lower Low ($${aLow.price.toLocaleString()} מתחת ל-$${aLowPrev.price.toLocaleString()}) — ${symbolB} לא ($${bLow.price.toLocaleString()} מול $${bLowPrev.price.toLocaleString()})`,
+    }
+  }
+
+  return null
+}
