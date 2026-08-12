@@ -4,6 +4,7 @@ import { getDb } from '../db/client'
 import { getFeedStatus } from '../services/binanceWebSocket'
 import { getDetectorStats } from '../services/realtimeSignalDetector'
 import { backfillReport } from '../services/bybitBackfill'
+import { sendTelegram, alertsEnabled } from '../services/alertDispatcher'
 
 
 // ─── Pine Script (embedded — always in sync with server deploy) ───────────────
@@ -654,6 +655,7 @@ router.get('/crypto-status', (_req: Request, res: Response) => {
   }
 
   res.json({
+    alertsEnabled: alertsEnabled(),
     feed,
     backfill: backfillReport,
     candlesProcessed: stats.candlesProcessed,
@@ -676,6 +678,23 @@ router.post('/test-telegram', async (req: Request, res: Response) => {
       ok: false,
       error: 'לא הוגדר Bot Token או Chat ID — מלא אותם למעלה ולחץ שמור',
       source: 'config',
+    })
+  }
+
+  // viaDispatcher routes through sendTelegram() — the same path real alerts
+  // take — so the website master switch can be verified end to end.
+  if (req.body?.viaDispatcher) {
+    const enabled = alertsEnabled()
+    await sendTelegram(
+      `🧪 בדיקה דרך מסלול ההתראות\nזמן: ${new Date().toLocaleString('he-IL')}`,
+      0, undefined, req.body?.topicId,
+    )
+    return res.json({
+      ok: true,
+      masterSwitch: enabled ? 'on' : 'off',
+      message: enabled
+        ? 'ההתראות פעילות — ההודעה נשלחה'
+        : 'ההתראות כבויות באתר — לא נשלחה הודעה (זו ההתנהגות הנכונה)',
     })
   }
 
