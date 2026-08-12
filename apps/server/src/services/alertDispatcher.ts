@@ -32,6 +32,8 @@ export interface AlertPayload {
   slReason?: string | null
   // Per-factor specific details (prices, levels, TFs)
   factorDetails?: Record<string, any> | null
+  /** Store and broadcast, but keep off Telegram — used by the tier gate. */
+  suppressTelegram?: boolean
 }
 
 export async function saveAlert(payload: AlertPayload): Promise<Alert> {
@@ -92,7 +94,9 @@ export async function saveAlert(payload: AlertPayload): Promise<Alert> {
 
   // Send to Telegram only if score >= minScore setting
   const minScore = getMinScore()
-  if (payload.score >= minScore) {
+  if (payload.suppressTelegram) {
+    console.log(`[Alert] ${payload.symbol} ${payload.timeframe} tier=site — stored only`)
+  } else if (payload.score >= minScore) {
     sendTelegram(payload.messageHe, payload.score, payload.timeframe).catch(err =>
       console.error('[Telegram] Failed to send:', err)
     )

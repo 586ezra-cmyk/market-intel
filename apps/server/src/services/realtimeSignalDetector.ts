@@ -453,15 +453,97 @@ const TF_BASE: Record<string, number> = {
   '1h': 2.5, '4h': 3.0, '1D': 4.0, '1W': 4.5,
 }
 
-function calcScore(signals: DetectedSignal[], baseScores: number[]): number {
-  let score = Math.max(...baseScores, 0)
-  signals.forEach(s => { score += s.score })
-  // MTF bonus
-  const tfs = new Set(signals.map(s => s.timeframe))
-  if (tfs.size >= 3) score += 2.0
-  else if (tfs.size === 2) score += 1.0
-  return Math.min(score, 10)
+/**
+ * Evidence weight by class. A structural event says more about intent than a
+ * chart pattern, so counting confirmations equally overstated weak setups.
+ */
+const SIGNAL_WEIGHT: Record<string, number> = {
+  smt: 1.8, ismt: 1.8, choch: 1.8, wyckoff: 1.8,          // structural
+  bos: 1.2, fvg: 1.2, liquidity: 1.2, ob: 1.2,            // core
+  doubletop: 0.7, doublebottom: 0.7, judas: 0.7, session: 0.7,  // secondary
 }
+
+const STRUCTURAL = ['smt', 'ismt', 'choch', 'wyckoff']
+
+/** The same setup carries more weight the higher the timeframe it forms on. */
+const TF_MULTIPLIER: Record<string, number> = {
+  '1m': 0.6, '5m': 0.8, '15m': 1.0, '30m': 1.1,
+  '1h': 1.25, '4h': 1.5, '1D': 1.75, '1W': 2.0,
+}
+
+/** Each additional confirmation adds less than the one before it. */
+const DIMINISHING = [1, 0.8, 0.6, 0.45, 0.35, 0.25, 0.2, 0.15]
+
+/**
+ * Conviction on a 0–10 scale.
+ *
+ * Summing every confirmation linearly and clipping at 10 put the median at
+ * 10.0 — 83% of alerts scored 7 or above, so the number carried no
+ * information. Weighted evidence with diminishing returns keeps the top of the
+ * range for setups that genuinely earn it.
+ */
+function calcScore(
+  signals: DetectedSignal[],
+  opts: { inKillZone?: boolean; rr?: number | null } = {},
+): number {
+  if (signals.length === 0) return 0
+
+  // One entry per confirmation type — the same signal on five timeframes is
+  // one piece of evidence, and timeframe agreement is rewarded separately.
+  const byType = new Map<string, number>()
+  for (const s of signals) {
+    const w = (SIGNAL_WEIGHT[s.type] ?? 0.7) * (TF_MULTIPLIER[s.timeframe] ?? 1)
+    byType.set(s.type, Math.max(byType.get(s.type) ?? 0, w))
+  }
+
+  const weights = [...byType.values()].sort((a, b) => b - a)
+  let score = weights.reduce((t, w, i) => t + w * (DIMINISHING[i] ?? 0.1), 0)
+
+  // Agreement across timeframes
+  const tfs = new Set(signals.map(s => s.timeframe))
+  if (tfs.size >= 4) score += 1.5
+  else if (tfs.size === 3) score += 1.0
+  else if (tfs.size === 2) score += 0.5
+
+  // A setup built on structure outranks one built on patterns alone
+  if ([...byType.keys()].some(t => STRUCTURAL.includes(t))) score += 0.8
+
+  if (opts.inKillZone) score += 0.5
+
+  // Reward setups that pay more than they risk
+  if (opts.rr && opts.rr >= 3) score += 1.0
+  else if (opts.rr && opts.rr >= 2) score += 0.5
+
+  return Math.min(parseFloat(score.toFixed(1)), 10)
+}
+
+/** Highest timeframe present, used for reporting and for tier gating. */
+function topTimeframe(signals: DetectedSignal[]): string {
+  const order = ['1m','5m','15m','30m','1h','4h','1D','1W']
+  return signals.map(s => s.timeframe)
+    .sort((a, b) => order.indexOf(b) - order.indexOf(a))[0] ?? '5m'
+}
+
+/**
+ * What a given alert has earned. Everything is stored and shown on the site;
+ * Telegram is reserved for setups with real confluence behind them.
+ */
+function alertTier(
+  signals: DetectedSignal[],
+  score: number,
+): { tier: 'site' | 'telegram' | 'high'; label: string } {
+  const types = new Set(signals.map(s => s.type))
+  const hasStructural = [...types].some(t => STRUCTURAL.includes(t))
+
+  if (types.size >= 4 && hasStructural && score >= 8) {
+    return { tier: 'high', label: '🥇' }
+  }
+  if (types.size >= 3 && score >= 6) {
+    return { tier: 'telegram', label: '🥈' }
+  }
+  return { tier: 'site', label: '🥉' }
+}
+
 
 // ─── Message builder ─────────────────────────────────────────────────────────
 
@@ -525,13 +607,18 @@ function buildMessage(
     stopLoss?: number | null
     tp?: { price: number; r: number; label: string } | null
     wyckoff?: { label: string; detail: string } | null
+    tier?: string
+    topTF?: string
   } = {},
 ): string {
   const dirHe = direction === 'bullish' ? 'לונג 🟢' : 'שורט 🔴'
   const scoreEmoji = score >= 7 ? '🔥' : score >= 5 ? '⭐' : '📊'
   const money = (n: number) => `$${n.toLocaleString('en-US', { maximumFractionDigits: 2 })}`
 
-  let msg = `🔔 *${symbol}* — ${dirHe}  ·  ${scoreEmoji} ${score.toFixed(1)}/10  ·  ⏱ ${triggerTF}\n`
+  const tierMark = extras.tier ? `${extras.tier} ` : ''
+  const tfLabel = extras.topTF && extras.topTF !== triggerTF
+    ? `${triggerTF}→${extras.topTF}` : triggerTF
+  let msg = `🔔 ${tierMark}*${symbol}* — ${dirHe}  ·  ${scoreEmoji} ${score.toFixed(1)}/10  ·  ⏱ ${tfLabel}\n`
 
   // Bottom line first: what to actually do, on one line.
   if (extras.entry && extras.stopLoss) {
@@ -802,12 +889,21 @@ export async function runRealtimeDetector(candle: KlineCandle): Promise<void> {
 
   const allSignals = [...detectedLocal, ...mtfSignals]
 
-  // Score
-  const baseTFScores = allSignals.map(s => TF_BASE[s.timeframe] ?? 1.0)
-  const dbBonus = (dbSignals.smts.length > 0 ? 1.5 : 0) +
-                  (dbSignals.fvgs.length > 0 ? 0.5 : 0) +
-                  (dbSignals.structures.length > 0 ? 0.5 : 0)
-  const score = Math.min(calcScore(allSignals, baseTFScores) + dbBonus, 10)
+  // Levels are needed before scoring, since a setup that pays more than it
+  // risks scores higher than one that barely clears its stop.
+  const sl = buildStopLoss(buf, direction, candle.close)
+  const targets = selectTargets(
+    getActiveLiquidity(symbol, tf as any),
+    candle.close, sl?.price ?? null, direction,
+  )
+  const [t1, t2, t3] = targets
+
+  const inKZ = isKillZone(new Date(candle.time * 1000).getUTCHours())
+  const score = calcScore(allSignals, { inKillZone: inKZ, rr: t1?.r ?? null })
+
+  // Everything is stored and visible on the site; Telegram is reserved for
+  // setups with real confluence behind them.
+  const { tier, label: tierLabel } = alertTier(detectedLocal, score)
 
   // A reversal needs a structural reason. Without one, an opposite-direction
   // alert so soon after the last is noise, and two contradictory calls minutes
@@ -824,22 +920,15 @@ export async function runRealtimeDetector(candle: KlineCandle): Promise<void> {
   // and skipped saveAlert, so crypto alerts existed only in Telegram — absent
   // from the website, the statistics and the TP/SL outcome tracker.
   const factors = toAlertFactors(detectedLocal.map(s => s.type))
-  const sl = buildStopLoss(buf, direction, candle.close)
   const wyckoffPhase = classifyWyckoffPhase(buf)
-
-  // Targets must beat the stop distance — the nearest level is usually
-  // internal liquidity a few ticks away, which would make every trade sub-1R.
-  const targets = selectTargets(
-    getActiveLiquidity(symbol, tf as any),
-    candle.close, sl?.price ?? null, direction,
-  )
-  const [t1, t2, t3] = targets
 
   const msg = buildMessage(symbol, tf, direction, allSignals, score, candle.close, dbSignals, {
     entry: candle.close,
     stopLoss: sl?.price ?? null,
     tp: t1 ? { price: t1.price, r: t1.r, label: LIQ_LABEL[t1.type] ?? t1.type } : null,
     wyckoff: wyckoffPhase,
+    tier: tierLabel,
+    topTF: topTimeframe(allSignals),
   })
 
   try {
@@ -853,7 +942,7 @@ export async function runRealtimeDetector(candle: KlineCandle): Promise<void> {
       recommendation: direction === 'bullish' ? 'long' : 'short',
       premiumDiscount: 'midpoint',
       session: sessionForHour(new Date(candle.time * 1000).getUTCHours()),
-      inKillZone: isKillZone(new Date(candle.time * 1000).getUTCHours()),
+      inKillZone: inKZ,
       messageHe: msg,
       entryPrice: candle.close,
       stopLoss: sl?.price ?? null,
@@ -872,6 +961,9 @@ export async function runRealtimeDetector(candle: KlineCandle): Promise<void> {
       // Per factor: the window it spanned and the timeframes that saw it —
       // what the system actually observed, not a definition of the term.
       factorDetails: buildFactorDetails(allSignals),
+      // 🥉 stays on the site. saveAlert routes Telegram itself, so a
+      // site-only alert is passed a score below any sending threshold.
+      suppressTelegram: tier === 'site',
     })
     detectorStats.saved++
   } catch (err: any) {
