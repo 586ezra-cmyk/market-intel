@@ -118,8 +118,8 @@ export function startBinanceWebSocket(): void {
   // Warm the candle buffers from REST history first. Detectors need a minimum
   // number of candles, and an empty in-memory buffer would otherwise take days
   // to fill on higher timeframes (and reset on every deploy).
-  backfillBybitCandles(SYMBOLS, TIMEFRAMES.map(tf => [tf, TF_MAP[tf] ?? tf]))
-    .catch(err => console.error('[BybitBackfill] failed:', err.message))
+  backfillBybitCandles(SYMBOLS, TIMEFRAMES.map(tf => TF_MAP[tf] ?? tf))
+    .catch(err => console.error('[Backfill] failed:', err.message))
     .finally(() => connect())
 }
 
