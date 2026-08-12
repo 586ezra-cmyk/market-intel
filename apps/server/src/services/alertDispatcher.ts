@@ -127,8 +127,31 @@ export function getAlertById(id: string): Alert | null {
 
 // ─── Telegram ────────────────────────────────────────────────────────────────
 
-const TELEGRAM_TOKEN   = process.env.TELEGRAM_BOT_TOKEN
-const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID
+/**
+ * Telegram credentials are read at call time, not module load, so that values
+ * saved from the website (settings table) take effect without a restart.
+ * DB settings win over env vars; env is the fallback for Railway-only setups.
+ */
+function getTelegramCreds(): { token: string; chatId: string } {
+  let token = ''
+  let chatId = ''
+  try {
+    const db = getDb()
+    const rows = db.prepare(
+      `SELECT key, value FROM settings WHERE key IN ('telegram_token','telegram_chat_id')`
+    ).all() as Array<{ key: string; value: string }>
+    for (const r of rows) {
+      if (r.key === 'telegram_token')   token  = r.value ?? ''
+      if (r.key === 'telegram_chat_id') chatId = r.value ?? ''
+    }
+  } catch {
+    // settings table unavailable — fall through to env
+  }
+  return {
+    token:  token  || process.env.TELEGRAM_BOT_TOKEN || '',
+    chatId: chatId || process.env.TELEGRAM_CHAT_ID   || '',
+  }
+}
 
 // ── Category topics ──────────────────────────────────────────────────────────
 // מסחר יומי  (5m / 15m / 30m / 1h)
@@ -182,16 +205,17 @@ function getTopicIds(timeframe: Timeframe, score: number): string[] {
 
 /** Send one message to a single Telegram topic (or no topic = General) */
 async function sendToTopic(text: string, topicId?: string): Promise<void> {
-  if (!TELEGRAM_TOKEN || !TELEGRAM_CHAT_ID) return
+  const { token, chatId } = getTelegramCreds()
+  if (!token || !chatId) return
 
   const body: Record<string, unknown> = {
-    chat_id: TELEGRAM_CHAT_ID,
+    chat_id: chatId,
     text,
     parse_mode: 'Markdown',
   }
-  if (topicId) body.message_thread_id = parseInt(topicId, 10)
+  if (topicId && topicId !== '0') body.message_thread_id = parseInt(topicId, 10)
 
-  const res = await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
+  const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -213,8 +237,9 @@ export async function sendTelegram(
   timeframe?: Timeframe,
   topicId?: string,          // explicit override (briefing, economic, etc.)
 ): Promise<void> {
-  if (!TELEGRAM_TOKEN || !TELEGRAM_CHAT_ID) {
-    console.warn('[Telegram] BOT_TOKEN or CHAT_ID not configured — skipping')
+  const { token, chatId } = getTelegramCreds()
+  if (!token || !chatId) {
+    console.warn('[Telegram] token or chat_id not configured (neither DB settings nor env) — skipping')
     return
   }
 

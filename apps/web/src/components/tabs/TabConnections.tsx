@@ -246,6 +246,8 @@ export default function TabConnections() {
   const [tgHigh,    setTgHigh]    = useState('')
   const [tgNews,    setTgNews]    = useState('')
   const [savingTg,  setSavingTg]  = useState(false)
+  const [testingTg, setTestingTg] = useState(false)
+  const [tgTestResult, setTgTestResult] = useState<{ ok: boolean; text: string } | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -364,6 +366,28 @@ export default function TabConnections() {
       await load()
     } finally {
       setSavingTg(false)
+    }
+  }
+
+  const handleTestTelegram = async () => {
+    setTestingTg(true)
+    setTgTestResult(null)
+    try {
+      const r = await fetch(`${API}/api/connections/test-telegram`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ topicId: tgDaily }),
+      })
+      const d = await r.json()
+      setTgTestResult(
+        d.ok
+          ? { ok: true,  text: '✅ נשלח — בדוק את הטלגרם' }
+          : { ok: false, text: `❌ ${d.error}` }
+      )
+    } catch (e: any) {
+      setTgTestResult({ ok: false, text: `❌ ${e.message}` })
+    } finally {
+      setTestingTg(false)
     }
   }
 
@@ -714,12 +738,25 @@ export default function TabConnections() {
             >
               {savingTg ? '...' : 'שמור'}
             </button>
+            <button
+              onClick={handleTestTelegram}
+              disabled={testingTg}
+              className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-white text-xs rounded"
+            >
+              {testingTg ? '⏳ שולח...' : '🧪 שלח הודעת בדיקה'}
+            </button>
             {data?.telegram.ok ? (
               <span className="text-xs text-green-400">✅ Telegram מוגדר</span>
             ) : (
               <span className="text-xs text-yellow-500">⚠️ Telegram לא מוגדר עדיין</span>
             )}
           </div>
+
+          {tgTestResult && (
+            <p className={`text-xs ${tgTestResult.ok ? 'text-green-400' : 'text-red-400'}`}>
+              {tgTestResult.text}
+            </p>
+          )}
         </div>
       </SectionCard>
 

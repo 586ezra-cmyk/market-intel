@@ -630,6 +630,48 @@ router.get('/symbol-status', (_req: Request, res: Response) => {
   res.json({ symbols: rows })
 })
 
+// ─── POST /api/connections/test-telegram ─────────────────────────────────────
+// Actually calls the Telegram API and reports the real error back to the UI.
+
+router.post('/test-telegram', async (req: Request, res: Response) => {
+  const token  = getSetting('telegram_token')   || process.env.TELEGRAM_BOT_TOKEN || ''
+  const chatId = getSetting('telegram_chat_id') || process.env.TELEGRAM_CHAT_ID   || ''
+
+  if (!token || !chatId) {
+    return res.json({
+      ok: false,
+      error: 'לא הוגדר Bot Token או Chat ID — מלא אותם למעלה ולחץ שמור',
+      source: 'config',
+    })
+  }
+
+  const topicId: string | undefined = req.body?.topicId
+  const body: Record<string, unknown> = {
+    chat_id: chatId,
+    text: `🧪 בדיקת חיבור ממערכת המסחר\nזמן: ${new Date().toLocaleString('he-IL')}`,
+  }
+  if (topicId && topicId !== '0') body.message_thread_id = parseInt(topicId, 10)
+
+  try {
+    const r = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    const data: any = await r.json()
+    if (!r.ok || !data.ok) {
+      return res.json({
+        ok: false,
+        error: data.description ?? `HTTP ${r.status}`,
+        source: 'telegram',
+      })
+    }
+    res.json({ ok: true, message: 'ההודעה נשלחה — בדוק את הטלגרם' })
+  } catch (e: any) {
+    res.json({ ok: false, error: e.message, source: 'network' })
+  }
+})
+
 router.post('/test-webhook', (_req: Request, res: Response) => {
   const db = getDb()
   const testPayload = JSON.stringify({
