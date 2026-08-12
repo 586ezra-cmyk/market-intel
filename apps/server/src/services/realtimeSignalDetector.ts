@@ -405,6 +405,44 @@ function calcScore(signals: DetectedSignal[], baseScores: number[]): number {
 
 // ─── Message builder ─────────────────────────────────────────────────────────
 
+/**
+ * A confirmation seen across several timeframes happened over a window, not at
+ * an instant. Report that window so it reads as a period rather than a number.
+ */
+function fmtWindow(g: { earliest: number; latest: number; earliestTF: string; latestTF: string }): string {
+  if (!g.latest) return ''
+  const from = fmtTime(g.earliest, g.earliestTF)
+  const to   = fmtTime(g.latest,   g.latestTF)
+  return from && from !== to ? ` · ${from.replace(' UTC', '')}–${to}` : ` · ${to}`
+}
+
+/**
+ * Concrete, per-factor evidence for the website: when the confirmation ran and
+ * on which timeframes, rather than an explanation of what the term means.
+ */
+function buildFactorDetails(signals: DetectedSignal[]): Record<string, any> {
+  const out: Record<string, any> = {}
+
+  for (const s of signals) {
+    const factor = toAlertFactor(s.type)
+    if (!factor) continue
+
+    const e = out[factor] ?? { timeframes: [] as string[], from: 0, to: 0, desc: undefined }
+    if (!e.timeframes.includes(s.timeframe)) e.timeframes.push(s.timeframe)
+    if (s.at) {
+      const closeAt = s.at + (TF_SECONDS[s.timeframe] ?? 0)
+      if (!e.from || closeAt < e.from) e.from = closeAt
+      if (closeAt > e.to) { e.to = closeAt; e.desc = s.detail ?? e.desc }
+    }
+    out[factor] = e
+  }
+
+  for (const k of Object.keys(out)) {
+    out[k].timeframes = TF_ORDER.filter(t => out[k].timeframes.includes(t))
+  }
+  return out
+}
+
 /** Order in which confirmations are listed — strongest evidence first. */
 const SIGNAL_RANK: Record<string, number> = {
   smt: 1, ismt: 2, wyckoff: 3, choch: 4, bos: 5,
@@ -456,7 +494,9 @@ function buildMessage(
    */
   const groups = new Map<string, {
     emoji: string; label: string; type: string
-    tfs: Set<string>; latest: number; detail?: string; score: number
+    tfs: Set<string>; earliest: number; latest: number
+    earliestTF: string; latestTF: string
+    detail?: string; score: number
   }>()
 
   for (const s of allSignals) {
@@ -466,12 +506,20 @@ function buildMessage(
     const g = groups.get(key)
     if (g) {
       g.tfs.add(s.timeframe)
-      if ((s.at ?? 0) > g.latest) { g.latest = s.at ?? 0; g.detail = s.detail ?? g.detail }
+      if (s.at && s.at > g.latest) {
+        g.latest = s.at; g.latestTF = s.timeframe; g.detail = s.detail ?? g.detail
+      }
+      if (s.at && (g.earliest === 0 || s.at < g.earliest)) {
+        g.earliest = s.at; g.earliestTF = s.timeframe
+      }
       g.score = Math.max(g.score, s.score)
     } else {
       groups.set(key, {
         emoji: s.emoji, label: s.label.replace(/ — .*$/, ''), type: s.type,
-        tfs: new Set([s.timeframe]), latest: s.at ?? 0, detail: s.detail, score: s.score,
+        tfs: new Set([s.timeframe]),
+        earliest: s.at ?? 0, latest: s.at ?? 0,
+        earliestTF: s.timeframe, latestTF: s.timeframe,
+        detail: s.detail, score: s.score,
       })
     }
   }
@@ -483,8 +531,7 @@ function buildMessage(
   msg += `🧩 *אישורים*\n`
   for (const g of ordered.slice(0, SHOWN)) {
     const tfs = TF_ORDER.filter(t => g.tfs.has(t)).join(' ')
-    const when = g.latest ? ` · ${fmtTime(g.latest, [...g.tfs][0])}` : ''
-    msg += `${g.emoji} *${g.label}* · ${tfs}${when}\n`
+    msg += `${g.emoji} *${g.label}* · ${tfs}${fmtWindow(g)}\n`
     if (g.detail) msg += `   ${g.detail}\n`
   }
   if (ordered.length > SHOWN) {
@@ -507,10 +554,7 @@ function buildMessage(
     ;(tfDir === direction ? agree : oppose).push(tf)
   }
 
-  msg += `\n📡 *סינרגיה:* ${dirHe}\n`
-  if (agree.length)  msg += `   ✅ מסכימים: ${agree.join(' ')}\n`
-  if (oppose.length) msg += `   ⚠️ מנוגדים: ${oppose.join(' ')}\n`
-  if (!oppose.length && agree.length > 1) msg += `   כל הטווחים מיושרים\n`
+  if (agree.length) msg += `\n📡 *סינרגיה:* ${dirHe} · ${agree.join(' ')}\n`
 
   msg += `\n_מערכת מסחר חכמה | ICT + Wyckoff_`
   return msg
@@ -738,11 +782,9 @@ export async function runRealtimeDetector(candle: KlineCandle): Promise<void> {
       r1: t1 ? `${t1.r}R` : null,
       r2: t2 ? `${t2.r}R` : null,
       r3: t3 ? `${t3.r}R` : null,
-      factorDetails: Object.fromEntries(
-        detectedLocal
-          .filter(s => s.detail && toAlertFactor(s.type))
-          .map(s => [toAlertFactor(s.type)!, { desc: s.detail, timeframe: s.timeframe, at: s.at }])
-      ),
+      // Per factor: the window it spanned and the timeframes that saw it —
+      // what the system actually observed, not a definition of the term.
+      factorDetails: buildFactorDetails(allSignals),
     })
     detectorStats.saved++
   } catch (err: any) {

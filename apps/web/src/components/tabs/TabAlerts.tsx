@@ -34,93 +34,6 @@ const FACTOR_HE: Record<string, string> = {
   OrderBlock: 'Order Block',
 }
 
-const FACTOR_DETAIL: Record<string, { title: string; what: string; why: string; signal: string }> = {
-  BOS: {
-    title: 'Break of Structure',
-    what: 'המחיר שבר high/low משמעותי קודם — זה אומר שהמבנה השתנה',
-    why: 'BOS מאשר שינוי כיוון — שחקנים גדולים הזזו את המחיר מעבר לרמה מרכזית',
-    signal: 'כניסה בכיוון השבירה בריטרסט הראשון',
-  },
-  CHoCH: {
-    title: 'Change of Character',
-    what: 'שינוי בדפוס ה-highs/lows — הסימן הראשון להיפוך מגמה',
-    why: 'CHoCH מקדים BOS — מציין נקודת פיבוט לפני האישור הסופי',
-    signal: 'כניסה מוקדמת עם SL הדוק מתחת/מעל ל-CHoCH',
-  },
-  LiquiditySweep: {
-    title: 'Liquidity Sweep — שאיבת נזילות',
-    what: 'המחיר עלה/ירד מעבר ל-swing קודם כדי לטרוף Stop Losses ואז חזר',
-    why: 'שחקנים גדולים זקוקים לנזילות כדי למלא פוזיציות — הם "שואבים" את ה-stops לפני ההיפוך',
-    signal: 'כניסה בכיוון ההיפוך מיד אחרי ה-sweep',
-  },
-  FVG: {
-    title: 'Fair Value Gap — פער מחיר',
-    what: 'שלושה קנדלים שיצרו gap — אזור שהמחיר לא נסחר בו ועלול לחזור למלא',
-    why: 'FVG מייצג חוסר איזון — המוסדיים ממלאים פוזיציות בתוכו',
-    signal: 'כניסה כשהמחיר חוזר ל-50% של ה-FVG',
-  },
-  SMT: {
-    title: 'SMT Divergence',
-    what: 'נכס מתואם (ETH/BTC) עשה high/low חדש אבל הנכס הנוכחי לא — דיברגנס',
-    why: 'חוסר אישור בין נכסים מתואמים מסמן חולשה/כוח חבוי',
-    signal: 'כניסה בכיוון הנכס שנכשל לאשר',
-  },
-  DoubleTop: {
-    title: 'Double Top',
-    what: 'שני peaks באותה רמה — כשל לשבור resistance פעמיים',
-    why: 'מוכרים הגנו על הרמה פעמיים — עצירת המגמה הבולשית',
-    signal: 'שורט מתחת לצוואר עם יעד לאורך גובה ה-pattern',
-  },
-  DoubleBottom: {
-    title: 'Double Bottom',
-    what: 'שתי נקודות תחתית באותה רמה — כשל לשבור support פעמיים',
-    why: 'קונים הגנו על הרמה פעמיים — עצירת המגמה הדובית',
-    signal: 'לונג מעל הצוואר עם יעד לאורך גובה ה-pattern',
-  },
-  Wyckoff: {
-    title: 'Wyckoff Phase',
-    what: 'דפוס מצטבר/מפיץ — שחקנים גדולים קונים/מוכרים בנפח גבוה',
-    why: 'Wyckoff מראה איפה הכסף החכם נמצא ולאן הוא רוצה ללכת',
-    signal: 'כניסה בסוף שלב ה-Spring/UTAD בכיוון ה-markup/markdown',
-  },
-  OrderBlock: {
-    title: 'Order Block',
-    what: 'אזור שבו מוסדיים ביצעו פקודות גדולות — גורם למהלך חד',
-    why: 'המוסדיים חוזרים ל-OB שלהם כדי "לטעון" פוזיציות נוספות',
-    signal: 'כניסה בגוף האחרון של ה-OB עם SL מחוץ לאזור',
-  },
-  iSMT: {
-    title: 'iSMT — דיברגנס שני נרות',
-    what: 'נר עשה שיא/שפל חדש והנר שאחריו לא אישר וסגר לכיוון ההפוך',
-    why: 'הגרסה המהירה של SMT — מזהה היחלשות תוך שני נרות במקום להמתין לפיבוט',
-    signal: 'כניסה בכיוון הנר המאשר, SL מעבר לקצה של הנר החורג',
-  },
-  iFVG: {
-    title: 'iFVG — פער הפוך',
-    what: 'FVG שהתמלא, והמחיר חזר לבחון אותו מהצד השני',
-    why: 'פער שמולא מחליף תפקיד — תמיכה הופכת התנגדות ולהיפך',
-    signal: 'כניסה בריטסט של הפער מהצד החדש',
-  },
-  Judas: {
-    title: 'Judas Swing',
-    what: 'תנועה מזויפת בפתיחת לונדון/ניו יורק שנעה נגד הכיוון האמיתי',
-    why: 'המהלך הראשון בפתיחה נועד לאסוף נזילות ולכלוא כניסות מוקדמות',
-    signal: 'כניסה אחרי ההיפוך, לא בתנועה הראשונה',
-  },
-  Session: {
-    title: 'שיא/שפל סשן',
-    what: 'שיא או שפל חדש שנקבע בפתיחת סשן מסחר',
-    why: 'הקצוות של הסשן קובעים את טווח היום ומושכים אליהם נזילות',
-    signal: 'שימוש כרמת יעד או כגבול לטווח',
-  },
-  KillZone: {
-    title: 'Kill Zone',
-    what: 'חלון השעות שבו הנפח המוסדי מרוכז — לונדון 07:00-11:00, ניו יורק 13:00-16:00 UTC',
-    why: 'רוב המהלכים המשמעותיים נוצרים בחלונות האלה',
-    signal: 'לא אישור בפני עצמו — מגביר את המשקל של שאר האישורים',
-  },
-}
-
 const FACTOR_HE_SHORT: Record<string, string> = {
   BOS: 'BOS', CHoCH: 'CHoCH', LiquiditySweep: 'שאיבת נזילות',
   FVG: 'FVG', SMT: 'SMT', DoubleTop: 'דאבל טופ',
@@ -642,34 +555,43 @@ export default function TabAlerts() {
                       </div>
                       {/* Factor detail panel */}
                       {expandedFactor && expandedFactor !== 'KZ' && (() => {
-                        const specific = alert.factorDetails?.[expandedFactor]
-                        const generic = FACTOR_DETAIL[expandedFactor]
+                        const d = alert.factorDetails?.[expandedFactor]
+                        const hhmm = (sec?: number) =>
+                          sec ? new Date(sec * 1000).toISOString().slice(11, 16) : null
+                        const from = hhmm(d?.from)
+                        const to   = hhmm(d?.to)
+                        const tfs: string[] = d?.timeframes ?? []
+                        const name = FACTOR_HE_SHORT[expandedFactor] ?? expandedFactor
+
                         return (
                           <div className="mt-3 bg-slate-800/80 border border-slate-600/40 rounded-xl p-4 space-y-2 text-right">
-                            <div className="font-bold text-white text-sm">{generic?.title ?? expandedFactor}</div>
-                            {specific?.desc && (
-                              <div className="text-sm text-yellow-300 font-medium bg-yellow-900/20 border border-yellow-700/30 rounded-lg px-3 py-2">
-                                📍 {specific.desc}
+                            {from && to ? (
+                              <div className="text-sm text-white font-medium">
+                                {from === to
+                                  ? <>בשעה <span className="text-yellow-300">{to}</span> יש <span className="text-yellow-300">{name}</span></>
+                                  : <>בין <span className="text-yellow-300">{from}</span> ל-<span className="text-yellow-300">{to}</span> יש <span className="text-yellow-300">{name}</span></>}
+                                {tfs.length > 0 && <> בסינרגיה של <span className="text-yellow-300">{tfs.join(' · ')}</span></>}
+                              </div>
+                            ) : (
+                              <div className="text-sm text-slate-300">
+                                {name}{tfs.length > 0 && <> · {tfs.join(' · ')}</>}
                               </div>
                             )}
-                            {!specific?.desc && generic && (
-                              <div className="text-xs text-slate-300"><span className="text-slate-500">📌 מה זה: </span>{generic.what}</div>
-                            )}
-                            {generic && (
-                              <>
-                                <div className="text-xs text-slate-400"><span className="text-slate-500">💡 למה חשוב: </span>{generic.why}</div>
-                                <div className="text-xs text-slate-400"><span className="text-slate-500">🎯 אות כניסה: </span>{generic.signal}</div>
-                              </>
+                            {d?.desc && (
+                              <div className="text-sm text-yellow-300 bg-yellow-900/20 border border-yellow-700/30 rounded-lg px-3 py-2">
+                                📍 {d.desc}
+                              </div>
                             )}
                           </div>
                         )
                       })()}
                       {expandedFactor === 'KZ' && (
-                        <div className="mt-3 bg-purple-900/30 border border-purple-700/30 rounded-xl p-4 space-y-2 text-right">
-                          <div className="font-bold text-purple-300 text-sm">Kill Zone — אזור זמן מועדף</div>
-                          <div className="text-xs text-slate-300"><span className="text-slate-500">📌 מה זה: </span>שעות בהן נפח המסחר גבוה — לונדון (07-11 UTC) ו-NY (13-16 UTC)</div>
-                          <div className="text-xs text-slate-300"><span className="text-slate-500">💡 למה חשוב: </span>המוסדיים פעילים בשעות אלו — סיגנלים בתוכן אמינים יותר</div>
-                          <div className="text-xs text-slate-300"><span className="text-slate-500">🎯 אות כניסה: </span>כניסה בתוך ה-KZ מגדילה את הסתברות ההצלחה</div>
+                        <div className="mt-3 bg-purple-900/30 border border-purple-700/30 rounded-xl p-4 text-right">
+                          <div className="text-sm text-white font-medium">
+                            ההתראה נוצרה בתוך <span className="text-purple-300">Kill Zone</span>
+                            {alert.session === 'london' && <> — לונדון (07:00–11:00 UTC)</>}
+                            {alert.session === 'ny'     && <> — ניו יורק (13:00–16:00 UTC)</>}
+                          </div>
                         </div>
                       )}
                     </div>
@@ -689,12 +611,12 @@ export default function TabAlerts() {
                             </button>
                           ))}
                         </div>
-                        {expandedFactor && upcoming.includes(expandedFactor) && FACTOR_DETAIL[expandedFactor] && (
-                          <div className="mt-3 bg-slate-800/60 border border-slate-600/30 rounded-xl p-4 space-y-2 text-right">
-                            <div className="font-bold text-slate-200 text-sm">{FACTOR_DETAIL[expandedFactor].title} — <span className="text-slate-400 font-normal">עדיין לא אושר</span></div>
-                            <div className="text-xs text-slate-400"><span className="text-slate-500">📌 מה לחפש: </span>{FACTOR_DETAIL[expandedFactor].what}</div>
-                            <div className="text-xs text-slate-400"><span className="text-slate-500">💡 אם יופיע: </span>{FACTOR_DETAIL[expandedFactor].why}</div>
-                            <div className="text-xs text-slate-400"><span className="text-slate-500">🎯 אות כניסה: </span>{FACTOR_DETAIL[expandedFactor].signal}</div>
+                        {expandedFactor && upcoming.includes(expandedFactor) && (
+                          <div className="mt-3 bg-slate-800/60 border border-slate-700/40 rounded-xl p-4 text-right">
+                            <div className="text-sm text-slate-300">
+                              <span className="text-slate-100 font-medium">{FACTOR_HE_SHORT[expandedFactor] ?? expandedFactor}</span>
+                              {' '}עדיין לא הופיע בהתראה הזו
+                            </div>
                           </div>
                         )}
                       </div>
