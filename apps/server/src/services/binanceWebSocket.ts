@@ -123,6 +123,18 @@ export function startBinanceWebSocket(): void {
     .finally(() => connect())
 }
 
+export function getFeedStatus(): {
+  connected: boolean
+  symbols: string[]
+  timeframes: string[]
+} {
+  return {
+    connected: wsInstance?.readyState === WebSocket.OPEN,
+    symbols: SYMBOLS,
+    timeframes: TIMEFRAMES.map(tf => TF_MAP[tf] ?? tf),
+  }
+}
+
 export function stopBinanceWebSocket(): void {
   if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null }
   if (pingTimer) { clearInterval(pingTimer); pingTimer = null }

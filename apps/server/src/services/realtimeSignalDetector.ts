@@ -51,6 +51,30 @@ export function getBufferSize(symbol: string, tf: string): number {
   return candleBuffers.get(`${symbol}:${tf}`)?.length ?? 0
 }
 
+// ─── Diagnostics ──────────────────────────────────────────────────────────────
+
+interface LastSent {
+  symbol: string
+  timeframe: string
+  direction: string
+  score: number
+  signals: string[]
+  at: number
+}
+
+const detectorStats = {
+  candlesProcessed: 0,
+  sent: 0,
+  lastCandleAt: 0 as number,
+  lastSent: null as LastSent | null,
+}
+
+export function getDetectorStats() {
+  const buffers: Record<string, number> = {}
+  for (const [key, buf] of candleBuffers.entries()) buffers[key] = buf.length
+  return { ...detectorStats, buffers }
+}
+
 // ─── Settings helpers ─────────────────────────────────────────────────────────
 
 function getSettings(): { active: boolean; signals: string[]; timeframes: string[] } {
@@ -310,6 +334,9 @@ export async function runRealtimeDetector(candle: KlineCandle): Promise<void> {
   if (!settings.active) return
   if (!settings.timeframes.includes(candle.timeframe)) return
 
+  detectorStats.candlesProcessed++
+  detectorStats.lastCandleAt = Date.now()
+
   pushCandle(candle)
   const buf = getBuffer(candle.symbol, candle.timeframe)
   if (buf.length < 5) return
@@ -419,6 +446,14 @@ export async function runRealtimeDetector(candle: KlineCandle): Promise<void> {
   const highTopic = process.env['TELEGRAM_TOPIC_HIGH'] ?? '4'
   if (score >= 7) {
     await sendTelegram(msg, 0, undefined, highTopic)
+  }
+
+  detectorStats.sent++
+  detectorStats.lastSent = {
+    symbol, timeframe: tf, direction,
+    score: parseFloat(score.toFixed(1)),
+    signals: detectedLocal.map(s => s.type),
+    at: Date.now(),
   }
 
   console.log(`[Detector] Sent alert: ${symbol} ${tf} ${direction} score=${score.toFixed(1)}`)

@@ -1,6 +1,8 @@
 import { Router, Request, Response } from 'express'
 import { randomBytes } from 'crypto'
 import { getDb } from '../db/client'
+import { getFeedStatus } from '../services/binanceWebSocket'
+import { getDetectorStats } from '../services/realtimeSignalDetector'
 
 
 // ─── Pine Script (embedded — always in sync with server deploy) ───────────────
@@ -628,6 +630,36 @@ router.get('/symbol-status', (_req: Request, res: Response) => {
   `).all(since) as Array<{ symbol: string; total: number; last_at: number }>
 
   res.json({ symbols: rows })
+})
+
+// ─── GET /api/connections/crypto-status ──────────────────────────────────────
+// Live diagnostics for the Bybit feed: is it connected, are buffers warm,
+// and has the detector actually fired since boot.
+
+router.get('/crypto-status', (_req: Request, res: Response) => {
+  const feed  = getFeedStatus()
+  const stats = getDetectorStats()
+
+  // Buffer coverage per symbol — how many timeframes have enough candles
+  const MIN_CANDLES = 20
+  const coverage: Record<string, { ready: string[]; warming: string[] }> = {}
+  for (const sym of feed.symbols) {
+    coverage[sym] = { ready: [], warming: [] }
+    for (const tf of feed.timeframes) {
+      const n = stats.buffers[`${sym}:${tf}`] ?? 0
+      if (n >= MIN_CANDLES) coverage[sym].ready.push(tf)
+      else coverage[sym].warming.push(`${tf}(${n})`)
+    }
+  }
+
+  res.json({
+    feed,
+    candlesProcessed: stats.candlesProcessed,
+    lastCandleAt: stats.lastCandleAt || null,
+    alertsSent: stats.sent,
+    lastSent: stats.lastSent,
+    coverage,
+  })
 })
 
 // ─── POST /api/connections/test-telegram ─────────────────────────────────────
