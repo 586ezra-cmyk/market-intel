@@ -28,6 +28,29 @@ function pushCandle(candle: KlineCandle): void {
   if (buf.length > MAX_BUFFER) buf.shift()
 }
 
+/**
+ * Preload historical candles so detectors can run immediately after boot.
+ * Without this the in-memory buffer starts empty and higher timeframes need
+ * days of uptime before reaching the minimum candle count — and every deploy
+ * resets it. Candles must be passed oldest-first.
+ */
+export function seedCandles(symbol: string, tf: string, candles: KlineCandle[]): void {
+  if (candles.length === 0) return
+  const key = `${symbol}:${tf}`
+  const existing = candleBuffers.get(key) ?? []
+
+  // Keep any live candles that are newer than the seeded history
+  const seedEnd = candles[candles.length - 1].time
+  const newer = existing.filter(c => c.time > seedEnd)
+
+  const merged = [...candles, ...newer].slice(-MAX_BUFFER)
+  candleBuffers.set(key, merged)
+}
+
+export function getBufferSize(symbol: string, tf: string): number {
+  return candleBuffers.get(`${symbol}:${tf}`)?.length ?? 0
+}
+
 // ─── Settings helpers ─────────────────────────────────────────────────────────
 
 function getSettings(): { active: boolean; signals: string[]; timeframes: string[] } {

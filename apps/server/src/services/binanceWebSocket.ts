@@ -1,5 +1,6 @@
 import WebSocket from 'ws'
 import { runRealtimeDetector } from './realtimeSignalDetector'
+import { backfillBybitCandles } from './bybitBackfill'
 
 export interface KlineCandle {
   symbol:    string
@@ -17,7 +18,7 @@ export interface KlineCandle {
 const BYBIT_WS_URL = 'wss://stream.bybit.com/v5/public/spot'
 
 // Symbols & timeframes to track
-const SYMBOLS    = ['ETHUSDT', 'BTCUSDT']
+const SYMBOLS    = ['ETHUSDT', 'BTCUSDT', 'SOLUSDT']
 const TIMEFRAMES = ['1', '5', '15', '30', '60', '240', 'D', 'W']
 
 // Bybit interval → our internal TF label
@@ -113,7 +114,13 @@ function connect(): void {
 
 export function startBinanceWebSocket(): void {
   console.log('[BybitWS] Starting real-time candle stream (Bybit — no geo-restrictions)...')
-  connect()
+
+  // Warm the candle buffers from REST history first. Detectors need a minimum
+  // number of candles, and an empty in-memory buffer would otherwise take days
+  // to fill on higher timeframes (and reset on every deploy).
+  backfillBybitCandles(SYMBOLS, TIMEFRAMES.map(tf => [tf, TF_MAP[tf] ?? tf]))
+    .catch(err => console.error('[BybitBackfill] failed:', err.message))
+    .finally(() => connect())
 }
 
 export function stopBinanceWebSocket(): void {
