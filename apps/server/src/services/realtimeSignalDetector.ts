@@ -9,6 +9,43 @@ import { scanAndStoreLiquidity, selectTargets } from './liquidityDetector'
 import { toAlertFactor, toAlertFactors } from './factorMapping'
 import { detectFVG, detectStructure, detectWyckoff, classifyWyckoffPhase, detectSwingSMT } from './candlePatternDetectors'
 
+/** Confirmations required before an alert is raised at all. */
+const MIN_CONFIRMATIONS = 2
+
+/** How long a call holds before the opposite direction is treated as normal. */
+const FLIP_COOLDOWN_MS = 30 * 60 * 1000
+
+/** Signals that constitute a genuine reason for the market to turn. */
+const REVERSAL_SIGNALS = ['choch', 'smt', 'ismt', 'wyckoff']
+
+const lastCall = new Map<string, { direction: string; score: number; at: number }>()
+
+/**
+ * Guards against contradicting a recent call. Flipping is allowed when the
+ * market gives a structural reason to — a change of character, a divergence,
+ * a Wyckoff event — and the new read is at least as strong as the one it
+ * overturns. Otherwise the earlier call stands.
+ */
+function allowDirectionFlip(
+  symbol: string, tf: string,
+  direction: string, score: number,
+  signals: DetectedSignal[],
+): boolean {
+  const prev = lastCall.get(`${symbol}:${tf}`)
+  if (!prev || prev.direction === direction) return true
+  if (Date.now() - prev.at > FLIP_COOLDOWN_MS) return true
+
+  const hasReversal = signals.some(s => REVERSAL_SIGNALS.includes(s.type))
+  if (hasReversal && score >= prev.score) return true
+
+  console.log(`[Detector] suppressed ${direction} on ${symbol} ${tf} — contradicts ${prev.direction} (${prev.score}) from ${Math.round((Date.now() - prev.at) / 60000)}m ago`)
+  return false
+}
+
+function recordDirection(symbol: string, tf: string, direction: string, score: number): void {
+  lastCall.set(`${symbol}:${tf}`, { direction, score, at: Date.now() })
+}
+
 /** Swings already reported as SMT, so a live divergence alerts once. */
 const reportedSMT = new Map<string, number>()
 
@@ -728,14 +765,21 @@ export async function runRealtimeDetector(candle: KlineCandle): Promise<void> {
     }
   }
 
-  if (detectedLocal.length === 0) return
+  // Confluence means more than one thing agreeing. A single confirmation was
+  // enough to alert, which is how a lone Double Bottom produced a long five
+  // minutes after a five-factor short on the same symbol.
+  if (detectedLocal.length < MIN_CONFIRMATIONS) return
 
   // Store for MTF confluence
   detectedLocal.forEach(s => addRecentSignal(candle.symbol, s))
 
-  // Get direction (majority vote)
-  const bullCount = detectedLocal.filter(s => s.direction === 'bullish').length
-  const direction: 'bullish' | 'bearish' = bullCount >= detectedLocal.length / 2 ? 'bullish' : 'bearish'
+  // Direction by weight, not headcount — a structural break should outweigh a
+  // minor pattern rather than each counting as one vote.
+  const bullWeight = detectedLocal.filter(s => s.direction === 'bullish')
+    .reduce((t, s) => t + s.score, 0)
+  const bearWeight = detectedLocal.filter(s => s.direction === 'bearish')
+    .reduce((t, s) => t + s.score, 0)
+  const direction: 'bullish' | 'bearish' = bullWeight >= bearWeight ? 'bullish' : 'bearish'
 
   // Get DB signals (from Pine Script webhook)
   const symbol = candle.symbol
@@ -765,9 +809,16 @@ export async function runRealtimeDetector(candle: KlineCandle): Promise<void> {
                   (dbSignals.structures.length > 0 ? 0.5 : 0)
   const score = Math.min(calcScore(allSignals, baseTFScores) + dbBonus, 10)
 
+  // A reversal needs a structural reason. Without one, an opposite-direction
+  // alert so soon after the last is noise, and two contradictory calls minutes
+  // apart destroy any confidence in the feed.
+  if (!allowDirectionFlip(symbol, tf, direction, score, detectedLocal)) return
+
   // Dedup
   const dedupKey = `${symbol}:${tf}:${direction}:${detectedLocal.map(s => s.type).sort().join(',')}`
   if (isDuplicate(dedupKey)) return
+
+  recordDirection(symbol, tf, direction, score)
 
   // Persist before notifying. Until now this path called sendTelegram directly
   // and skipped saveAlert, so crypto alerts existed only in Telegram — absent
