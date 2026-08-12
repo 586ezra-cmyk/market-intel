@@ -242,7 +242,7 @@ export async function sendEventReminders(): Promise<void> {
         `🕐 ${ev.timeIL} 🇮🇱 (${ev.time} UTC)\n` +
         `📊 צפי: ${ev.forecast || '—'} | קודם: ${ev.previous || '—'}\n\n` +
         `${ev.explanationHe}`
-      await sendTelegram(msg, 0, undefined, process.env.TELEGRAM_TOPIC_BRIEFING)
+      await sendTelegram(msg, 0, undefined, process.env.TELEGRAM_TOPIC_BRIEFING, { ignoreMasterSwitch: true })
     }
 
     // 24h reminder
@@ -250,7 +250,7 @@ export async function sendEventReminders(): Promise<void> {
     if (diffH > 23.5 && diffH < 24.5) {
       const msg = `📅 *תזכורת — דוח High Impact מחר*\n\n` +
         `📋 ${ev.titleHe}\n🕐 ${ev.timeIL} 🇮🇱`
-      await sendTelegram(msg, 0, undefined, process.env.TELEGRAM_TOPIC_BRIEFING)
+      await sendTelegram(msg, 0, undefined, process.env.TELEGRAM_TOPIC_BRIEFING, { ignoreMasterSwitch: true })
     }
   }
 }

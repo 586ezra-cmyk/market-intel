@@ -231,12 +231,32 @@ async function sendToTopic(text: string, topicId?: string): Promise<void> {
  * Main entry point — sends alert to ALL relevant topics.
  * Pass explicit topicId to override routing (e.g. briefing/economic).
  */
+export function alertsEnabled(): boolean {
+  try {
+    const db = getDb()
+    const row = db.prepare(`SELECT value FROM settings WHERE key = 'telegram_active'`)
+      .get() as { value: string } | undefined
+    return row?.value !== 'false'
+  } catch {
+    return true
+  }
+}
+
 export async function sendTelegram(
   text: string,
   score = 0,
   timeframe?: Timeframe,
   topicId?: string,          // explicit override (briefing, economic, etc.)
+  opts: { ignoreMasterSwitch?: boolean } = {},
 ): Promise<void> {
+  // Master switch from the website. Every Telegram path funnels through here,
+  // so turning alerts off in the UI silences Telegram too. Scheduled briefings
+  // and economic reports opt out — they are not trade alerts.
+  if (!opts.ignoreMasterSwitch && !alertsEnabled()) {
+    console.log('[Telegram] alerts disabled from website — skipping')
+    return
+  }
+
   const { token, chatId } = getTelegramCreds()
   if (!token || !chatId) {
     console.warn('[Telegram] token or chat_id not configured (neither DB settings nor env) — skipping')

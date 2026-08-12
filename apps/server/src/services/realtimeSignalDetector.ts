@@ -117,6 +117,31 @@ interface DetectedSignal {
   direction: 'bullish' | 'bearish'
   timeframe: string
   score: number
+  /** What the system actually saw — concrete prices/assets, not a definition. */
+  detail?: string
+  /** Candle open time (seconds) the signal was found on. */
+  at?: number
+}
+
+/** Short "why this matters" line shown under each confirmation in Telegram. */
+const SIGNAL_WHY: Record<string, string> = {
+  smt:          'חוסר הסכמה בין נכסים מתואמים — התנועה לא נתמכת',
+  ismt:         'דיברגנס קצר בין שני נרות — סימן להיחלשות',
+  ob:           'אזור שממנו יצאה תנועה חדה — צפוי ביקוש/היצע בחזרה אליו',
+  doubletop:    'שני שיאים באותו אזור — הקונים נכשלו לפרוץ',
+  doublebottom: 'שני שפלים באותו אזור — המוכרים נכשלו לשבור',
+  judas:        'תנועה מזויפת בפתיחה שנועדה לאסוף נזילות לפני הכיוון האמיתי',
+  session:      'שיא/שפל חדש בפתיחת סשן — קובע את טווח היום',
+  bos:          'שבירת מבנה — המגמה ממשיכה',
+  choch:        'שינוי אופי — המגמה עשויה להתהפך',
+  fvg:          'פער מחיר שהשוק נוטה לחזור למלא',
+  liquidity:    'רמה שבה מרוכזות הוראות סטופ',
+  wyckoff:      'שלב במחזור צבירה/הפצה של כסף חכם',
+}
+
+function fmtTime(sec?: number): string {
+  if (!sec) return ''
+  return new Date(sec * 1000).toISOString().slice(11, 16) + ' UTC'
 }
 
 function detectOB(buf: KlineCandle[], tf: string): DetectedSignal | null {
@@ -265,40 +290,53 @@ function buildMessage(
   const dirHe = direction === 'bullish' ? 'לונג 🟢' : 'שורט 🔴'
   const scoreEmoji = score >= 7 ? '🔥' : score >= 5 ? '⭐' : '📊'
 
-  let msg = `🔔 *${symbol} — התראת Confluence*\n`
-  msg += `📊 כיוון: ${dirHe} | ${scoreEmoji} דירוג: ${score.toFixed(1)}/10\n\n`
+  let msg = `🔔 *${symbol}* — ${dirHe}\n`
+  msg += `${scoreEmoji} דירוג ${score.toFixed(1)}/10  ·  ⏱ ${triggerTF}\n`
+  msg += `💰 מחיר: $${lastClose.toLocaleString()}\n`
+  msg += `🕐 ${fmtTime(allSignals.find(s => s.at)?.at ?? Math.floor(Date.now() / 1000))}\n\n`
   msg += `━━━━━━━━━━━━━━━━━━━\n`
-  msg += `🧩 *גורמים פעילים:*\n\n`
+  msg += `🧩 *אישורים שנמצאו*\n`
 
-  // DB signals (from webhook/Pine Script)
-  if (dbSignals.structures.length > 0) {
-    for (const s of dbSignals.structures.slice(0, 2)) {
-      msg += `   ✅ ${s.type} — ${s.direction === 'bullish' ? 'שבירת מבנה' : 'שינוי כיוון'} — ${triggerTF}\n`
-    }
-  }
-  if (dbSignals.fvgs.length > 0) {
-    msg += `   ✅ FVG פעיל — ${triggerTF}\n`
-  }
-  if (dbSignals.liquidity.length > 0) {
-    msg += `   ✅ שאיבת נזילות — ${triggerTF}\n`
-  }
-  if (dbSignals.smts.length > 0) {
-    msg += `   ✅ SMT (דיברגנס) — ${triggerTF} 🔥\n`
+  /** One block per confirmation: what, where, what we saw, why it matters. */
+  const block = (
+    emoji: string, label: string, tf: string,
+    why?: string, detail?: string, at?: number, mtf = false,
+  ) => {
+    msg += `\n${emoji} *${label}*\n`
+    msg += `   ⏱ ${tf}${mtf ? ' _(טווח נוסף)_' : ''}${at ? ` · ${fmtTime(at)}` : ''}\n`
+    if (detail) msg += `   👁 ${detail}\n`
+    if (why)    msg += `   ↳ _${why}_\n`
   }
 
-  // Computed signals (detected from candles)
-  const byTF = new Map<string, DetectedSignal[]>()
-  allSignals.forEach(s => {
-    if (!byTF.has(s.timeframe)) byTF.set(s.timeframe, [])
-    byTF.get(s.timeframe)!.push(s)
-  })
+  // Signals from Pine Script webhooks (NQ/SPX)
+  for (const s of dbSignals.structures.slice(0, 2)) {
+    block('📐', s.type === 'CHoCH' ? 'CHoCH — שינוי אופי' : 'BOS — שבירת מבנה', triggerTF,
+      SIGNAL_WHY[s.type === 'CHoCH' ? 'choch' : 'bos'],
+      s.price ? `נשבר ב-$${Number(s.price).toLocaleString()}` : undefined)
+  }
+  for (const f of dbSignals.fvgs.slice(0, 1)) {
+    block('🕳', 'FVG — פער מחיר', triggerTF, SIGNAL_WHY.fvg,
+      f.bottomPrice && f.topPrice
+        ? `הפער בין $${Number(f.bottomPrice).toLocaleString()} ל-$${Number(f.topPrice).toLocaleString()}`
+        : undefined)
+  }
+  for (const l of dbSignals.liquidity.slice(0, 1)) {
+    block('💧', 'שאיבת נזילות', triggerTF, SIGNAL_WHY.liquidity,
+      l.price ? `הרמה ב-$${Number(l.price).toLocaleString()}` : undefined)
+  }
+  for (const s of dbSignals.smts.slice(0, 1)) {
+    block('⚡', 'SMT — דיברגנס', s.timeframe ?? triggerTF, SIGNAL_WHY.smt,
+      s.asset1 && s.asset2 ? `${s.asset1} מול ${s.asset2}` : undefined, s.time)
+  }
 
-  byTF.forEach((sigs, tf) => {
-    sigs.forEach(s => {
-      const isTrigger = tf === triggerTF
-      msg += `   ✅ ${s.emoji} ${s.label} — ${tf}${isTrigger ? '' : ' (MTF)'}\n`
-    })
-  })
+  // Signals computed from the candle buffer (crypto), trigger timeframe first
+  const ordered = [...allSignals].sort((a, b) =>
+    (a.timeframe === triggerTF ? 0 : 1) - (b.timeframe === triggerTF ? 0 : 1))
+
+  for (const s of ordered) {
+    block(s.emoji, s.label, s.timeframe, SIGNAL_WHY[s.type], s.detail, s.at,
+      s.timeframe !== triggerTF)
+  }
 
   // MTF summary
   const tfs = [...new Set(allSignals.map(s => s.timeframe))].sort()
@@ -310,7 +348,6 @@ function buildMessage(
     msg += `   ${activeTFs.map(tf => tfs.includes(tf) ? `${tf} ✅` : `${tf} ⬜`).join(' | ')}\n`
   }
 
-  msg += `\n💡 *מחיר נוכחי:* $${lastClose.toLocaleString()}\n`
   msg += `\n_מערכת מסחר חכמה | ICT + Wyckoff_`
 
   return msg
@@ -387,14 +424,20 @@ export async function runRealtimeDetector(candle: KlineCandle): Promise<void> {
         asset2Low: other.low,
       })
       if (smtResult) {
-        const smtDir: 'bullish' | 'bearish' = smtResult.type === 'bullish_smt' ? 'bullish' : 'bearish'
+        const bullish = smtResult.type === 'bullish_smt'
+        const detail = bullish
+          ? `${candle.symbol} שבר שפל חדש ($${candle.low.toLocaleString()}) — ${otherSym} לא אישר ($${other.low.toLocaleString()})`
+          : `${candle.symbol} שבר שיא חדש ($${candle.high.toLocaleString()}) — ${otherSym} לא אישר ($${other.high.toLocaleString()})`
+
         detectedLocal.push({
           type: 'smt',
-          label: `SMT — ${candle.symbol} vs ${otherSym}`,
+          label: `SMT — ${candle.symbol} מול ${otherSym}`,
           emoji: '⚡',
-          direction: smtDir,
+          direction: bullish ? 'bullish' : 'bearish',
           timeframe: candle.timeframe,
           score: 1.5,
+          detail,
+          at: candle.time,
         })
       }
     }
