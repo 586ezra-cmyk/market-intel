@@ -28,15 +28,34 @@ const TF_MAP: Record<string, string> = {
   'D': '1D', 'W': '1W', 'M': '1M',
 }
 
+const subscribeState = {
+  expected: 0,
+  ok: 0,
+  failed: 0,
+  lastError: null as string | null,
+}
+
 let wsInstance: WebSocket | null = null
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 let pingTimer: ReturnType<typeof setInterval> | null = null
 
-function buildSubscribeMsg() {
+// Bybit rejects a subscribe request carrying more than 10 topics
+// ("args size >10") and drops the whole batch, so requests are chunked.
+const MAX_ARGS_PER_SUBSCRIBE = 10
+
+function buildSubscribeMsgs(): string[] {
   const args = SYMBOLS.flatMap(sym =>
     TIMEFRAMES.map(tf => `kline.${tf}.${sym}`)
   )
-  return JSON.stringify({ op: 'subscribe', args })
+
+  const msgs: string[] = []
+  for (let i = 0; i < args.length; i += MAX_ARGS_PER_SUBSCRIBE) {
+    msgs.push(JSON.stringify({
+      op: 'subscribe',
+      args: args.slice(i, i + MAX_ARGS_PER_SUBSCRIBE),
+    }))
+  }
+  return msgs
 }
 
 function connect(): void {
@@ -50,8 +69,13 @@ function connect(): void {
   wsInstance = ws
 
   ws.on('open', () => {
-    console.log('[BybitWS] Connected — streaming', SYMBOLS.join(', '))
-    ws.send(buildSubscribeMsg())
+    const msgs = buildSubscribeMsgs()
+    console.log(`[BybitWS] Connected — subscribing ${SYMBOLS.join(', ')} in ${msgs.length} batches`)
+    subscribeState.ok = 0
+    subscribeState.failed = 0
+    subscribeState.lastError = null
+    subscribeState.expected = msgs.length
+    msgs.forEach(m => ws.send(m))
     if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null }
 
     // Bybit requires ping every 20s to keep connection alive
@@ -66,8 +90,20 @@ function connect(): void {
     try {
       const msg = JSON.parse(raw.toString())
 
-      // Skip pong / subscription confirmations
-      if (msg.op === 'pong' || msg.op === 'subscribe') return
+      if (msg.op === 'pong') return
+
+      // Subscription outcome — a rejected batch means no candles will ever
+      // arrive for those topics, so it must not be swallowed silently.
+      if (msg.op === 'subscribe') {
+        if (msg.success === false) {
+          subscribeState.failed++
+          subscribeState.lastError = msg.ret_msg ?? 'unknown'
+          console.error('[BybitWS] SUBSCRIBE REJECTED:', msg.ret_msg)
+        } else {
+          subscribeState.ok++
+        }
+        return
+      }
 
       // Bybit kline format: topic = "kline.5.ETHUSDT", data = array of candle objects
       const topic: string = msg.topic ?? ''
@@ -125,11 +161,13 @@ export function startBinanceWebSocket(): void {
 
 export function getFeedStatus(): {
   connected: boolean
+  subscription: { expected: number; ok: number; failed: number; lastError: string | null }
   symbols: string[]
   timeframes: string[]
 } {
   return {
     connected: wsInstance?.readyState === WebSocket.OPEN,
+    subscription: { ...subscribeState },
     symbols: SYMBOLS,
     timeframes: TIMEFRAMES.map(tf => TF_MAP[tf] ?? tf),
   }
