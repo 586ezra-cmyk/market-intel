@@ -26,12 +26,31 @@ telegramTestRouter.post('/test', async (_req: Request, res: Response) => {
   }
 })
 
+/**
+ * Settings that must never leave the server in full.
+ *
+ * This endpoint is public, so returning the whole table handed the TradingView
+ * webhook secret to anyone who knew the URL — enough to post forged alerts into
+ * the system. Secrets are reported as a short preview so the value can still be
+ * recognised in the UI without being usable.
+ */
+const SECRET_KEYS = ['tv_webhook_secret', 'telegram_token']
+
+function redact(value: string): string {
+  if (!value) return ''
+  return value.slice(0, 4) + '••••••••'
+}
+
 // ─── GET /api/settings ────────────────────────────────────────────────────────
 router.get('/', (_req: Request, res: Response) => {
   const db = getDb()
   const rows = db.prepare(`SELECT key, value FROM settings`).all() as { key: string; value: string }[]
   const result: Record<string, any> = {}
   rows.forEach(r => {
+    if (SECRET_KEYS.includes(r.key)) {
+      result[r.key] = redact(r.value)
+      return
+    }
     // Parse numbers and booleans
     if (r.value === 'true') result[r.key] = true
     else if (r.value === 'false') result[r.key] = false
