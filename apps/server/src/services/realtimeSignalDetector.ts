@@ -15,35 +15,45 @@ const MIN_CONFIRMATIONS = 2
 /** How long a call holds before the opposite direction is treated as normal. */
 const FLIP_COOLDOWN_MS = 30 * 60 * 1000
 
+/** How much stronger a reversal must read before it overturns a live call. */
+const REVERSAL_MARGIN = 1.5
+
 /** Signals that constitute a genuine reason for the market to turn. */
 const REVERSAL_SIGNALS = ['choch', 'smt', 'ismt', 'wyckoff']
 
 const lastCall = new Map<string, { direction: string; score: number; at: number }>()
 
 /**
- * Guards against contradicting a recent call. Flipping is allowed when the
- * market gives a structural reason to — a change of character, a divergence,
- * a Wyckoff event — and the new read is at least as strong as the one it
- * overturns. Otherwise the earlier call stands.
+ * Guards against contradicting a recent call on the same INSTRUMENT.
+ *
+ * Keying this per timeframe missed the problem entirely: a short on 5m and a
+ * long on 15m are different keys, and 79% of the contradictory pairs observed
+ * in production were across timeframes. A trader holds a position in the coin,
+ * not in a timeframe, so the guard is per symbol.
+ *
+ * A flip is allowed when the market gives a structural reason — a change of
+ * character, a divergence, a Wyckoff event — and the new read is clearly
+ * stronger than the one it overturns. "At least as strong" was no filter while
+ * scores were saturated at 10.
  */
 function allowDirectionFlip(
   symbol: string, tf: string,
   direction: string, score: number,
   signals: DetectedSignal[],
 ): boolean {
-  const prev = lastCall.get(`${symbol}:${tf}`)
+  const prev = lastCall.get(symbol)
   if (!prev || prev.direction === direction) return true
   if (Date.now() - prev.at > FLIP_COOLDOWN_MS) return true
 
   const hasReversal = signals.some(s => REVERSAL_SIGNALS.includes(s.type))
-  if (hasReversal && score >= prev.score) return true
+  if (hasReversal && score >= prev.score + REVERSAL_MARGIN) return true
 
   console.log(`[Detector] suppressed ${direction} on ${symbol} ${tf} — contradicts ${prev.direction} (${prev.score}) from ${Math.round((Date.now() - prev.at) / 60000)}m ago`)
   return false
 }
 
 function recordDirection(symbol: string, tf: string, direction: string, score: number): void {
-  lastCall.set(`${symbol}:${tf}`, { direction, score, at: Date.now() })
+  lastCall.set(symbol, { direction, score, at: Date.now() })
 }
 
 /** Swings already reported as SMT, so a live divergence alerts once. */
@@ -525,6 +535,15 @@ function topTimeframe(signals: DetectedSignal[]): string {
 }
 
 /**
+ * Telegram thresholds, calibrated against 300 live alerts: at 29 alerts an
+ * hour the feed was unreadable, and these land it near 2 an hour. Gold is
+ * deliberately rare — it needs four confirmations including structure, which
+ * in practice means a higher timeframe.
+ */
+const SILVER_SCORE = 5
+const GOLD_SCORE   = 7
+
+/**
  * What a given alert has earned. Everything is stored and shown on the site;
  * Telegram is reserved for setups with real confluence behind them.
  */
@@ -535,10 +554,10 @@ function alertTier(
   const types = new Set(signals.map(s => s.type))
   const hasStructural = [...types].some(t => STRUCTURAL.includes(t))
 
-  if (types.size >= 4 && hasStructural && score >= 8) {
+  if (types.size >= 4 && hasStructural && score >= GOLD_SCORE) {
     return { tier: 'high', label: '🥇' }
   }
-  if (types.size >= 3 && score >= 6) {
+  if (types.size >= 3 && score >= SILVER_SCORE) {
     return { tier: 'telegram', label: '🥈' }
   }
   return { tier: 'site', label: '🥉' }
