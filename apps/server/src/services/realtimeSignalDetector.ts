@@ -933,7 +933,10 @@ export async function runRealtimeDetector(candle: KlineCandle): Promise<void> {
   const dedupKey = `${symbol}:${tf}:${direction}:${detectedLocal.map(s => s.type).sort().join(',')}`
   if (isDuplicate(dedupKey)) return
 
-  recordDirection(symbol, tf, direction, score)
+  // Only calls the user actually receives set the direction. Recording
+  // site-only alerts made the guard compare against noise it had never shown,
+  // which let contradictions through to Telegram.
+  if (tier !== 'site') recordDirection(symbol, tf, direction, score)
 
   // Persist before notifying. Until now this path called sendTelegram directly
   // and skipped saveAlert, so crypto alerts existed only in Telegram — absent
