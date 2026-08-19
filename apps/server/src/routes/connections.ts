@@ -5,6 +5,7 @@ import { getFeedStatus } from '../services/binanceWebSocket'
 import { getDetectorStats } from '../services/realtimeSignalDetector'
 import { backfillReport } from '../services/bybitBackfill'
 import { sendTelegram, alertsEnabled } from '../services/alertDispatcher'
+import { debouncerStats } from '../services/telegramDebouncer'
 
 
 // ─── Pine Script (embedded — always in sync with server deploy) ───────────────
@@ -662,6 +663,7 @@ router.get('/crypto-status', (_req: Request, res: Response) => {
     lastCandleAt: stats.lastCandleAt || null,
     alertsSent: stats.sent,
     alertsSaved: stats.saved,
+    telegram: debouncerStats,
     liquidityLevels: stats.liquidityLevels,
     lastSent: stats.lastSent,
     coverage,

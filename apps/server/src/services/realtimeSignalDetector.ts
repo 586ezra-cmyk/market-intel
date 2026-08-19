@@ -7,6 +7,7 @@ import { getLatestStructure, getRecentStructures } from './structureEngine'
 import { getActiveLiquidity, checkLiquiditySweep } from './liquidityEngine'
 import { scanAndStoreLiquidity, selectTargets } from './liquidityDetector'
 import { toAlertFactor, toAlertFactors } from './factorMapping'
+import { queueTelegramAlert } from './telegramDebouncer'
 import { detectFVG, detectStructure, detectWyckoff, classifyWyckoffPhase, detectSwingSMT } from './candlePatternDetectors'
 
 /** Confirmations required before an alert is raised at all. */
@@ -998,11 +999,16 @@ export async function runRealtimeDetector(candle: KlineCandle): Promise<void> {
       // Per factor: the window it spanned and the timeframes that saw it —
       // what the system actually observed, not a definition of the term.
       factorDetails: buildFactorDetails(allSignals),
-      // 🥉 stays on the site. saveAlert routes Telegram itself, so a
-      // site-only alert is passed a score below any sending threshold.
-      suppressTelegram: tier === 'site',
+      // Storing and notifying are separated: the site records every read
+      // immediately, while Telegram waits for the debounce window so one
+      // instrument cannot speak twice in opposite directions.
+      suppressTelegram: true,
     })
     detectorStats.saved++
+
+    if (tier !== 'site') {
+      queueTelegramAlert(symbol, msg, score, tf as any, direction)
+    }
   } catch (err: any) {
     console.error('[Detector] saveAlert failed:', err.message)
   }
