@@ -110,6 +110,21 @@ export function seedCandles(symbol: string, tf: string, candles: KlineCandle[]):
   candleBuffers.set(key, merged)
 }
 
+/**
+ * Discards every seeded candle for a symbol/timeframe.
+ *
+ * History and live candles must come from the same exchange. ETHUSDT's 10:30
+ * low reads 1915.87 on Kraken and 1915.49 on Bybit, and every detector decides
+ * on "did this exceed that" — so a mixed buffer invents sweeps and breaks that
+ * never happened. When the live feed does not match the backfill source, the
+ * history is thrown away rather than compared against.
+ */
+export function clearSeededBuffers(): number {
+  const n = candleBuffers.size
+  candleBuffers.clear()
+  return n
+}
+
 export function getBufferSize(symbol: string, tf: string): number {
   return candleBuffers.get(`${symbol}:${tf}`)?.length ?? 0
 }

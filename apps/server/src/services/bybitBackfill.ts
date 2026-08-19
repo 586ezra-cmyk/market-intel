@@ -68,6 +68,43 @@ function bybitSource(host: string): Source {
   }
 }
 
+// ─── Binance ─────────────────────────────────────────────────────────────────
+
+const BINANCE_TF: Record<string, string> = {
+  '1m': '1m', '5m': '5m', '15m': '15m', '30m': '30m',
+  '1h': '1h', '4h': '4h', '1D': '1d', '1W': '1w',
+}
+
+/** Binance klines are oldest-first: [openMs, o, h, l, c, volume, ...] */
+function binanceSource(host: string): Source {
+  return {
+    name: host,
+    interval: tf => BINANCE_TF[tf] ?? null,
+    fetch: async (symbol, interval, tf) => {
+      const url = `https://${host}/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=200`
+      const res = await fetch(url)
+      if (!res.ok) {
+        const body = await res.text().catch(() => '')
+        throw new Error(`HTTP ${res.status} ${body.replace(/\s+/g, ' ').slice(0, 100)}`)
+      }
+      const rows = await res.json() as any[][]
+      const candles = rows.map(k => ({
+        symbol,
+        timeframe: tf,
+        time:   Math.floor(Number(k[0]) / 1000),
+        open:   parseFloat(k[1]),
+        high:   parseFloat(k[2]),
+        low:    parseFloat(k[3]),
+        close:  parseFloat(k[4]),
+        volume: parseFloat(k[5]),
+        isClosed: true,
+      }))
+      candles.pop()   // the final kline is still forming
+      return candles
+    },
+  }
+}
+
 // ─── Kraken (fallback — reachable from US egress) ────────────────────────────
 
 const KRAKEN_TF: Record<string, string> = {
@@ -109,10 +146,20 @@ const krakenSource: Source = {
   },
 }
 
+/** Exchange a source belongs to. Backfill and live feed must agree. */
+export function exchangeOf(sourceName: string): string {
+  if (sourceName.includes('binance')) return 'binance'
+  if (sourceName.includes('bybit') || sourceName.includes('bytick')) return 'bybit'
+  if (sourceName.includes('kraken')) return 'kraken'
+  return sourceName
+}
+
 const SOURCES: Source[] = [
-  bybitSource('api.bytick.com'),   // Bybit's alternate domain
-  bybitSource('api.bybit.com'),    // primary (CloudFront-blocked on Railway)
-  krakenSource,                    // different exchange, US-reachable
+  binanceSource('data-api.binance.vision'),  // public market data, matches the charts
+  binanceSource('api.binance.com'),
+  bybitSource('api.bytick.com'),             // Bybit's alternate domain
+  bybitSource('api.bybit.com'),              // primary (CloudFront-blocked on Railway)
+  krakenSource,                              // different exchange, US-reachable
 ]
 
 /**

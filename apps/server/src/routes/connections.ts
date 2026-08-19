@@ -639,7 +639,7 @@ router.get('/symbol-status', (_req: Request, res: Response) => {
 // and has the detector actually fired since boot.
 
 router.get('/crypto-status', (_req: Request, res: Response) => {
-  const feed  = getFeedStatus()
+  const feed  = getFeedStatus()  // includes live venue and any source mismatch
   const stats = getDetectorStats()
 
   // Buffer coverage per symbol — how many timeframes have enough candles
