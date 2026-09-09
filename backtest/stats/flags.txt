@@ -18,6 +18,10 @@ engulf
 bb
 rsi
 climax
+fvgAt
+ifvgAt
+atPool
+orBrk
 test
 pd
 kz
@@ -36,3 +40,7 @@ htfCD
 amdD
 conf4
 rrOk
+atEdge
+atHtfLvl
+atSesLvl
+bbSq

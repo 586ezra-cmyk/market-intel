@@ -34,6 +34,10 @@ EVENTS = [
     ('bb',      'bbBrkUp',    'bbBrkDn'),
     ('rsi',     'rsiV <= rsiLo', 'rsiV >= rsiHi'),
     ('climax',  'volClimax',  'volClimax'),
+    ('fvgAt',   'fvgAtL',     'fvgAtS'),
+    ('ifvgAt',  'ifvgAtL',    'ifvgAtS'),
+    ('atPool',  'atPoolL',    'atPoolS'),
+    ('orBrk',   'orBrkUp',    'orBrkDn'),
 ]
 STATES = [
     ('test',    'testOK',                       'testOK'),
@@ -54,6 +58,10 @@ STATES = [
     ('amdD',    'amdPh == "D"',                 'amdPh == "D"'),
     ('conf4',   'confBull >= 4',                'confBear >= 4'),
     ('rrOk',    'ckRRok',                       'ckRRok'),
+    ('atEdge',  'atIceL',                       'atCreekS'),
+    ('atHtfLvl', 'atHtfL',                      'atHtfS'),
+    ('atSesLvl', 'atSesL',                      'atSesS'),
+    ('bbSq',    'bbSq',                         'bbSq'),
 ]
 FLAGS = [e[0] for e in EVENTS] + [s[0] for s in STATES]
 
@@ -120,6 +128,62 @@ if wWStart or mWStart
     wmWFired := true
 ddAny = w4Start or wDStart or wWStart
 dtAny = m4Start or mDStart or mWStart
+// אזורי FVG פעילים (אותם כללים כמו הקופסאות בגרף): נלקח בסגירה → הופך ל-iFVG; iFVG שמולא בפתיל → נמחק. "FVG לא חייב להיות טרי" (המשתמש)
+var float[] zTop = array.new<float>()
+var float[] zBot = array.new<float>()
+var int[] zDir = array.new<int>()
+var bool[] zInv = array.new<bool>()
+var int[] zBar = array.new<int>()
+if bullGap or bearGap
+    array.push(zTop, bullGap ? low : pBodyBot)
+    array.push(zBot, bullGap ? pBodyTop : high)
+    array.push(zDir, bullGap ? 1 : -1)
+    array.push(zInv, false)
+    array.push(zBar, bar_index)
+    if array.size(zTop) > 40
+        array.shift(zTop), array.shift(zBot), array.shift(zDir), array.shift(zInv), array.shift(zBar)
+fvgAtL = false
+fvgAtS = false
+ifvgAtL = false
+ifvgAtS = false
+if array.size(zTop) > 0
+    for zi = array.size(zTop) - 1 to 0
+        zt = array.get(zTop, zi)
+        zb = array.get(zBot, zi)
+        zd = array.get(zDir, zi)
+        zv = array.get(zInv, zi)
+        zTaken = zd == 1 ? close < zb : close > zt
+        zFilled = zd == 1 ? low <= zb : high >= zt
+        if (zv and (zTaken or zFilled)) or bar_index - array.get(zBar, zi) > fvgMaxAge
+            array.remove(zTop, zi), array.remove(zBot, zi), array.remove(zDir, zi), array.remove(zInv, zi), array.remove(zBar, zi)
+        else if zTaken and bar_index > array.get(zBar, zi)
+            array.set(zInv, zi, true)
+            array.set(zDir, zi, -zd)
+        else if bar_index > array.get(zBar, zi)
+            touchL = zd == 1 and low <= zt and close > zb
+            touchS = zd == -1 and high >= zb and close < zt
+            if touchL
+                if zv
+                    ifvgAtL := true
+                else
+                    fvgAtL := true
+            if touchS
+                if zv
+                    ifvgAtS := true
+                else
+                    fvgAtS := true
+// תמיכה/התנגדות: אייס/קריק של התהליך, רמות 4H/יומי/שבועי, רמות סשן/אסיה, בריכות נזילות, פריצת טווח פתיחה, התכווצות בולינגר
+atIceL = phase > 0 and not na(rLo) and low <= rLo + tol * 2 and close >= rLo - tol
+atCreekS = phase > 0 and not na(rHi) and high >= rHi - tol * 2 and close <= rHi + tol
+f_near(float px, float lvl) => not na(lvl) and math.abs(px - lvl) <= tol * 2
+atHtfL = f_near(low, h4L) or f_near(low, dL) or f_near(low, wkL)
+atHtfS = f_near(high, h4H) or f_near(high, dH) or f_near(high, wkH)
+atSesL = f_near(low, prevSesL) or f_near(low, asiaL)
+atSesS = f_near(high, prevSesH) or f_near(high, asiaH)
+atPoolL = f_near(low, poolLo)
+atPoolS = f_near(high, poolHi)
+orBrkUp = not inOR and not na(orH) and close > orH and close[1] <= orH
+orBrkDn = not inOR and not na(orL) and close < orL and close[1] >= orL
 recN = 10''')
 A('// אירועים: קרו ב-recN הנרות האחרונים (ta.barssince ברמה העליונה)')
 for name, lexp, sexp in EVENTS:

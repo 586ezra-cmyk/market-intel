@@ -129,6 +129,13 @@ interface FibStats {
   byRes: Record<string, { golden: FibAgg; other: FibAgg }>
 }
 
+interface RankRow { flag: string; he: string; n: number; dir: number; dirLift: number; r2: number; s4: number; s4Lift: number; s1: number; s1Lift: number; cons: string; w: number }
+interface RankData { rows: RankRow[]; weights: Record<string, number> }
+interface ComboRowX { flags: string[]; he: string[]; k: number; n: number; dir: number; r2: number; s4: number; s1: number; byStrat: Record<string, number> }
+interface ComboGroup { base: { n: number; dir: number; r2: number; s4: number; s1: number }; searched: number; byR: ComboRowX[]; byDir: ComboRowX[] }
+interface CombosData { generatedAt: string; nSignals: number; negativesExcluded: string[]; groups: Record<string, ComboGroup> }
+interface LevelsData { pos: string[]; neg: string[]; posHe: string[]; negHe: string[]; levels: Record<string, { all: { n: number; dir: number; r2: number; s4: number; s1: number }; per: Record<string, { n: number; dir: number; r2: number; s4: number; s1: number } | null> }> }
+
 interface Stats {
   generatedAt: string
   targetR: number
@@ -455,10 +462,123 @@ function FibSection({ fib }: { fib: FibStats }) {
   )
 }
 
+const GROUP_HE: Record<string, string> = { all: 'כל המסגרות והנכסים', '240': '4 שעות', '15': '15 דקות', '5': '5 דקות', BTCUSDT: 'BTC', ETHUSDT: 'ETH', SOLUSDT: 'SOL', NQ1: 'NQ' }
+const STRAT_SHORT: Record<string, string> = { F: 'טיסה', W: 'כנף', O: 'OB', M: 'W/M' }
+
+function RankSection({ rank, levels }: { rank: RankData; levels: LevelsData | null }) {
+  const tier = (r: RankRow) => (r.w >= 0.15 ? 'דרגה 1 — עוגן' : r.w >= 0.05 ? 'דרגה 2 — תומך' : r.w > -0.05 ? 'דרגה 3 — ניטרלי' : r.w > -0.15 ? 'דרגה 4 — מוריד' : 'דרגה 5 — נגד')
+  const tierColor = (r: RankRow) => (r.w >= 0.15 ? 'text-emerald-400' : r.w >= 0.05 ? 'text-emerald-300' : r.w > -0.05 ? 'text-slate-300' : r.w > -0.15 ? 'text-amber-400' : 'text-red-400')
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-baseline justify-between gap-2 pt-2">
+        <h2 className="text-xl font-bold">🏅 דירוג כל האישורים</h2>
+        <div className="text-xs text-slate-500">{rank.rows.length} אישורים · המדד: כמה R לעסקה האישור מוסיף (עם ניהול בגרירה) · יציבות = בכמה מ-3 מסגרות הזמן השיפור נשאר חיובי</div>
+      </div>
+      <div className="card p-3 text-xs text-slate-400 leading-relaxed">
+        <b className="text-slate-200">איך לקרוא את הטבלה.</b> <b>עסקאות</b> = כמה סיגנלים היה בהם האישור. <b>הלכו נכון</b> = אחוז שהגיע ל-1R לפני שהסטופ נפגע.
+        <b> שיפור כיוון</b> = ההפרש באחוז הזה מול סיגנלים בלי האישור. <b>R עם</b> = ממוצע R לעסקה (בגרירה) כשהאישור קיים.
+        <b> שיפור R</b> = ההפרש מול בלי האישור: חיובי = האישור משפר, שלילי = מוריד. <b>שיפור 1:3</b> = אותו הפרש אבל ביעד קבוע 1:3.
+        <b> יציבות</b> = בכמה מ-3 מסגרות הזמן השיפור נשאר חיובי (3/3 = עובד בכולן). <b>משקל</b> = שיפור R מעוגל ומכווץ לפי גודל המדגם, זה מה שקובע את הדרגה.
+        R = יחידת סיכון: 1R = המרחק מהכניסה לסטופ. +0.20R על 100 עסקאות = 20R.
+      </div>
+      <div className="card p-3 overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="text-xs text-slate-400">
+            <tr><th className="text-right pb-1">דרגה</th><th className="text-right pb-1">אישור</th><th className="pb-1">עסקאות</th><th className="pb-1">הלכו נכון</th><th className="pb-1">שיפור כיוון</th><th className="pb-1">הגיעו ל-2R</th><th className="pb-1">R עם</th><th className="pb-1">שיפור R</th><th className="pb-1">שיפור 1:3</th><th className="pb-1">יציבות</th><th className="pb-1">משקל</th></tr>
+          </thead>
+          <tbody>
+            {rank.rows.map(r => (
+              <tr key={r.flag} className={`border-b border-surface-border ${r.n < 30 ? 'opacity-50' : ''}`}>
+                <td className={`py-1 pr-2 text-right whitespace-nowrap ${tierColor(r)}`}>{tier(r)}</td>
+                <td className="py-1 pr-2 text-right whitespace-nowrap">{r.he}</td>
+                <td className="text-center">{r.n}</td>
+                <td className="text-center">{pct(r.dir)}</td>
+                <td className={`text-center ${rColor(r.dirLift)}`}>{(r.dirLift > 0 ? '+' : '') + (r.dirLift * 100).toFixed(0)}%</td>
+                <td className="text-center">{pct(r.r2)}</td>
+                <td className={`text-center ${rColor(r.s4)}`}>{num(r.s4)}</td>
+                <td className={`text-center font-semibold ${rColor(r.s4Lift)}`}>{(r.s4Lift > 0 ? '+' : '') + r.s4Lift.toFixed(2)}</td>
+                <td className={`text-center ${rColor(r.s1Lift)}`}>{(r.s1Lift > 0 ? '+' : '') + r.s1Lift.toFixed(2)}</td>
+                <td className="text-center">{r.cons}</td>
+                <td className={`text-center ${rColor(r.w)}`}>{(r.w > 0 ? '+' : '') + r.w.toFixed(2)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {levels && (
+        <div className="card p-3 overflow-x-auto">
+          <h3 className="font-semibold mb-1">רמת ההתראה — מה כל רמה נתנה בבקטסט</h3>
+          <p className="text-[11px] text-slate-500 mb-2">רמה = מספר אישורי דרגה 1 שנוכחים ({levels.posHe.join(', ')}) פחות אישורים נגד ({levels.negHe.join(', ')}). את הרמה המינימלית לטלגרם קובעים בטאב "ניהול התראות".</p>
+          <table className="w-full text-sm">
+            <thead className="text-xs text-slate-400"><tr><th className="text-right pb-1">רמה</th><th className="pb-1">סיגנלים</th><th className="pb-1">הלכו נכון</th><th className="pb-1">הגיעו ל-2R</th><th className="pb-1">R בגרירה</th><th className="pb-1">R ב-1:3</th><th className="pb-1">4 שעות</th><th className="pb-1">15 דקות</th><th className="pb-1">5 דקות</th><th className="pb-1">עד 2024</th><th className="pb-1">2025 ואילך</th></tr></thead>
+            <tbody>
+              {Object.entries(levels.levels).map(([th, v]) => (
+                <tr key={th} className="border-b border-surface-border">
+                  <td className="py-1 text-right">{th === '-9' ? 'כל הסיגנלים' : `רמה ${th} ומעלה`}</td>
+                  <td className="text-center">{v.all.n}</td>
+                  <td className="text-center">{pct(v.all.dir)}</td>
+                  <td className="text-center">{pct(v.all.r2)}</td>
+                  <td className={`text-center font-semibold ${rColor(v.all.s4)}`}>{num(v.all.s4)}</td>
+                  <td className={`text-center ${rColor(v.all.s1)}`}>{num(v.all.s1)}</td>
+                  {(['240', '15', '5', 'early', 'late'] as const).map(k => { const p = v.per[k]; return <td key={k} className={`text-center ${rColor(p?.s4)}`}>{p ? `${p.n} · ${num(p.s4)}` : '—'}</td> })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function CombosSection({ combos, group, setGroup, sort, setSort }: { combos: CombosData; group: string; setGroup: (g: string) => void; sort: 'byR' | 'byDir'; setSort: (s: 'byR' | 'byDir') => void }) {
+  const g = combos.groups[group] ?? combos.groups.all
+  const rows = g[sort]
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-baseline justify-between gap-2 pt-2">
+        <h2 className="text-xl font-bold">🧩 אילו אישורים ביחד מצליחים הכי הרבה</h2>
+        <div className="text-xs text-slate-500">חיפוש שיטתי על כל השילובים של 2–5 אישורים ({g.searched.toLocaleString()} שילובים בקבוצה הזו) · בסיס הקבוצה: {g.base.n} סיגנלים, הלכו נכון {pct(g.base.dir)}, R בגרירה {num(g.base.s4)}</div>
+      </div>
+      <div className="flex flex-wrap gap-2 items-center">
+        {Object.keys(combos.groups).map(k => <button key={k} onClick={() => setGroup(k)} className={`px-3 py-1 rounded-lg text-xs border ${group === k ? 'bg-brand-600/20 border-brand-500/50 text-white' : 'border-slate-700 text-slate-400'}`}>{GROUP_HE[k] ?? k}</button>)}
+        <span className="text-slate-600 mx-1">|</span>
+        <button onClick={() => setSort('byR')} className={`px-3 py-1 rounded-lg text-xs border ${sort === 'byR' ? 'bg-brand-600/20 border-brand-500/50 text-white' : 'border-slate-700 text-slate-400'}`}>לפי R לעסקה</button>
+        <button onClick={() => setSort('byDir')} className={`px-3 py-1 rounded-lg text-xs border ${sort === 'byDir' ? 'bg-brand-600/20 border-brand-500/50 text-white' : 'border-slate-700 text-slate-400'}`}>לפי "הלכו נכון"</button>
+      </div>
+      <p className="text-[11px] text-slate-500">אישורים שיצאו שליליים בדירוג לא נכללים בשילובים. שילובים עם מעט עסקאות (25–40) הם רמז, לא הוכחה: כשבודקים אלפי שילובים, חלק יוצאים טובים במקרה. שילוב שחוזר בכמה מסגרות זמן ונכסים הוא הרציני.</p>
+      <div className="card p-3 overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="text-xs text-slate-400"><tr><th className="text-right pb-1">#</th><th className="text-right pb-1">השילוב</th><th className="pb-1">עסקאות</th><th className="pb-1">הלכו נכון</th><th className="pb-1">הגיעו ל-2R</th><th className="pb-1">R בגרירה</th><th className="pb-1">R ב-1:3</th><th className="pb-1">סוגי כניסה</th></tr></thead>
+          <tbody>
+            {rows.map((c, i) => (
+              <tr key={i} className="border-b border-surface-border">
+                <td className="py-1 text-right text-slate-500">{i + 1}</td>
+                <td className="py-1 pr-2 text-right">{c.he.join(' + ')}</td>
+                <td className="text-center">{c.n}</td>
+                <td className={`text-center ${c.dir >= 0.6 ? 'text-emerald-400 font-semibold' : ''}`}>{pct(c.dir)}</td>
+                <td className="text-center">{pct(c.r2)}</td>
+                <td className={`text-center font-semibold ${rColor(c.s4)}`}>{num(c.s4)}</td>
+                <td className={`text-center ${rColor(c.s1)}`}>{num(c.s1)}</td>
+                <td className="text-center text-slate-400 whitespace-nowrap">{Object.entries(c.byStrat).filter(([, v]) => v > 0).map(([k, v]) => `${STRAT_SHORT[k] ?? k} ${v}`).join(' · ')}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
 export default function TabHttBacktest() {
   const [stats, setStats] = useState<Stats | null>(null)
   const [path, setPath] = useState<PathStats | null>(null)
   const [fib, setFib] = useState<FibStats | null>(null)
+  const [rank, setRank] = useState<RankData | null>(null)
+  const [combos, setCombos] = useState<CombosData | null>(null)
+  const [levels, setLevels] = useState<LevelsData | null>(null)
+  const [comboGroup, setComboGroup] = useState<string>('all')
+  const [comboSort, setComboSort] = useState<'byR' | 'byDir'>('byR')
   const [error, setError] = useState<string | null>(null)
   const [stratFilter, setStratFilter] = useState<string>('all')
   const [comboFilter, setComboFilter] = useState<string>('all')
@@ -477,6 +597,12 @@ export default function TabHttBacktest() {
       .then(r => (r.ok ? r.json() : null))
       .then(d => { if (d) setFib(d) })
       .catch(() => {})
+    for (const [file, setter] of [['rank', setRank], ['combos', setCombos], ['levels', setLevels]] as const) {
+      fetch(`/htt-backtest/${file}.json`, { cache: 'no-store' })
+        .then(r => (r.ok ? r.json() : null))
+        .then(d => { if (d) (setter as (v: any) => void)(d) })
+        .catch(() => {})
+    }
   }, [])
 
   const trades = useMemo(() => {
@@ -701,6 +827,10 @@ export default function TabHttBacktest() {
       </div>
 
       {path && <PathSection path={path} />}
+
+      {rank && <RankSection rank={rank} levels={levels} />}
+
+      {combos && <CombosSection combos={combos} group={comboGroup} setGroup={setComboGroup} sort={comboSort} setSort={setComboSort} />}
 
       {fib && <FibSection fib={fib} />}
     </div>

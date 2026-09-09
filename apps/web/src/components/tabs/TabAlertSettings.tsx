@@ -100,10 +100,12 @@ export default function TabAlertSettings() {
   const [saving,      setSaving]      = useState(false)
   const [saved,       setSaved]       = useState(false)
   const [testResult,  setTestResult]  = useState<string | null>(null)
+  const [httMin,      setHttMin]      = useState<number>(5)
 
   useEffect(() => {
     if (!settings) return
     setMasterOn(settings.telegram_active ?? true)
+    if (settings.htt_min_score !== undefined) setHttMin(Number(settings.htt_min_score))
     if (settings.alert_signals)    setSignals(JSON.parse(settings.alert_signals))
     if (settings.alert_timeframes) setTimeframes(JSON.parse(settings.alert_timeframes))
   }, [settings])
@@ -123,6 +125,7 @@ export default function TabAlertSettings() {
         telegram_active:    masterOn,
         alert_signals:      JSON.stringify(signals),
         alert_timeframes:   JSON.stringify(timeframes),
+        htt_min_score:      httMin,
       })
       setSaved(true); refetch()
       setTimeout(() => setSaved(false), 2000)
@@ -160,6 +163,22 @@ export default function TabAlertSettings() {
           </p>
         </div>
         <Toggle on={masterOn} onChange={() => setMasterOn(v => !v)} label="הדלק/כבה התראות" size="lg" />
+      </div>
+
+      {/* ── HTT: minimum confirmation level for Telegram ── */}
+      <div className="card space-y-2">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="font-semibold text-sm">🎯 התראות HTT — רמת אישורים מינימלית לטלגרם</h3>
+            <p className="text-xs text-slate-400 mt-0.5">האינדיקטור שולח כל סטאפ עם כל האישורים שהיו בו ורמה (אישורים איכותיים פחות אישורים נגד). כל הסטאפים נשמרים בטאב ההתראות; לטלגרם יוצאים רק אלה שברמה הזו ומעלה. רמה 7+ הולכת גם לנושא 7+.</p>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button onClick={() => setHttMin(v => Math.max(0, v - 1))} className="btn-ghost px-2">−</button>
+            <span className="text-xl font-bold w-8 text-center">{httMin}</span>
+            <button onClick={() => setHttMin(v => Math.min(10, v + 1))} className="btn-ghost px-2">+</button>
+          </div>
+        </div>
+        <p className="text-[11px] text-slate-500">מהבקטסט: רמה 2 ומעלה חיובית בכל החיתוכים (כ-3 התראות בשבוע לנכס ב-15 דקות), רמה 3 ומעלה נדירה ואיכותית (כ-0.6 בשבוע). ההרצה המדויקת בטאב "סטטיסטיקת בקטסט HTT".</p>
       </div>
 
       {/* ── TF toggles ── */}

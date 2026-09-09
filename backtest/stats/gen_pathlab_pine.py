@@ -256,6 +256,11 @@ if obLong or obShort
     f_add("O", obLong, obLong ? obLBot * (1 - buf2) : obSTop * (1 + buf2))
 if wSig or mSig
     f_add("M", wSig, wSig ? nz(wLow2, low) * (1 - buf2) : nz(mHigh2, high) * (1 + buf2))
+// טריגר פריצה (בקשת המשתמש): BOS/CHoCH בפאזה C או E, סטופ מעבר לפיבוט האחרון
+brkL = (bosUp or chochUp) and (phase == 3 or phase == 5) and barstate.isconfirmed
+brkS = (bosDn or chochDn) and (phase == 3 or phase == 5) and barstate.isconfirmed
+if brkL or brkS
+    f_add("B", brkL, brkL ? nz(lastPL, low) * (1 - buf2) : nz(lastPH, high) * (1 + buf2))
 var int firstT = na
 if na(firstT)
     firstT := time

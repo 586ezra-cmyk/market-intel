@@ -13,6 +13,8 @@ import { evaluateConfluence } from '../services/confluenceEngine'
 import { parseTF } from '../utils/timeframe'
 import type { Direction, Timeframe } from '@market/shared'
 import { getSetting } from './settings'
+import { saveAlert } from '../services/alertDispatcher'
+import { buildHttMessage, httFactors } from '../services/httSetup'
 
 const router = Router()
 
@@ -154,7 +156,26 @@ const WyckoffSchema = BaseSchema.extend({
   endTime: z.number().optional(),
 })
 
+// ── HTT Master: one event per quality setup with every confirmation present ──
+const HttSetupSchema = BaseSchema.extend({
+  event: z.literal('htt_setup'),
+  direction: z.enum(['long', 'short']),
+  trigger: z.string().default('B'),
+  price: z.number(),
+  stop: z.number().nullable().optional(),
+  target: z.number().nullable().optional(),
+  score: z.number(),
+  confirmations: z.array(z.string()).default([]),
+  negatives: z.array(z.string()).default([]),
+  phase: z.string().optional(),
+  sr: z.array(z.string()).default([]),
+  session: z.string().optional(),
+  inKillZone: z.boolean().default(false),
+  rsi: z.number().nullable().optional(),
+})
+
 const AnyEventSchema = z.discriminatedUnion('event', [
+  HttSetupSchema,
   RangeSchema,
   StructureSchema,
   FVGSchema,
@@ -372,6 +393,34 @@ router.post('/tradingview', async (req: Request, res: Response) => {
           .run(id, data.symbol, tf, data.phase, data.time, data.endTime ?? null, data.confidence, wyckoffNow)
         broadcastWS({ type: 'wyckoff', payload: { id, symbol: data.symbol, timeframe: tf, phase: data.phase, startTime: data.time, endTime: data.endTime ?? null, confidence: data.confidence, createdAt: wyckoffNow } })
         res.json({ ok: true, id })
+        break
+      }
+
+      case 'htt_setup': {
+        // הרמה המינימלית לטלגרם נקבעת באתר (htt_min_score); כל השאר נשמר ומוצג בטאב ההתראות
+        const minLevel = Number(getSetting('htt_min_score', '5'))
+        const level = Math.round(data.score)
+        const input = {
+          symbol: data.symbol, timeframe: tf, time: data.time, direction: data.direction, trigger: data.trigger, price: data.price,
+          stop: data.stop ?? null, target: data.target ?? null, score: level, confirmations: data.confirmations, negatives: data.negatives,
+          phase: data.phase, sr: data.sr, session: data.session, inKillZone: data.inKillZone, rsi: data.rsi ?? null,
+        }
+        const alert = await saveAlert({
+          symbol: data.symbol, timeframe: tf, triggeredAt: data.time,
+          factors: httFactors([...data.confirmations, ...data.sr.map(k => k === 'ob' ? 'ob' : k === 'fvg' ? 'fvgAt' : k === 'ifvg' ? 'ifvgAt' : '')]),
+          score: Math.max(0, Math.min(10, level)),
+          direction: data.direction === 'long' ? 'bullish' : 'bearish',
+          recommendation: data.direction,
+          premiumDiscount: data.negatives.includes('pd') ? (data.direction === 'long' ? 'premium' : 'discount') : (data.direction === 'long' ? 'discount' : 'premium'),
+          session: data.session ?? '', inKillZone: data.inKillZone,
+          messageHe: buildHttMessage(input),
+          entryPrice: data.price, stopLoss: data.stop ?? null, tp1: data.target ?? null, tp2: null, tp3: null, fvgId: null, structureId: null,
+          tp1Label: 'יעד 1:3', slReason: 'סטופ לפי הקורס (מעבר לניעור/פיבוט)',
+          factorDetails: { htt: input },
+          suppressTelegram: level < minLevel,
+          bypassMinScore: true,
+        })
+        res.json({ ok: true, alert, telegram: level >= minLevel, minLevel })
         break
       }
 

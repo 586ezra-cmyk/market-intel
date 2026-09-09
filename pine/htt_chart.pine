@@ -1,0 +1,1734 @@
+//@version=6
+indicator("HTT גרף — המשקפיים של חי טל", "HTTC", overlay=true, max_lines_count=500, max_labels_count=500, max_boxes_count=300)
+
+// ─── מתגים ───────────────────────────────────────────────────────────────────
+gM = "מודולים"
+mWyk  = input.bool(true,  "וויקוף — תהליך ופאזות", group=gM)
+mFly  = input.bool(true,  "טיסה לונג+שורט",        group=gM)
+mWing = input.bool(true,  "שבירת כנף",             group=gM)
+mOB   = input.bool(true,  "אורדר בלוק",            group=gM)
+mWM   = input.bool(true,  "W/M + דאבל/צבת",        group=gM)
+mMC   = input.bool(false, "מונטה קרלו",            group=gM)
+mFVG  = input.bool(true, "FVG / iFVG",            group=gM)
+mSMT  = input.bool(true, "SMT / iSMT",            group=gM)
+mLiq  = input.bool(true,  "נזילות + Judas",        group=gM)
+mSes  = input.bool(true,  "סשנים + AMD",           group=gM)
+mBB   = input.bool(true,  "בולינגר — סקוויז ופריצה",  group=gM)
+mGap  = input.bool(true,  "גאפים (סגירה → פתיחה)",     group=gM)
+
+g0 = "ליבה"
+pivLen  = input.int(5, "אורך פיבוט", minval=2, group=g0)
+volLook = input.int(250, "חלון אחוזון ווליום", minval=50, group=g0)
+climaxP = input.int(95, "קליימקס — אחוזון", minval=80, maxval=99, group=g0)
+lowVolP = input.int(15, "ווליום נמוך — אחוזון", minval=1, maxval=30, group=g0)
+cVolK   = input.float(0.8, "C: יחס ווליום מ-A", minval=0.3, step=0.1, group=g0)
+tolAtr  = input.float(0.25, "טולרנס שוויון (ATR)", minval=0.05, step=0.05, group=g0)
+obDepth = input.float(21.0, "OB: עומק כניסה באזור %", minval=0, maxval=100, step=1, group=g0)
+flyStrict = input.bool(false, "טיסה קפדנית — רק בפאזה D (הקורס); כבוי = C או D", group=g0)
+twzTol = input.float(1.0, "צבת: הפרש מקסימלי בין השפלים/השיאים (נקודות)", minval=0.0, step=0.25, group=g0)
+rsiLen = input.int(14, "RSI: אורך (הקורס: הרגיל)", minval=2, group=g0)
+rsiHi = input.int(70, "RSI: רמה גבוהה", minval=50, maxval=95, group=g0)
+rsiLo = input.int(30, "RSI: רמה נמוכה", minval=5, maxval=50, group=g0)
+sqBars  = input.int(8, "אורך התכווצות", minval=4, group=g0)
+sqAtrK  = input.float(2.5, "רוחב התכווצות (ATR)", minval=0.5, step=0.5, group=g0)
+targetR = input.float(3.0, "יעד בדיקה (R)", minval=0.5, step=0.5, group=g0)
+stopBuf = input.float(0.1, "מרווח סטופ %", minval=0.0, step=0.05, group=g0)
+fvgMinAtr = input.float(0.5, "FVG: גודל מינימלי של המרווח (ATR)", minval=0.0, step=0.1, group=g0)
+fvgDispAtr = input.float(1.2, "FVG: גודל מינימלי של נר הדחף (ATR)", minval=0.0, step=0.1, group=g0)
+gapMinPct = input.float(0.02, "גאפ: גודל מינימלי (% מהמחיר)", minval=0.0, step=0.01, group=g0)
+dblTolPct = input.float(0.02, "DD/DT: הפרש מקסימלי בין השפלים/השיאים כולל פתילים (% מהמחיר)", minval=0.0, step=0.01, group=g0)
+fvgMaxAge = input.int(200, "FVG: אורך חיים מקסימלי על הגרף (נרות)", minval=20, maxval=2000, group=g0)
+bbLen = input.int(20, "בולינגר: אורך", minval=5, group=g0)
+bbMult = input.float(2.0, "בולינגר: סטיות תקן", minval=0.5, step=0.25, group=g0)
+
+gS = "סשנים (שעון ישראל)"
+sesAsia = input.session("0200-1000", "אסיה", group=gS)
+sesLon  = input.session("1000-1800", "לונדון", group=gS)
+sesNY   = input.session("1800-0100", "ניו יורק", group=gS)
+orMin   = input.int(15, "טווח פתיחה (דקות)", minval=5, group=gS)
+kzLon = input.string("0900-1200", "קיל-זון לונדון (שעון ישראל)", group=gS)
+kzNY = input.string("1400-1700", "קיל-זון ניו-יורק (שעון ישראל)", group=gS)
+
+gW = "חיבור"
+secret = input.string("dev-secret", "Secret", group=gW)
+sendWH = input.bool(false, "Webhook", group=gW)
+asset2Mode = input.string("אוטומטי", "נכס מתואם (SMT)", options=["אוטומטי", "ידני"], group=gW)
+asset2Man = input.symbol("BINANCE:BTCUSDT", "נכס ידני (רק במצב ידני)", group=gW)
+
+// ─── בסיס ────────────────────────────────────────────────────────────────────
+atr = ta.atr(14)
+volRank = ta.percentrank(volume, volLook)
+volClimax = volRank >= climaxP
+volLow    = volRank <= lowVolP
+tol = atr * tolAtr
+rsiV = ta.rsi(close, rsiLen)
+rsiTxt = str.tostring(rsiV, "#") + (rsiV >= rsiHi ? " גבוה" : rsiV <= rsiLo ? " נמוך" : "")
+plot(rsiV, "RSI", display=display.none)
+tfMin = timeframe.in_seconds() / 60
+
+ph = ta.pivothigh(high, pivLen, pivLen)
+pl = ta.pivotlow(low,  pivLen, pivLen)
+var float lastPH = na
+var float prevPH = na
+var float lastPL = na
+var float prevPL = na
+var int lastPHi = na
+var int prevPHi = na
+var int lastPLi = na
+var int prevPLi = na
+if not na(ph)
+    prevPH := lastPH
+    prevPHi := lastPHi
+    lastPH := ph
+    lastPHi := bar_index - pivLen
+if not na(pl)
+    prevPL := lastPL
+    prevPLi := lastPLi
+    lastPL := pl
+    lastPLi := bar_index - pivLen
+
+xUpPH = ta.crossover(close, lastPH)
+xDnPL = ta.crossunder(close, lastPL)
+bosUp = not na(lastPH) and xUpPH
+bosDn = not na(lastPL) and xDnPL
+var int msDir = 0
+chochUp = bosUp and msDir < 0
+chochDn = bosDn and msDir > 0
+if bosUp
+    msDir := 1
+if bosDn
+    msDir := -1
+// BOS לטיסה: רק נר 15 דקות ומעלה שסוגר מעבר לרמה (10-4). בגרף קטן — סגירת בלוק 15m
+ch15 = ta.change(time("15"))
+is15New = tfMin < 15 and nz(ch15, 0) != 0
+var float c15a = na
+var float c15b = na
+if is15New
+    c15b := c15a
+    c15a := close[1]
+bos15Up = not na(c15b) and not na(lastPH) and c15a > lastPH and c15b <= lastPH
+bos15Dn = not na(c15b) and not na(lastPL) and c15a < lastPL and c15b >= lastPL
+bosUpF = tfMin >= 15 ? bosUp : bos15Up
+bosDnF = tfMin >= 15 ? bosDn : bos15Dn
+
+// ─── וויקוף — לפי הקורס: A = קליימקס (SC/BC) → AR (33-10) · B = ST + איסוף נזילות · C = ניעור (ספרינג/UT) + טסט · D = תפיסת כיוון = ה-BOS הראשון אחרי C (48-1) · E = יציאה לדרך מעבר לקריק/אייס (41-5)
+var int phase = 0
+var int procDir = 0
+var float aVol = na
+var float rHi = na
+var float rLo = na
+var int aBar = na
+var int bBar = na
+var int cBar = na
+var int dBar = na
+var int eBar = na
+var bool cIsBull = false
+var float cExt = na
+var bool testOK = false
+var float cVolC = na
+var bool noC = false
+var bool cByVol = false
+var bool cDirOpen = false
+var float vcHi = na
+var float vcLo = na
+var int swpBar = na
+var int cStartBar = na
+var float swpOpp = na
+var float cOpp = na
+var float eExt = na
+var float eOpp = na
+var int aExtBar = na
+lo30 = ta.lowest(low, 30)
+hi30 = ta.highest(high, 30)
+// קליימקס בקצה של מגמה: SC = ווליום קיצוני בשפל 30 נרות אחרי ירידה; BC = בשיא אחרי עלייה. קליימקס באמצע תנועה אינו A
+scBar = volClimax and low <= lo30 and close[20] - close >= atr
+bcBar = volClimax and high >= hi30 and close - close[20] >= atr
+rngH = nz(rHi - rLo, 0)
+// A → B: הריאקציה האוטומטית (AR) = הפיבוט הראשון נגד הקליימקס — מגדיר את הקריק (איסוף) / האייס (פיזור). "איך סימנת אייס וקריק אם לא היה AR?" (48-1)
+if phase == 1
+    if procDir == -1
+        if high > rHi
+            rHi := high
+            aExtBar := bar_index
+            rLo := float(na)
+        else
+            rLo := na(rLo) ? low : math.min(rLo, low)
+    else
+        if low < rLo
+            rLo := low
+            aExtBar := bar_index
+            rHi := float(na)
+        else
+            rHi := na(rHi) ? high : math.max(rHi, high)
+    arNow = procDir == 1 ? (not na(ph) and bar_index - pivLen > aExtBar) : (not na(pl) and bar_index - pivLen > aExtBar)
+    if arNow
+        phase := 2
+        bBar := bar_index
+    else if bar_index - aBar > 40
+        phase := 0
+// B: ניעורים משני הצדדים (33-10). ספרינג/UT = יציאה מהגבול בווליום גבוה וסגירה חזרה (רב-נרות). פריצה בלי C בכיוון התהליך = איסוף/פיזור חוזר → E (48-1: "איסוף חוזר לא מחייב C")
+var int swpDir = 0
+var float swpExt = na
+var float swpVol = na
+var float swpRank = na
+spring = false
+utSig = false
+if phase == 2 or phase == 3 or phase == 4
+    if swpDir == 0 and low < rLo
+        swpDir := 1
+        swpBar := bar_index
+        swpOpp := high
+        swpExt := low
+        swpVol := volume
+        swpRank := volRank
+    else if swpDir == 0 and high > rHi
+        swpDir := -1
+        swpBar := bar_index
+        swpOpp := low
+        swpExt := high
+        swpVol := volume
+        swpRank := volRank
+    else if swpDir == 1
+        if low < swpExt
+            swpExt := low
+            swpOpp := high
+        swpVol := math.max(swpVol, volume)
+        swpRank := math.max(swpRank, volRank)
+        if close > rLo
+            if (phase == 3 and not cDirOpen and cIsBull) or swpVol >= aVol * cVolK or swpRank >= climaxP
+                spring := true
+            swpDir := 0
+        else if close < rLo - rngH * 0.25 or bar_index - swpBar > 20
+            noC := not (phase >= 3 and not cIsBull)
+            phase := 5
+            cIsBull := false
+            eExt := swpExt
+            eOpp := swpOpp
+            eBar := bar_index
+            swpDir := 0
+    else if swpDir == -1
+        if high > swpExt
+            swpExt := high
+            swpOpp := low
+        swpVol := math.max(swpVol, volume)
+        swpRank := math.max(swpRank, volRank)
+        if close < rHi
+            if (phase == 3 and not cDirOpen and not cIsBull) or swpVol >= aVol * cVolK or swpRank >= climaxP
+                utSig := true
+            swpDir := 0
+        else if close > rHi + rngH * 0.25 or bar_index - swpBar > 20
+            noC := not (phase >= 3 and cIsBull)
+            phase := 5
+            cIsBull := true
+            eExt := swpExt
+            eOpp := swpOpp
+            eBar := bar_index
+            swpDir := 0
+    if phase == 2 and bar_index - bBar > 200
+        phase := 0
+// ניעור נוסף באותו כיוון בזמן C = הרחבה של אותו ניעור (הקצה והנר הנגדי מתעדכנים, הקופסה לא זזה). ניעור מתוך D = C חדשה
+cExtNow = false
+if spring or utSig
+    sameC = phase == 3 and not cDirOpen and cIsBull == spring
+    cExtNow := sameC
+    keepOld = sameC and not na(cExt) and (spring ? swpExt >= cExt : swpExt <= cExt)
+    phase := 3
+    cIsBull := spring
+    cBar := bar_index
+    cStartBar := sameC ? cStartBar : swpBar
+    cExt := keepOld ? cExt : swpExt
+    cOpp := keepOld ? cOpp : swpOpp
+    cVolC := sameC ? math.max(nz(cVolC, swpVol), swpVol) : swpVol
+    testOK := sameC ? testOK : false
+    noC := false
+    cByVol := false
+    cDirOpen := false
+// C לפי ווליום בלי ניעור: נר בווליום ≈ לקליימקס בתוך הטווח (22-8: "פאזה C שלאו דווקא יצאה מגבולות הגזרה, היה לה ווליום חזק"; 10-4: "B נמשכת כל עוד לא ראינו ווליום ≈ A").
+// הכיוון לפי החצי של הטווח שבו הנר (חצי תחתון = ספיגה על האייס → לונג). ניעור שיבוא אחריו באותו כיוון = הרחבה של אותה C
+volClx = swpDir == 0 and rngH > 0 and low >= rLo and high <= rHi and not (spring or utSig) and (volume >= aVol * cVolK or volRank >= climaxP)
+volC = volClx and phase == 2
+if volC
+    phase := 3
+    cByVol := true
+    cDirOpen := true
+    cBar := bar_index
+    cStartBar := bar_index
+    vcHi := high
+    vcLo := low
+    cExt := float(na)
+    cOpp := float(na)
+    cVolC := volume
+    testOK := false
+    noC := false
+else if phase == 3 and cDirOpen and volClx
+    vcHi := math.max(vcHi, high)
+    vcLo := math.min(vcLo, low)
+    cVolC := math.max(cVolC, volume)
+// הכיוון של C ווליום נקבע לפי ה-LPS (10-5: "ווליום גבוה, התכווצות, LPS, פריצה"): שפל גבוה יותר שנשמר מעל נר הווליום בווליום נמוך = LPS → לונג;
+// שיא נמוך יותר מתחת לנר בווליום נמוך = LPSY → שורט. סגירה מעבר לנר לפני זה = ה-BOS הראשון נותן כיוון (48-1). אין טיימאאוט: ה-LPS יכול להיבנות לאט (המשתמש 8/9)
+volDirUp = false
+volDirDn = false
+if phase == 3 and cDirOpen
+    lpsUp = not na(pl) and bar_index - pivLen > cBar and pl > vcLo and pl < vcHi and volume[pivLen] < cVolC
+    lpsDn = not na(ph) and bar_index - pivLen > cBar and ph < vcHi and ph > vcLo and volume[pivLen] < cVolC
+    if close > vcHi or (lpsUp and not lpsDn)
+        cIsBull := true
+        cDirOpen := false
+        cExt := vcLo
+        cOpp := vcHi
+        volDirUp := true
+    else if close < vcLo or (lpsDn and not lpsUp)
+        cIsBull := false
+        cDirOpen := false
+        cExt := vcHi
+        cOpp := vcLo
+        volDirDn := true
+// LPS/LPSY בכל C וגם ב-D (המשתמש 9/9: "בכל מקרה בפאזה C"; 10-3: "ברגע שיצאנו לפאזה D כל LPS זה תהליך איסוף"): אחרי C עם כיוון — שפל בווליום נמוך שנשמר מעל קצה הניעור = LPS (10-5: "התכווצות, LPS, פריצה");
+// שיא בווליום נמוך מתחת לקצה ה-UT = LPSY. נספר גם כטסט (חזרה בווליום נמוך, 22-4)
+lpsMark = false
+lpsyMark = false
+if (phase == 3 or phase == 4) and not cDirOpen and not na(cExt)
+    if cIsBull and not na(pl) and bar_index - pivLen > cBar and pl > cExt and volume[pivLen] < nz(cVolC, volume[pivLen] + 1)
+        lpsMark := true
+        testOK := true
+    if not cIsBull and not na(ph) and bar_index - pivLen > cBar and ph < cExt and volume[pivLen] < nz(cVolC, volume[pivLen] + 1)
+        lpsyMark := true
+        testOK := true
+// טסט: חזרה לאזור הניעור בווליום נמוך — ההיצע התייבש (22-4)
+if (phase == 3 or phase == 4) and cIsBull and low <= cExt + tol and low >= cExt - tol * 2 and volLow
+    testOK := true
+if (phase == 3 or phase == 4) and not cIsBull and high >= cExt - tol and high <= cExt + tol * 2 and volLow
+    testOK := true
+// C → D: תפיסת כיוון = ה-BOS הראשון בכיוון ההכרעה ("יש צ'וץ' → מחכים לבוס. BOS ראשון נותן כיוון", 48-1)
+if phase == 3 and not cDirOpen and (cIsBull ? (bosUp or close > cOpp) : (bosDn or close < cOpp))
+    phase := 4
+    dBar := bar_index
+// הניעור נכשל: סגירה מעבר לקצה שלו → "כשצד אחד נכשל הצד השני מנסה" (חזרה ל-B); מעבר ל-25% מגובה הטווח → הטווח נשבר
+// הניעור נכשל: סגירה מעבר לקצה שלו = הצד השני ניצח ("כשצד אחד נכשל הצד השני מנסה") → הסגירה הזאת היא ה-BOS של הצד השני → D הפוכה.
+// מעבר ל-25% מגובה הטווח = הטווח נשבר → E
+if (phase == 3 or phase == 4) and swpDir == 0 and (cIsBull ? close < cExt : close > cExt)
+    brk = cIsBull ? close < rLo - rngH * 0.25 : close > rHi + rngH * 0.25
+    cIsBull := not cIsBull
+    if brk
+        phase := 5
+        eBar := bar_index
+        noC := true
+        eExt := cIsBull ? high : low
+        eOpp := cIsBull ? low : high
+    else
+        phase := 4
+        dBar := bar_index
+        cBar := bar_index
+        cOpp := cIsBull ? low : high
+        cExt := cIsBull ? nz(lastPL, low) : nz(lastPH, high)
+        testOK := false
+    swpDir := 0
+// D → E: יציאה לדרך = סגירה מעבר לקריק (איסוף) / מתחת לאייס (פיזור). "המרקאפ יוצא לדרך רק אחרי שסיימנו את הקריק" (41-5)
+eBrk = cIsBull ? (close > rHi + rngH * 0.25 or (close > rHi and close[1] > rHi and low > rHi)) : (close < rLo - rngH * 0.25 or (close < rLo and close[1] < rLo and high < rLo))
+if phase == 4 and eBrk
+    phase := 5
+    eBar := bar_index
+    eExt := cIsBull ? high : low
+    eOpp := cIsBull ? low : high
+    swpDir := 0
+if phase == 4 and bar_index - dBar > 60
+    phase := 3
+    cBar := bar_index
+    cStartBar := bar_index
+    swpDir := 0
+// E: ניהול בלבד. מתאפס אחרי 100 נרות בלי תהליך חדש
+if phase == 5 and bar_index - eBar > 100
+    phase := 0
+if phase == 5 and (na(eExt) or (cIsBull ? high > eExt : low < eExt))
+    eExt := cIsBull ? high : low
+    eOpp := cIsBull ? low : high
+// פריצה שחזרה לתוך הטווח תוך 20 נרות = פריצת שווא (ניעור מהצד הזה), לא יציאה לדרך → C בכיוון ההפוך
+if phase == 5 and bar_index - eBar <= 20 and (cIsBull ? close < rHi : close > rLo)
+    cIsBull := not cIsBull
+    cExt := eExt
+    cOpp := nz(eOpp, cIsBull ? high : low)
+    cBar := bar_index
+    cStartBar := eBar
+    phase := 3
+    swpDir := 0
+    noC := false
+// A נפתחת רק בקליימקס בקצה מגמה. "וויקוף לא מנחשים מפאזה A — בונים אחרי C" (48-1): A/B מוצגות, לא נסחרות
+if (scBar or bcBar) and (phase == 0 or ((phase == 5 and bar_index - eBar > 20 or phase == 2) and (bcBar ? high > rHi + rngH * 0.25 : low < rLo - rngH * 0.25)))
+    phase := 1
+    procDir := scBar ? 1 : -1
+    aVol := volume
+    aBar := bar_index
+    aExtBar := bar_index
+    rHi := scBar ? float(na) : high
+    rLo := scBar ? low : float(na)
+    swpDir := 0
+    testOK := false
+    noC := false
+inMid = phase > 0 and not na(rHi) and close < rHi - (rHi - rLo) * 0.2 and close > rLo + (rHi - rLo) * 0.2
+var float flipPx = na
+var int flipBar = na
+xDnRLo = ta.crossunder(close, rLo)
+xUpRHi = ta.crossover(close, rHi)
+if phase > 0 and not na(rLo) and xDnRLo
+    flipPx := rLo
+    flipBar := bar_index
+if phase > 0 and not na(rHi) and xUpRHi
+    flipPx := rHi
+    flipBar := bar_index
+phName = phase == 1 ? "A" : phase == 2 ? "B" : phase == 3 ? "C" : phase == 4 ? "D" : phase == 5 ? "E" : "-"
+
+// ─── סשנים + AMD + Judas ────────────────────────────────────────────────────
+inAsia = not na(time(timeframe.period, sesAsia, "Asia/Jerusalem"))
+inLon  = not na(time(timeframe.period, sesLon,  "Asia/Jerusalem"))
+inNY   = not na(time(timeframe.period, sesNY,   "Asia/Jerusalem"))
+sesIdx = inLon ? 1 : inNY ? 2 : inAsia ? 0 : 3
+sesName = sesIdx == 0 ? "אסיה" : sesIdx == 1 ? "לונדון" : sesIdx == 2 ? "ניו-יורק" : "מחוץ"
+dayName = dayofweek == dayofweek.sunday ? "א" : dayofweek == dayofweek.monday ? "ב" : dayofweek == dayofweek.tuesday ? "ג" : dayofweek == dayofweek.wednesday ? "ד" : dayofweek == dayofweek.thursday ? "ה" : dayofweek == dayofweek.friday ? "ו" : "ש"
+sesNew = sesIdx != sesIdx[1]
+inKZL = not na(time(timeframe.period, kzLon, "Asia/Jerusalem"))
+inKZN = not na(time(timeframe.period, kzNY, "Asia/Jerusalem"))
+inKZ = inKZL or inKZN
+var float orH = na
+var float orL = na
+var int orStart = na
+var float prevSesH = na
+var float prevSesL = na
+var float curSesH = na
+var float curSesL = na
+if sesNew
+    prevSesH := curSesH
+    prevSesL := curSesL
+    curSesH := high
+    curSesL := low
+    orH := high
+    orL := low
+    orStart := bar_index
+else
+    curSesH := math.max(nz(curSesH, high), high)
+    curSesL := math.min(nz(curSesL, low), low)
+orBars = math.max(1, math.round(orMin * 60 / timeframe.in_seconds()))
+inOR = not na(orStart) and bar_index - orStart < orBars
+if inOR and not sesNew
+    orH := math.max(orH, high)
+    orL := math.min(orL, low)
+var bool judDoneB = false
+var bool judDoneS = false
+if sesNew
+    judDoneB := false
+    judDoneS := false
+judasBull = mLiq and not inOR and not na(orL) and low < orL and close > orL and close > open and not judDoneB
+judasBear = mLiq and not inOR and not na(orH) and high > orH and close < orH and close < open and not judDoneS
+if judasBull
+    judDoneB := true
+if judasBear
+    judDoneS := true
+var float asiaH = na
+var float asiaL = na
+if inAsia and not inAsia[1]
+    asiaH := high
+    asiaL := low
+else if inAsia
+    asiaH := math.max(asiaH, high)
+    asiaL := math.min(asiaL, low)
+drOK = tfMin < 240 and not inAsia and not na(asiaH)
+var string amdPh = "A"
+if sesNew
+    amdPh := "A"
+if judasBull or judasBear
+    amdPh := "M"
+if amdPh == "M" and (bosUp or bosDn)
+    amdPh := "D"
+
+// ─── נזילות: בריכות + Sweep ──────────────────────────────────────────────────
+eqHi = not na(ph) and not na(prevPH) and math.abs(ph - prevPH) <= tol
+eqLo = not na(pl) and not na(prevPL) and math.abs(pl - prevPL) <= tol
+var float poolHi = na
+var float poolLo = na
+if mLiq and eqHi
+    poolHi := (ph + prevPH) / 2
+if mLiq and eqLo
+    poolLo := (pl + prevPL) / 2
+sweepHi = mLiq and not na(poolHi) and high > poolHi and close < poolHi
+sweepLo = mLiq and not na(poolLo) and low < poolLo and close > poolLo
+
+// ─── Premium / Discount ──────────────────────────────────────────────────────
+hi100 = ta.highest(high, 100)
+lo100 = ta.lowest(low, 100)
+pdHi = phase > 0 ? rHi : drOK ? asiaH : hi100
+pdLo = phase > 0 ? rLo : drOK ? asiaL : lo100
+pdMid = (pdHi + pdLo) / 2
+inPrem = close > pdMid
+
+// ─── FVG (גופים) + iFVG ─────────────────────────────────────────────────────
+bodyTop = math.max(open, close)
+bodyBot = math.min(open, close)
+// FVG (הגדרת המשתמש, ICT): מהפתיל של נר 1 עד הפתיל של נר 3; נר 2 = נר הדחף. איכות: מרווח ≥ fvgMinAtr, דחף ≥ fvgDispAtr
+pBodyTop = high[2]
+pBodyBot = low[2]
+dispOK = high[1] - low[1] >= atr * fvgDispAtr
+bullGap = dispOK and low - pBodyTop >= atr * fvgMinAtr and low > pBodyTop
+bearGap = dispOK and pBodyBot - high >= atr * fvgMinAtr and high < pBodyBot
+// ─── גאפ: פער בין הסגירה של הנר הקודם לפתיחה של הנר הזה (חוזים/מניות). מגנט: המחיר נוטה לחזור לסגירה של הנר שלפני הגאפ ───
+gapUp = mGap and open - close[1] >= close[1] * gapMinPct / 100
+gapDn = mGap and close[1] - open >= close[1] * gapMinPct / 100
+var bool gapFilledNow = false
+var float bgTop = na
+var float bgBot = na
+var float sgTop = na
+var float sgBot = na
+var int bgState = 0
+var int sgState = 0
+if mFVG and bullGap
+    bgTop := low
+    bgBot := pBodyTop
+    bgState := 1
+if mFVG and bearGap
+    sgTop := pBodyBot
+    sgBot := high
+    sgState := 1
+if bgState == 1 and low <= bgBot
+    bgState := 2
+if sgState == 1 and high >= sgTop
+    sgState := 2
+ifvgBear = bgState == 2 and close < bgBot and high >= bgBot and close < open
+ifvgBull = sgState == 2 and close > sgTop and low <= sgTop and close > open
+if ifvgBear
+    bgState := 3
+if ifvgBull
+    sgState := 3
+
+// ─── SMT / iSMT ──────────────────────────────────────────────────────────────
+// צמדי SMT קבועים: נאסדק↔S&P (CME), BTC↔ETH (Binance), כסף↔זהב (COMEX)
+tk = syminfo.ticker
+autoSym = str.contains(tk, "ETH") ? "BINANCE:BTCUSDT" : str.contains(tk, "BTC") ? "BINANCE:ETHUSDT" : str.contains(tk, "NQ") or str.contains(tk, "NAS") ? "CME_MINI:ES1!" : str.contains(tk, "ES") or str.contains(tk, "SPX") or str.contains(tk, "SPY") ? "CME_MINI:NQ1!" : str.contains(tk, "SI") or str.contains(tk, "XAG") or str.contains(tk, "SILVER") ? "COMEX:GC1!" : str.contains(tk, "GC") or str.contains(tk, "XAU") or str.contains(tk, "GOLD") ? "COMEX:SI1!" : ""
+// SMT רק לצמדים הקבועים של הקורס. נכס בלי צמד (USDT.D, SOL, אלטים, דומיננס) = בלי SMT בכלל
+autoSymOk = autoSym != "" and not str.contains(tk, ".D")
+smtOn = mSMT and (asset2Mode == "ידני" or autoSymOk)
+smtSym = asset2Mode == "אוטומטי" ? (autoSymOk ? autoSym : syminfo.tickerid) : asset2Man
+a2h = request.security(smtSym, timeframe.period, high, lookahead=barmerge.lookahead_off)
+a2l = request.security(smtSym, timeframe.period, low, lookahead=barmerge.lookahead_off)
+hi20 = ta.highest(high, 20)
+lo20 = ta.lowest(low, 20)
+a2hi20 = ta.highest(a2h, 20)
+a2lo20 = ta.lowest(a2l, 20)
+smtBear = smtOn and high >= hi20 and a2h < a2hi20 and barstate.isconfirmed
+smtBull = smtOn and low <= lo20 and a2l > a2lo20 and barstate.isconfirmed
+hi10 = ta.highest(high, 10)
+lo10 = ta.lowest(low, 10)
+ismtBear = smtOn and high > high[1] and high >= hi10 and close < high[1] and not (a2h > a2h[1])
+ismtBull = smtOn and low < low[1] and low <= lo10 and close > low[1] and not (a2l < a2l[1])
+
+// ─── נר בולען ────────────────────────────────────────────────────────────────
+engulfBear = tfMin >= 60 and bodyTop >= high[1] and bodyBot <= low[1] and close < open and close[1] >= open[1]
+engulfBull = tfMin >= 60 and bodyTop >= high[1] and bodyBot <= low[1] and close > open and close[1] < open[1]
+
+// ─── טריגר: טיסה (לונג+שורט) ─────────────────────────────────────────────────
+okZone = not inMid
+armL34 = (phase == 3 or phase == 4) and cIsBull
+armS34 = (phase == 3 or phase == 4) and not cIsBull
+flyArmL = (flyStrict ? phase == 4 : (phase == 3 or phase == 4)) and cIsBull
+flyArmS = (flyStrict ? phase == 4 : (phase == 3 or phase == 4)) and not cIsBull
+flyLong  = mFly and flyArmL and okZone and bosUpF and barstate.isconfirmed
+flyShort = mFly and flyArmS and okZone and bosDnF and barstate.isconfirmed
+
+// ─── טריגר: שבירת כנף (שני כיוונים) ─────────────────────────────────────────
+float wingUp = na
+if not na(prevPL) and not na(lastPL) and lastPL > prevPL and lastPLi > prevPLi
+    wingUp := lastPL + (lastPL - prevPL) / (lastPLi - prevPLi) * (bar_index - lastPLi)
+float wingDn = na
+if not na(prevPH) and not na(lastPH) and lastPH < prevPH and lastPHi > prevPHi
+    wingDn := lastPH + (lastPH - prevPH) / (lastPHi - prevPHi) * (bar_index - lastPHi)
+wingBrkS = not na(wingUp) and close < wingUp and close[1] >= nz(wingUp[1], wingUp)
+wingBrkL = not na(wingDn) and close > wingDn and close[1] <= nz(wingDn[1], wingDn)
+wingShort = mWing and armS34 and okZone and wingBrkS and barstate.isconfirmed
+wingLong  = mWing and armL34 and okZone and wingBrkL and barstate.isconfirmed
+
+// ─── טריגר: אורדר בלוק ──────────────────────────────────────────────────────
+sqHi = ta.highest(high, sqBars)[1]
+sqLo = ta.lowest(low, sqBars)[1]
+isSq = (sqHi - sqLo) <= atr * sqAtrK
+var float obLTop = na
+var float obLBot = na
+var float obSTop = na
+var float obSBot = na
+var bool obLLive = false
+var bool obSLive = false
+bool newObL = false
+bool newObS = false
+if mOB and bullGap and isSq[1] and close > nz(lastPH, high)
+    obLTop := low
+    obLBot := pBodyTop
+    obLLive := true
+    newObL := true
+if mOB and bearGap and isSq[1] and close < nz(lastPL, low)
+    obSTop := pBodyBot
+    obSBot := high
+    obSLive := true
+    newObS := true
+if obLLive and low <= obLBot
+    obLLive := false
+if obSLive and high >= obSTop
+    obSLive := false
+obLvlL = obLTop - (obLTop - obLBot) * obDepth / 100
+obLvlS = obSBot + (obSTop - obSBot) * obDepth / 100
+obLong  = mOB and obLLive and msDir >= 0 and low <= obLvlL and close > obLTop and barstate.isconfirmed
+obShort = mOB and obSLive and msDir <= 0 and high >= obLvlS and close < obSBot and barstate.isconfirmed
+if obLong
+    obLLive := false
+if obShort
+    obSLive := false
+
+// ─── טריגר: W/M + צבת ───────────────────────────────────────────────────────
+var float wNeck = na
+var float wLow2 = na
+var int wState = 0
+var float mNeck = na
+var float mHigh2 = na
+var int mState = 0
+if mWM and not na(pl) and not na(prevPL) and not na(lastPHi) and lastPHi > prevPLi and math.abs(pl - prevPL) <= tol * 2
+    wNeck := lastPH
+    wLow2 := pl
+    wState := 1
+if mWM and not na(ph) and not na(prevPH) and not na(lastPLi) and lastPLi > prevPHi and math.abs(ph - prevPH) <= tol * 2
+    mNeck := lastPL
+    mHigh2 := ph
+    mState := 1
+xUpW = ta.crossover(close, wNeck)
+xDnM = ta.crossunder(close, mNeck)
+wSig = wState == 1 and not na(wNeck) and xUpW and barstate.isconfirmed
+mSig = mState == 1 and not na(mNeck) and xDnM and barstate.isconfirmed
+if wSig
+    wState := 2
+if mSig
+    mState := 2
+twzBull = mWM and math.abs(low - low[1]) <= twzTol and close[1] < open[1] and close > open and (close - open) >= (high - low) * 0.5 and close > close[1]
+twzBear = mWM and math.abs(high - high[1]) <= twzTol and close[1] > open[1] and close < open and (open - close) >= (high - low) * 0.5 and close < close[1]
+
+// ─── טריגר: מונטה קרלו ──────────────────────────────────────────────────────
+var float legA = na
+var float legB = na
+var float legC = na
+if not na(ph) and not na(lastPL) and ph > lastPL
+    legC := legB
+    legB := legA
+    legA := (ph - lastPL) / lastPL * 100
+mcAvg = not na(legA) ? (legA + nz(legB, legA) + nz(legC, nz(legB, legA))) / 3 : na
+mcProj = mMC and not na(mcAvg) and not na(lastPL) ? lastPL * (1 + mcAvg / 100) : na
+mcBrk = not na(lastPH) ? lastPH * 1.015 : na
+var int mcHeld = 0
+mcHeld := mMC and not na(mcBrk) and close > mcBrk ? mcHeld + 1 : 0
+mcSig = mMC and mcHeld == 6 and barstate.isconfirmed
+mcExh = mMC and not na(mcProj) and high >= mcProj and high[1] < mcProj
+
+// ─── מד 4 הרמזים ────────────────────────────────────────────────────────────
+var int lastClimaxBar = na
+if volClimax
+    lastClimaxBar := bar_index
+clue1 = not na(lastClimaxBar) and bar_index - lastClimaxBar <= 60
+var int bosUpCnt = 0
+var int bosDnCnt = 0
+if bosUp
+    bosUpCnt += 1
+    bosDnCnt := 0
+if bosDn
+    bosDnCnt += 1
+    bosUpCnt := 0
+clue2 = (msDir > 0 ? bosUpCnt : bosDnCnt) >= 2
+clue3 = msDir > 0 ? close > close[10] and volRank < 50 : close < close[10] and volRank < 50
+var bool flipHeld = false
+if bosUp
+    flipHeld := false
+if msDir > 0 and not na(lastPH[1]) and low <= lastPH[1] + tol and close > lastPH[1]
+    flipHeld := true
+if msDir < 0 and not na(lastPL[1]) and high >= lastPL[1] - tol and close < lastPL[1]
+    flipHeld := true
+clue4 = flipHeld
+clues = (clue1 ? 1 : 0) + (clue2 ? 1 : 0) + (clue3 ? 1 : 0) + (clue4 ? 1 : 0)
+
+// ─── בולינגר: סקוויז + פריצה ────────────────────────────────────────────────
+[bbM, bbU, bbL] = ta.bb(close, bbLen, bbMult)
+bbW = bbM != 0 ? (bbU - bbL) / bbM : 0.0
+bbWref = ta.percentile_nearest_rank(bbW, 100, 20)
+bbSq = mBB and bbW <= bbWref
+var int sqRun = 0
+sqRun := bbSq ? sqRun + 1 : 0
+bbBrkUp = mBB and sqRun[1] >= 6 and close > bbU and barstate.isconfirmed
+bbBrkDn = mBB and sqRun[1] >= 6 and close < bbL and barstate.isconfirmed
+
+// ─── קונפלואנס ──────────────────────────────────────────────────────────────
+confBull = (bosUp or chochUp ? 1 : 0) + (sweepLo ? 1 : 0) + (smtBull or ismtBull ? 1 : 0) + (ifvgBull ? 1 : 0) + (judasBull ? 1 : 0) + (twzBull ? 1 : 0) + (spring or volDirUp or lpsMark ? 1 : 0) + (volLow and close > open ? 1 : 0) + (not inPrem ? 1 : 0) + (inKZ ? 1 : 0) + (bbBrkUp ? 1 : 0)
+confBear = (bosDn or chochDn ? 1 : 0) + (sweepHi ? 1 : 0) + (smtBear or ismtBear ? 1 : 0) + (ifvgBear ? 1 : 0) + (judasBear ? 1 : 0) + (twzBear ? 1 : 0) + (utSig or volDirDn or lpsyMark ? 1 : 0) + (volLow and close < open ? 1 : 0) + (inPrem ? 1 : 0) + (inKZ ? 1 : 0) + (bbBrkDn ? 1 : 0)
+
+// ─── מנוע בקטסט ─────────────────────────────────────────────────────────────
+buf = stopBuf / 100.0
+var int fN = 0
+var int fW = 0
+var int wN = 0
+var int wW = 0
+var int oN = 0
+var int oW = 0
+var int wmN = 0
+var int wmW = 0
+var int[] sesN = array.new_int(4, 0)
+var int[] sesW = array.new_int(4, 0)
+f_open(float stopPx, bool isLong) => isLong ? close + (close - stopPx) * targetR : close - (stopPx - close) * targetR
+var int fSt = 0
+var float fS = na
+var float fT = na
+var bool fL = true
+var int fSes = 0
+var int wSt = 0
+var float wS = na
+var float wT = na
+var bool wL = true
+var int wSes2 = 0
+var int oSt = 0
+var float oS = na
+var float oT = na
+var bool oL = true
+var int oSes = 0
+var int wmSt = 0
+var float wmS = na
+var float wmT = na
+var bool wmL = true
+var int wmSes = 0
+if (flyLong or flyShort) and fSt == 0
+    fL := flyLong
+    st = fL ? math.min(nz(cExt, low), nz(lastPL, low)) * (1 - buf) : math.max(nz(cExt, high), nz(lastPH, high)) * (1 + buf)
+    ok = fL ? close > st : close < st
+    if ok
+        fSt := 1
+        fS := st
+        fT := f_open(st, fL)
+        fN += 1
+        fSes := sesIdx
+        array.set(sesN, sesIdx, array.get(sesN, sesIdx) + 1)
+if fSt == 1
+    hitS = fL ? low <= fS : high >= fS
+    hitT = fL ? high >= fT : low <= fT
+    if hitS
+        fSt := 0
+    else if hitT
+        fW += 1
+        array.set(sesW, fSes, array.get(sesW, fSes) + 1)
+        fSt := 0
+if (wingShort or wingLong) and wSt == 0
+    wL := wingLong
+    st = wL ? nz(lastPL, low) * (1 - buf) : nz(lastPH, high) * (1 + buf)
+    ok = wL ? close > st : close < st
+    if ok
+        wSt := 1
+        wS := st
+        wT := f_open(st, wL)
+        wN += 1
+        wSes2 := sesIdx
+        array.set(sesN, sesIdx, array.get(sesN, sesIdx) + 1)
+if wSt == 1
+    hitS = wL ? low <= wS : high >= wS
+    hitT = wL ? high >= wT : low <= wT
+    if hitS
+        wSt := 0
+    else if hitT
+        wW += 1
+        array.set(sesW, wSes2, array.get(sesW, wSes2) + 1)
+        wSt := 0
+if (obLong or obShort) and oSt == 0
+    oL := obLong
+    st = oL ? obLBot * (1 - buf) : obSTop * (1 + buf)
+    ok = oL ? close > st : close < st
+    if ok
+        oSt := 1
+        oS := st
+        oT := f_open(st, oL)
+        oN += 1
+        oSes := sesIdx
+        array.set(sesN, sesIdx, array.get(sesN, sesIdx) + 1)
+if oSt == 1
+    hitS = oL ? low <= oS : high >= oS
+    hitT = oL ? high >= oT : low <= oT
+    if hitS
+        oSt := 0
+    else if hitT
+        oW += 1
+        array.set(sesW, oSes, array.get(sesW, oSes) + 1)
+        oSt := 0
+if (wSig or mSig) and wmSt == 0
+    wmL := wSig
+    st = wmL ? nz(wLow2, low) * (1 - buf) : nz(mHigh2, high) * (1 + buf)
+    ok = wmL ? close > st : close < st
+    if ok
+        wmSt := 1
+        wmS := st
+        wmT := f_open(st, wmL)
+        wmN += 1
+        wmSes := sesIdx
+        array.set(sesN, sesIdx, array.get(sesN, sesIdx) + 1)
+if wmSt == 1
+    hitS = wmL ? low <= wmS : high >= wmS
+    hitT = wmL ? high >= wmT : low <= wmT
+    if hitS
+        wmSt := 0
+    else if hitT
+        wmW += 1
+        array.set(sesW, wmSes, array.get(sesW, wmSes) + 1)
+        wmSt := 0
+
+// ─── צ'ק-ליסט ────────────────────────────────────────────────────────────────
+ckSpring = (phase == 3 or phase == 4) and cIsBull
+ckUT = (phase == 3 or phase == 4) and not cIsBull
+ckTest = testOK
+ckZone = okZone
+armDir = ckSpring ? 1 : ckUT ? -1 : 0
+float ckStop = armDir == 1 ? math.min(nz(cExt, low), nz(lastPL, low)) : armDir == -1 ? math.max(nz(cExt, high), nz(lastPH, high)) : na
+float ckTgt = armDir == 1 ? (phase > 0 ? rHi : nz(poolHi, high)) : armDir == -1 ? (phase > 0 ? rLo : nz(poolLo, low)) : na
+ckRR = not na(ckStop) and not na(ckTgt) and math.abs(close - ckStop) > 0 ? math.abs(ckTgt - close) / math.abs(close - ckStop) : na
+ckRRok = not na(ckRR) and ckRR >= 3
+
+// ═══ ציור — אובייקטים עם tooltip, מתג לכל שכבה ולכל סימון ═══
+gV = "תצוגה — שכבות"
+cleanMode = input.bool(false, "מצב נקי (מינימום)", group=gV)
+sBgPhase = input.bool(true, "קופסת פאזה (סביב הנרות)", group=gV)
+sBgSes  = input.bool(true, "רקע סשנים", group=gV)
+sLvlW   = input.bool(true, "רמות שבועי (רק בגרפי 4H ויומי)", group=gV)
+sLvlD   = input.bool(true, "רמות יומי (רק מתחת ליומי)", group=gV)
+sLvl4   = input.bool(true, "רמות 4H (רק מתחת ל-4H)", group=gV)
+sLvl15  = input.bool(true, "רמות 15m (רק מתחת ל-15m)", group=gV)
+sLvlSes = input.bool(true, "רמות סשן קודם (רק מתחת ל-4H)", group=gV)
+sRange  = input.bool(true, "קריק / אייס + תוויות", group=gV)
+sFlip   = input.bool(true, "פליפ זון (עליון + תחתון)", group=gV)
+sPools  = input.bool(true, "בריכות נזילות", group=gV)
+sWingLn = input.bool(true, "קו הכנף", group=gV)
+sNeck   = input.bool(true, "צווארי W/M", group=gV)
+sOBbox  = input.bool(true, "קופסאות OB", group=gV)
+sMCln   = input.bool(true, "הקרנת מונטה-קרלו", group=gV)
+sFVGbox = input.bool(true, "קופסאות FVG (דורש מודול FVG)", group=gV)
+sAsiaBox = input.bool(true, "טווח אסיה — Dealing Range (מתחת ל-4H)", group=gV)
+sORln = input.bool(true, "קווי טווח פתיחה של הסשן (מתחת לשעה)", group=gV)
+sBB = input.bool(false, "רצועות בולינגר", group=gV)
+sGapBox = input.bool(true, "קופסאות גאפ (עד שנסגר עד הסגירה של הנר שלפניו)", group=gV)
+sBgKZ = input.bool(true, "רקע קיל-זון (מתחת ל-4H)", group=gV)
+gV2 = "תצוגה — סימונים"
+minConf = input.int(5, "סף קונפלואנס ל-⭐", minval=2, maxval=11, group=gV2)
+sArm    = input.bool(true, "⏳ — סטאפ נפתח + קו BOS ממתין", group=gV2)
+sSpring = input.bool(true, "S — ספרינג", group=gV2)
+sUT     = input.bool(true, "U — אפ-טראסט", group=gV2)
+sTest   = input.bool(true, "T — טסט", group=gV2)
+sFlyS   = input.bool(true, "✈ — טיסה", group=gV2)
+sWingS  = input.bool(true, "כנף — שבירת כנף", group=gV2)
+sOBs    = input.bool(true, "OB — אורדר בלוק", group=gV2)
+sWMs    = input.bool(true, "W✓ / M✓ — דאבל הושלם", group=gV2)
+sMCs    = input.bool(true, "🎲 — מונטה-קרלו", group=gV2)
+sEng    = input.bool(true, "✕ — נר בולען (יציאה)", group=gV2)
+sStar   = input.bool(true, "⭐ — קונפלואנס", group=gV2)
+sFlag   = input.bool(true, "🚩 — כל האישורים", group=gV2)
+sTwz    = input.bool(false, "✚ — צבת (לא מהקורס; רק 1H+ ובקצה הטווח)", group=gV2)
+sJud    = input.bool(true, "J — Judas", group=gV2)
+sSwp    = input.bool(true, "💧 — חטיפת נזילות", group=gV2)
+sSmt    = input.bool(true, "⚡ — SMT / iSMT", group=gV2)
+sIFVG   = input.bool(true, "iFVG — מרווח שהתהפך (דורש מודול FVG)", group=gV2)
+sBOS    = input.bool(true, "BOS / CHoCH — שינוי מבנה", group=gV2)
+sBBs    = input.bool(true, "BB — פריצת בולינגר אחרי סקוויז", group=gV2)
+sClimax = input.bool(true, "💥 — נר קליימקס (אחוזון ווליום)", group=gV2)
+sWMlvl  = input.bool(true, "DD / DT — דאבל דאון/טופ מתחיל מול רמת 4H / יומי / שבועי (התראה מוקדמת)", group=gV2)
+recent = bar_index > last_bar_index - 80
+
+// ─── רמות אופקיות (קו + תווית עם הסבר) ──────────────────────────────────────
+f_lvl(float v, color c, int w, string st, bool show, bool keepHist, string tag, string tip) =>
+    var line ln = na
+    var float lastV = na
+    var label lb = na
+    if show and not na(v)
+        if na(lastV) or v != lastV
+            if not keepHist and not na(ln)
+                line.delete(ln)
+            ln := line.new(bar_index, v, bar_index, v, color=c, width=w, style=st)
+            if tag != "" and recent
+                if not na(lb)
+                    label.delete(lb)
+                lb := label.new(bar_index, v, tag, style=label.style_label_left, color=color.new(c, 65), textcolor=color.white, size=size.tiny, tooltip=tip)
+        else
+            line.set_x2(ln, bar_index)
+        lastV := v
+    else
+        if not na(ln)
+            line.delete(ln)
+            ln := na
+        lastV := na
+    true
+f_live(bool show, int x1, float y, color c, int w) =>
+    var line ln = na
+    if show and not na(y) and not na(x1)
+        xa = math.max(math.max(x1, bar_index - 4500), 0)
+        if na(ln)
+            ln := line.new(xa, y, bar_index, y, color=c, width=w)
+        else
+            line.set_xy1(ln, xa, y)
+            line.set_xy2(ln, bar_index, y)
+    else if not na(ln)
+        line.delete(ln)
+        ln := na
+    true
+f_tagLive(bool show, float y, string txt, color c, string tip) =>
+    var label lb = na
+    if show and not na(y)
+        if na(lb)
+            lb := label.new(bar_index, y, txt, style=label.style_label_left, color=color.new(c, 35), textcolor=color.white, size=size.tiny, tooltip=tip)
+        else
+            label.set_xy(lb, bar_index, y)
+            label.set_text(lb, txt)
+            label.set_tooltip(lb, tip)
+    else if not na(lb)
+        label.delete(lb)
+        lb := na
+    true
+[wkH, wkL] = request.security(syminfo.tickerid, "W", [high[1], low[1]], lookahead=barmerge.lookahead_off)
+[dH, dL] = request.security(syminfo.tickerid, "D", [high[1], low[1]], lookahead=barmerge.lookahead_off)
+[h4H, h4L] = request.security(syminfo.tickerid, "240", [high[1], low[1]], lookahead=barmerge.lookahead_off)
+[m15H, m15L] = request.security(syminfo.tickerid, "15", [high[1], low[1]], lookahead=barmerge.lookahead_off)
+tipWk = "High/Low של השבוע הקודם — הרמה הגדולה ביותר על המסך. מוצגת רק בגרפי 4H ויומי (במסגרות קטנות היא רחוקה מדי)"
+tipD = "High/Low של היום הקודם — הרמה החזקה ביותר על המסך. תגובה כאן שווה יותר מכל רמה תוך-יומית. 🎬 48-1"
+tip4 = "High/Low של נר ה-4H הקודם — רמת הסינרגיה לעסקאות תוך-יומיות (תגובה על רמה של TF גדול)"
+tip15 = "High/Low של נר ה-15m הקודם — רמות עבודה לכניסה מדויקת"
+tipSes = "High/Low של הסשן הקודם — נזילות מועדפת לחטיפה בפתיחת סשן (Judas)"
+tipPool = "בריכת נזילות: שני שיאים/שפלים שווים (בטולרנס ATR). שם יושבים הסטופים — יעד טבעי לחטיפה. 🎬 40-4, פרק 11"
+// כלל: רמה מוצגת רק אם מסגרת הזמן שלה גדולה מזו של הגרף
+f_lvl(wkH, color.new(#ab47bc, 0), 3, line.style_solid, sLvlW and tfMin >= 240, true, "W", tipWk)
+f_lvl(wkL, color.new(#ab47bc, 0), 3, line.style_solid, sLvlW and tfMin >= 240, true, "W", tipWk)
+f_lvl(dH, color.new(#e91e63, 0), 3, line.style_solid, sLvlD and tfMin < 1440, true, "D", tipD)
+f_lvl(dL, color.new(#e91e63, 0), 3, line.style_solid, sLvlD and tfMin < 1440, true, "D", tipD)
+f_lvl(h4H, color.new(#ff9800, 10), 2, line.style_solid, sLvl4 and tfMin < 240, true, "4H", tip4)
+f_lvl(h4L, color.new(#ff9800, 10), 2, line.style_solid, sLvl4 and tfMin < 240, true, "4H", tip4)
+f_lvl(m15H, color.new(#29b6f6, 30), 1, line.style_dashed, sLvl15 and tfMin < 15 and not cleanMode, true, "", tip15)
+f_lvl(m15L, color.new(#29b6f6, 30), 1, line.style_dashed, sLvl15 and tfMin < 15 and not cleanMode, true, "", tip15)
+f_lvl(prevSesH, color.new(color.gray, 30), 1, line.style_dotted, sLvlSes and mSes and tfMin < 240 and not cleanMode, true, "סשן", tipSes)
+f_lvl(prevSesL, color.new(color.gray, 30), 1, line.style_dotted, sLvlSes and mSes and tfMin < 240 and not cleanMode, true, "סשן", tipSes)
+f_lvl(poolHi, color.new(color.red, 45), 1, line.style_dotted, sPools and mLiq and not cleanMode, true, "≡", tipPool)
+f_lvl(poolLo, color.new(color.green, 45), 1, line.style_dotted, sPools and mLiq and not cleanMode, true, "≡", tipPool)
+f_lvl(mcProj, color.new(color.purple, 20), 2, line.style_dotted, sMCln and mMC, false, "", "")
+f_lvl(wNeck, color.new(color.teal, 30), 1, line.style_dashed, sNeck and mWM and wState == 1, false, "", "")
+f_lvl(mNeck, color.new(color.maroon, 30), 1, line.style_dashed, sNeck and mWM and mState == 1, false, "", "")
+f_tagLive(sMCln and mMC and not na(mcProj), mcProj, "🎲 יעד", color.purple, "הקרנת מונטה-קרלו: יעד מממוצע שלוש הרגליים הקודמות. הגעה = מיצוי, מחפשים חולשה לסגירה. 🎬 35")
+f_tagLive(sNeck and mWM and wState == 1, wNeck, "צוואר W", color.teal, "דאבל-בוטום נבנה: שני שפלים שווים±. סגירה מעל הצוואר = W✓. סטופ מאחורי הקיצון השני")
+f_tagLive(sNeck and mWM and mState == 1, mNeck, "צוואר M", color.maroon, "דאבל-טופ נבנה: שני שיאים שווים±. סגירה מתחת לצוואר = M✓")
+
+// ─── טווח וויקוף: קופסת פאזה סביב הנרות + קריק/אייס ─────────────────────────
+f_phCol(int p) => p == 1 ? color.teal : p == 2 ? color.gray : p == 3 ? color.red : p == 4 ? color.blue : color.green
+var box phBox = na
+var box[] phHist = array.new<box>()
+phChanged = phase != phase[1]
+// יציאה ל-E או איפוס: הקופסה של הפאזה הקודמת נסגרת בנר האחרון שלה (לא נמתחת עד התהליך הבא)
+if phChanged and (phase == 5 or phase == 0) and not na(phBox)
+    box.set_right(phBox, math.max(bar_index - 1, box.get_left(phBox)))
+    array.push(phHist, phBox)
+    if array.size(phHist) > 40
+        box.delete(array.shift(phHist))
+    phBox := box(na)
+if mWyk and sBgPhase and phase > 0 and phase < 5 and not na(rHi)
+    if phChanged or na(phBox)
+        bxLeft = phase == 3 and phase[1] != 3 and not na(cStartBar) ? math.max(cStartBar, 0) : bar_index
+        if not na(phBox)
+            box.set_right(phBox, math.max(bxLeft - 1, box.get_left(phBox)))
+            array.push(phHist, phBox)
+            if array.size(phHist) > 40
+                box.delete(array.shift(phHist))
+        phBox := box.new(bxLeft, rHi, bar_index, rLo, border_color=color.new(f_phCol(phase), 50), bgcolor=color.new(f_phCol(phase), 86), border_width=1, text=(phase == 1 ? "A" : phase == 2 ? "B" : phase == 3 ? "C" : phase == 4 ? "D" : "E") + (phase <= 2 ? (procDir == 1 ? " · איסוף" : " · פיזור") : phase == 3 and cDirOpen ? "" : (cIsBull ? " · לונג" : " · שורט")) + (phase == 3 and cByVol ? " · ווליום" : "") + (phase == 5 and noC ? " · בלי C" : ""), text_size=size.small, text_color=color.new(color.white, 25), text_halign=text.align_center, text_valign=text.align_top)
+    box.set_right(phBox, bar_index)
+    box.set_top(phBox, rHi)
+    box.set_bottom(phBox, rLo)
+    if phase == 3 and cByVol and not cDirOpen and cDirOpen[1]
+        box.set_text(phBox, "C" + (cIsBull ? " · לונג" : " · שורט") + " · ווליום")
+f_live(mWyk and sRange and phase > 0, aBar, rHi, color.new(color.orange, 5), 2)
+f_live(mWyk and sRange and phase > 0, aBar, rLo, color.new(color.aqua, 5), 2)
+f_tagLive(mWyk and sRange and phase > 0, rHi, "קריק", color.orange, "קריק — הגבול העליון של הטווח (התנגדות), נמתח מנר הקליימקס. UT = פריצה מעליו וחזרה. 🎬 48-1")
+f_tagLive(mWyk and sRange and phase > 0, rLo, "אייס", color.aqua, "אייס — הגבול התחתון של הטווח (תמיכה). ספרינג = צלילה מתחתיו וחזרה. 🎬 48-1")
+
+// ─── פליפ זון — עליון ותחתון בנפרד ──────────────────────────────────────────
+xLo = phase[1] > 0 and not na(rLo[1]) and close < rLo[1] and close[1] >= rLo[1]
+xHi = phase[1] > 0 and not na(rHi[1]) and close > rHi[1] and close[1] <= rHi[1]
+var float flipLoPx = na
+var int flipLoBar = na
+var float flipHiPx = na
+var int flipHiBar = na
+if xLo
+    flipLoPx := rLo[1]
+    flipLoBar := bar_index
+if xHi
+    flipHiPx := rHi[1]
+    flipHiBar := bar_index
+tipFlip = "פליפ זון: הגבול שהמחיר חצה בסגירה והחליף צד (תמיכה↔התנגדות). כניסה בחזרה אליו · סטופ מאחוריו · נשבר נגדך = יציאה. 🎬 48-1"
+f_live(mWyk and sFlip and not na(flipLoPx), flipLoBar, flipLoPx, color.new(color.fuchsia, 15), 2)
+f_live(mWyk and sFlip and not na(flipHiPx), flipHiBar, flipHiPx, color.new(color.fuchsia, 15), 2)
+f_tagLive(mWyk and sFlip and not na(flipLoPx), flipLoPx, "פליפ", color.fuchsia, tipFlip)
+f_tagLive(mWyk and sFlip and not na(flipHiPx), flipHiPx, "פליפ", color.fuchsia, tipFlip)
+
+// ─── קו הכנף + תווית ─────────────────────────────────────────────────────────
+tipWing = "קו הכנף: התמיכה העולה של התיקון (מחבר שני פיבוטים עולים). בפיזור הוא נשבר שוב ושוב — שבירתו בסגירה אחרי UT = טריגר הכנף. 🎬 10-5/6/7"
+var line wingLnU = na
+if mWing and sWingLn and not na(wingUp) and not na(prevPLi)
+    if na(wingLnU)
+        wingLnU := line.new(math.max(prevPLi, 0), prevPL, bar_index, wingUp, color=color.new(color.yellow, 25), width=1, style=line.style_dashed)
+    else
+        line.set_xy1(wingLnU, math.max(prevPLi, 0), prevPL)
+        line.set_xy2(wingLnU, bar_index, wingUp)
+else if not na(wingLnU)
+    line.delete(wingLnU)
+    wingLnU := na
+var line wingLnD = na
+if mWing and sWingLn and not na(wingDn) and not na(prevPHi)
+    if na(wingLnD)
+        wingLnD := line.new(math.max(prevPHi, 0), prevPH, bar_index, wingDn, color=color.new(color.yellow, 45), width=1, style=line.style_dashed)
+    else
+        line.set_xy1(wingLnD, math.max(prevPHi, 0), prevPH)
+        line.set_xy2(wingLnD, bar_index, wingDn)
+else if not na(wingLnD)
+    line.delete(wingLnD)
+    wingLnD := na
+f_tagLive(mWing and sWingLn and not na(wingUp), wingUp, "כנף", color.yellow, tipWing)
+
+// ─── קופסאות OB ─────────────────────────────────────────────────────────────
+// הקופסה נמשכת ימינה כל עוד הבלוק חי; מולא = המחיר עבר דרך כולו עד הצד הרחוק (גם בפתיל) → נמחקת (המשתמש 8/9)
+var box[] obBoxes = array.new<box>()
+var float[] obBxTop = array.new<float>()
+var float[] obBxBot = array.new<float>()
+var int[] obBxDir = array.new<int>()
+if mOB and sOBbox and (newObL or newObS) and not cleanMode
+    isB = newObL
+    b = box.new(bar_index - 1, isB ? obLTop : obSTop, bar_index + 1, isB ? obLBot : obSBot, border_color=color.new(isB ? color.teal : color.maroon, 40), bgcolor=color.new(isB ? color.teal : color.maroon, 85), text=isB ? "OB קנייה" : "OB מכירה", text_size=size.tiny, text_color=color.new(color.white, 30), text_halign=text.align_right)
+    array.push(obBoxes, b)
+    array.push(obBxTop, isB ? obLTop : obSTop)
+    array.push(obBxBot, isB ? obLBot : obSBot)
+    array.push(obBxDir, isB ? 1 : -1)
+    if array.size(obBoxes) > 12
+        box.delete(array.shift(obBoxes))
+        array.shift(obBxTop)
+        array.shift(obBxBot)
+        array.shift(obBxDir)
+if array.size(obBoxes) > 0
+    for i = array.size(obBoxes) - 1 to 0
+        obx = array.get(obBoxes, i)
+        obFilled = array.get(obBxDir, i) == 1 ? low <= array.get(obBxBot, i) : high >= array.get(obBxTop, i)
+        if (obFilled and bar_index > box.get_left(obx) + 1) or bar_index - box.get_left(obx) > fvgMaxAge
+            box.delete(obx)
+            array.remove(obBoxes, i)
+            array.remove(obBxTop, i)
+            array.remove(obBxBot, i)
+            array.remove(obBxDir, i)
+        else
+            box.set_right(obx, bar_index + 1)
+
+// ─── קופסאות FVG (פתיל נר 1 → פתיל נר 3): נשאר עד שנלקח; נלקח (סגירה דרכו) = הופך אוטומטית ל-iFVG בצבע ההפוך; iFVG שמולא (פתיל עד הצד הרחוק) = נמחק ─────
+var box[] fvgBx = array.new<box>()
+var float[] fvgTop = array.new<float>()
+var float[] fvgBot = array.new<float>()
+var int[] fvgDir = array.new<int>()
+var bool[] fvgInv = array.new<bool>()
+f_fvgCol(int d, bool inv) => (d == 1) != inv ? color.lime : color.red
+if mFVG and sFVGbox and (bullGap or bearGap) and not cleanMode
+    fTop = bullGap ? low : pBodyBot
+    fBot = bullGap ? pBodyTop : high
+    fc = f_fvgCol(bullGap ? 1 : -1, false)
+    fb = box.new(bar_index - 2, fTop, bar_index + 1, fBot, border_color=color.new(fc, 65), bgcolor=color.new(fc, 95), text="FVG", text_size=size.tiny, text_color=color.new(color.white, 55), text_halign=text.align_right)
+    array.push(fvgBx, fb)
+    array.push(fvgTop, fTop)
+    array.push(fvgBot, fBot)
+    array.push(fvgDir, bullGap ? 1 : -1)
+    array.push(fvgInv, false)
+    if array.size(fvgBx) > 40
+        box.delete(array.shift(fvgBx))
+        array.shift(fvgTop)
+        array.shift(fvgBot)
+        array.shift(fvgDir)
+        array.shift(fvgInv)
+if array.size(fvgBx) > 0
+    for i = array.size(fvgBx) - 1 to 0
+        bx = array.get(fvgBx, i)
+        d = array.get(fvgDir, i)
+        inv = array.get(fvgInv, i)
+        // נלקח = סגירה מעבר לצד הרחוק. FVG שורי נלקח מלמטה → iFVG (התנגדות).
+        // iFVG שמולא = המחיר עבר דרך כולו עד הצד הרחוק, גם בפתיל בלבד (המשתמש 8/9: "iFVG שמולא ועדיין מופיע") → נמחק
+        taken = d == 1 ? close < array.get(fvgBot, i) : close > array.get(fvgTop, i)
+        filled = d == 1 ? low <= array.get(fvgBot, i) : high >= array.get(fvgTop, i)
+        tooOld = bar_index - box.get_left(bx) > fvgMaxAge
+        if tooOld or (inv and (taken or filled))
+            box.delete(bx)
+            array.remove(fvgBx, i)
+            array.remove(fvgTop, i)
+            array.remove(fvgBot, i)
+            array.remove(fvgDir, i)
+            array.remove(fvgInv, i)
+        else if taken and bar_index > box.get_left(bx) + 1
+            nc = f_fvgCol(d, true)
+            box.set_text(bx, "iFVG")
+            box.set_border_color(bx, color.new(nc, 60))
+            box.set_bgcolor(bx, color.new(nc, 94))
+            box.set_right(bx, bar_index + 1)
+            array.set(fvgInv, i, true)
+            array.set(fvgDir, i, -d)
+            array.set(fvgTop, i, array.get(fvgTop, i))
+        else
+            box.set_right(bx, bar_index + 1)
+
+// ─── קופסאות גאפ: מהסגירה של הנר שלפני עד הפתיחה. נסגר רק כשהמחיר מגיע לקצה של הנר שלפני הגאפ (השפל בגאפ למעלה / השיא בגאפ למטה).
+// כניסה למרווח בלבד "סוגרת את המרווח המדומה בלי הנר שירד למטה" (המשתמש, 7/9) — לא סגירה. קו מנוקד = יעד הסגירה ─────────────
+var box[] gapBx = array.new<box>()
+var line[] gapLn = array.new<line>()
+var float[] gapFar = array.new<float>()
+var int[] gapDir = array.new<int>()
+gapFilledNow := false
+if sGapBox and (gapUp or gapDn) and not cleanMode
+    gb = box.new(bar_index - 1, math.max(open, close[1]), bar_index + 1, math.min(open, close[1]), border_color=color.new(color.white, 50), bgcolor=color.new(color.white, 94), text="GAP " + str.tostring(math.abs(open - close[1]), format.mintick), text_size=size.tiny, text_color=color.new(color.white, 40), text_halign=text.align_right)
+    gFar = gapUp ? low[1] : high[1]
+    gl = line.new(bar_index - 1, gFar, bar_index + 1, gFar, color=color.new(color.white, 45), style=line.style_dotted, width=1)
+    array.push(gapBx, gb)
+    array.push(gapLn, gl)
+    array.push(gapFar, gFar)
+    array.push(gapDir, gapUp ? 1 : -1)
+    if array.size(gapBx) > 20
+        box.delete(array.shift(gapBx))
+        line.delete(array.shift(gapLn))
+        array.shift(gapFar)
+        array.shift(gapDir)
+if array.size(gapBx) > 0
+    for i = array.size(gapBx) - 1 to 0
+        gx = array.get(gapBx, i)
+        far = array.get(gapFar, i)
+        gFilled = array.get(gapDir, i) == 1 ? low <= far : high >= far
+        gOld = bar_index - box.get_left(gx) > fvgMaxAge * 3
+        if (gFilled and bar_index > box.get_left(gx) + 1) or gOld
+            if gFilled
+                gapFilledNow := true
+            box.delete(gx)
+            line.delete(array.get(gapLn, i))
+            array.remove(gapBx, i)
+            array.remove(gapLn, i)
+            array.remove(gapFar, i)
+            array.remove(gapDir, i)
+        else
+            box.set_right(gx, bar_index + 1)
+            line.set_x2(array.get(gapLn, i), bar_index + 1)
+
+// ─── רקע סשנים (נשאר לגובה מלא — תיוג זמן) ──────────────────────────────────
+bgcolor(mSes and sBgKZ and tfMin < 240 and inKZ and not cleanMode ? color.new(inKZL ? color.blue : color.orange, 89) : mSes and sBgSes and tfMin < 240 and inLon and not cleanMode ? color.new(color.blue, 96) : mSes and sBgSes and tfMin < 240 and inNY and not cleanMode ? color.new(color.orange, 97) : na, title="סשן / קיל-זון")
+plot(mBB and sBB and not cleanMode ? bbU : na, "בולינגר עליון", color=color.new(color.blue, 55))
+plot(mBB and sBB and not cleanMode ? bbL : na, "בולינגר תחתון", color=color.new(color.blue, 55))
+plot(mBB and sBB and not cleanMode ? bbM : na, "בולינגר אמצע", color=color.new(color.gray, 60))
+
+// ─── טווח אסיה (Dealing Range תוך-יומי) + קווי טווח פתיחה ───────────────────
+var box asiaBox = na
+var line asiaMid = na
+asiaEnd = not inAsia and inAsia[1] and not na(asiaH)
+if mSes and sAsiaBox and tfMin < 240 and not cleanMode and asiaEnd
+    asiaBox := box.new(bar_index - 1, asiaH, bar_index, asiaL, border_color=color.new(color.gray, 60), bgcolor=color.new(color.gray, 94), text="טווח אסיה", text_size=size.tiny, text_color=color.new(color.white, 50), text_halign=text.align_left)
+    asiaMid := line.new(bar_index - 1, (asiaH + asiaL) / 2, bar_index, (asiaH + asiaL) / 2, color=color.new(color.gray, 40), style=line.style_dotted)
+if not na(asiaBox) and not inAsia
+    box.set_right(asiaBox, bar_index)
+    line.set_x2(asiaMid, bar_index)
+var line orLnH = na
+var line orLnL = na
+orShow = mSes and sORln and tfMin < 60 and not cleanMode and not na(orStart) and not inOR and sesIdx != 3
+if orShow and inOR[1]
+    orLnH := line.new(orStart, orH, bar_index, orH, color=color.new(color.yellow, 50), style=line.style_dotted)
+    orLnL := line.new(orStart, orL, bar_index, orL, color=color.new(color.yellow, 50), style=line.style_dotted)
+if orShow and not na(orLnH)
+    line.set_x2(orLnH, bar_index)
+    line.set_x2(orLnL, bar_index)
+
+// ─── סטאפ חמוש: קו ה-BOS הממתין + ⏳ ─────────────────────────────────────────
+float armPx = armDir == 1 ? lastPH : armDir == -1 ? lastPL : na
+armOn = mFly and sArm and armDir != 0 and not na(armPx)
+var line armLn = na
+if armOn
+    if na(armLn)
+        armLn := line.new(math.max(bar_index - 1, 0), armPx, bar_index, armPx, color=color.new(color.yellow, 20), width=1, style=line.style_dashed)
+    line.set_xy1(armLn, math.max(bar_index - 30, 0), armPx)
+    line.set_xy2(armLn, bar_index, armPx)
+else if not na(armLn)
+    line.delete(armLn)
+    armLn := na
+f_tagLive(armOn, armPx, (armDir == 1 ? "✈ ממתין ל-BOS מעל" : "✈ ממתין ל-BOS מתחת") + " · RSI " + rsiTxt, color.yellow, "סטאפ חמוש (" + (armDir == 1 ? "ספרינג" : "UT") + " זוהה): סגירה של נר 15m+ מעבר לקו הזה = טריגר טיסה. הרמה: " + str.tostring(armPx, format.mintick))
+
+// ─── סימונים — תווית עם tooltip לכל אירוע ───────────────────────────────────
+var label[] marks = array.new<label>()
+f_mark(bool cond, string txt, string tip, color col, bool above, string sz) =>
+    if cond
+        lb = label.new(bar_index, above ? high : low, txt, xloc=xloc.bar_index, yloc=above ? yloc.abovebar : yloc.belowbar, style=above ? label.style_label_down : label.style_label_up, color=col, textcolor=color.white, size=sz, tooltip=tip)
+        array.push(marks, lb)
+        if array.size(marks) > 420
+            label.delete(array.shift(marks))
+    true
+tipSpring = "S = ספרינג (פאזה C): שפיץ שיצא מתחת לאייס וחזר בסגירה, בווליום ≈ לקליימקס. עוד לא כניסה — מחכים ל-Test ול-BOS. 🎬 22-6"
+tipUT = "U = אפ-טראסט (פאזה C דובית): שפיץ מעל הקריק שחזר. עוברים למצב כנף. 🎬 22-6"
+tipVolC = "V = פאזה C לפי ווליום, בלי ניעור: נר בווליום ≈ לקליימקס (A) בתוך הטווח (\"C שלאו דווקא יצאה מגבולות הגזרה\"). הכיוון עוד לא ידוע — נקבע לפי ה-LPS או לפי סגירה מעבר לנר. 🎬 22-8, 10-4"
+tipLPS = "LPS = נקודת תמיכה אחרונה: בפאזה C המחיר התכווץ בווליום נמוך ושמר שפל מעל קצה הניעור / נר הווליום → ההיצע התייבש, C ללונג. אחרי C ווליום בלי כיוון — זה מה שקובע לונג. D = ה-BOS. 🎬 10-5, 10-2"
+tipLPSY = "LPSY = נקודת היצע אחרונה: בפאזה C המחיר עלה בווליום נמוך ונכשל מתחת לקצה ה-UT / נר הווליום → הביקוש התייבש, C לשורט. אחרי C ווליום בלי כיוון — זה מה שקובע שורט. D = ה-BOS. 🎬 10-5"
+tipTest = "T = טסט: חזרה לאזור ה-C בווליום נמוך — ההיצע התייבש. האישור הקלאסי. 🎬 48-1, 22-4"
+tipFlyL = "✈ טיסה לונג: פאזה D אחרי ספרינג + מחוץ ל-60% המרכזיים + BOS בסגירת נר 15m+. סטופ מתחת לקצה ה-C. 🎬 10-4"
+tipFlyS = "✈ טיסה שורט: המראה — פאזה D דובית אחרי UT + BOS למטה בסגירת 15m+. סטופ מעל הקצה. 🎬 10-4"
+tipWingS = "שבירת כנף (שורט): אחרי UT — סגירה מתחת לקו התמיכה העולה של התיקון. סטופ מעל הפיבוט. 🎬 10-5/6/7"
+tipWingL = "שבירת כנף לונג (מראה): אחרי ספרינג — סגירה מעל קו ההתנגדות היורד"
+tipOB = "אורדר בלוק: אזור חי + המחיר נכנס לעומק 21% מהמרווח וסגר חזרה מחוץ לו, בכיוון המבנה. בקורס: יורדים לגרף דקה לצ'וץ' נקי. 🎬 12-6"
+tipW = "W✓: דאבל-בוטום הושלם — סגירה מעל הצוואר. סטופ מאחורי הקיצון השני"
+tipM = "M✓: דאבל-טופ הושלם — סגירה מתחת לצוואר"
+tipMC = "🎲 מונטה-קרלו: סגירה 1.5%+ מעל השיא שהחזיקה 6 נרות. יעד = ההקרנה הסגולה. 🎬 35"
+tipEng = "✕ נר בולען (רק 1H+): גוף שבלע את כל הנר הקודם והיפוך צבע — איתות יציאה, לא כניסה. 🎬 10-4"
+tipFlag = "🚩 כל האישורים דלוקים: סטאפ חמוש + Test + מחוץ למרכז + עם המבנה + 1:3 — מחכים ל-BOS"
+tipTwz = "✚ צבת: שני נרות סמוכים עם שפל/שיא זהה (הפרש עד 10% מהטווח הממוצע של נר) + נר היפוך בקצה הטווח. ⚠ לא מהקורס — אישור נרות כללי"
+tipJud = "J = Judas: המחיר שבר את טווח פתיחת הסשן וחזר פנימה — המניפולציה של ה-AMD. 🎬 25-4"
+tipSwp = "💧 חטיפת נזילות: פתיל חדר בריכה (שיאים/שפלים שווים) וסגר חזרה — הדלק נאסף. 🎬 40-4"
+tipSmt = "⚡SMT — דיברג'נס סווינג: הנכס עשה שיא/שפל חדש של 20 נרות והנכס המשווה (" + smtSym + ") לא אישר — שבירת קורלציה = סדק בתנועה. 🎬 25-1"
+f_mark(sArm and armDir != 0 and armDir[1] == 0, "⏳", "סטאפ נפתח: זוהה " + (armDir == 1 ? "ספרינג" : "UT") + " — פאזה C. מכאן מחכים ל-Test ולסגירת BOS (הקו הצהוב המקווקו). 🎬 22-6, 10-4", color.new(color.yellow, 25), armDir == -1, size.small)
+f_mark(mWyk and sSpring and spring and not cExtNow, "S", tipSpring, color.new(color.green, 0), false, size.small)
+tipE = "E = יציאה לדרך: סגירה מעבר לקריק (איסוף) / מתחת לאייס (פיזור) אחרי C+D. מכאן ניהול בלבד — קידום סטופ על כל BOS, מימוש חלקי, שרשור לתהליך הבא. 🎬 41-5, 33-10"
+f_mark(mWyk and sBgPhase and phase == 5 and phase[1] != 5, noC ? "E · בלי C" : "E", tipE, color.new(color.green, 15), not cIsBull, size.small)
+f_mark(mWyk and sUT and utSig and not cExtNow, "U", tipUT, color.new(color.orange, 0), true, size.small)
+f_mark(mWyk and (sSpring or sUT) and volC, "V", tipVolC, color.new(color.purple, 0), false, size.small)
+f_mark(mWyk and sSpring and (volDirUp or lpsMark), "LPS", tipLPS, color.new(color.green, 0), false, size.small)
+f_mark(mWyk and sUT and (volDirDn or lpsyMark), "LPSY", tipLPSY, color.new(color.red, 0), true, size.small)
+f_mark(mWyk and sTest and testOK and not testOK[1], "T", tipTest, color.new(color.green, 35), false, size.tiny)
+f_mark(sFlyS and flyLong, "✈", tipFlyL, color.new(color.green, 0), false, size.normal)
+f_mark(sFlyS and flyShort, "✈", tipFlyS, color.new(color.red, 0), true, size.normal)
+f_mark(sWingS and wingShort, "כנף", tipWingS, color.new(color.orange, 0), true, size.small)
+f_mark(sWingS and wingLong, "כנף", tipWingL, color.new(color.teal, 0), false, size.small)
+f_mark(sOBs and obLong, "OB", tipOB, color.new(color.teal, 10), false, size.small)
+f_mark(sOBs and obShort, "OB", tipOB, color.new(color.maroon, 10), true, size.small)
+f_mark(sWMs and wSig, "W✓", tipW, color.new(color.green, 10), false, size.small)
+f_mark(sWMs and mSig, "M✓", tipM, color.new(color.red, 10), true, size.small)
+f_mark(sMCs and mcSig, "🎲", tipMC, color.new(color.purple, 10), false, size.small)
+f_mark(sEng and engulfBear, "✕", tipEng, color.new(color.red, 0), true, size.small)
+f_mark(sEng and engulfBull, "✕", tipEng, color.new(color.green, 0), false, size.small)
+f_mark(sTwz and twzBull and tfMin >= 60 and okZone, "✚", tipTwz, color.new(color.lime, 30), false, size.tiny)
+f_mark(sTwz and twzBear and tfMin >= 60 and okZone, "✚", tipTwz, color.new(color.red, 30), true, size.tiny)
+f_mark(sJud and judasBull, "J", tipJud, color.new(color.teal, 30), false, size.tiny)
+f_mark(sJud and judasBear, "J", tipJud, color.new(color.teal, 30), true, size.tiny)
+f_mark(sSwp and sweepLo, "💧", tipSwp, color.new(color.green, 30), false, size.tiny)
+f_mark(sSwp and sweepHi, "💧", tipSwp, color.new(color.red, 30), true, size.tiny)
+tipIsmt = "⚡iSMT — דיברג'נס תוך-נרי: הנר פרץ את השיא/שפל של הנר הקודם וסגר חזרה, והנכס המשווה (" + smtSym + ") לא פרץ. גרסה מהירה של SMT ברמת נר בודד. 🎬 25-1"
+f_mark(sSmt and smtBull and okZone, "⚡SMT", tipSmt, color.new(color.fuchsia, 20), false, size.tiny)
+f_mark(sSmt and smtBear and okZone, "⚡SMT", tipSmt, color.new(color.fuchsia, 20), true, size.tiny)
+f_mark(sSmt and ismtBull and not smtBull and okZone, "⚡iSMT", tipIsmt, color.new(color.purple, 25), false, size.tiny)
+f_mark(sSmt and ismtBear and not smtBear and okZone, "⚡iSMT", tipIsmt, color.new(color.purple, 25), true, size.tiny)
+tipIfvg = "iFVG — מרווח גופים (FVG) שנפרץ והתהפך: מרווח שורי שנשבר הופך להתנגדות, מרווח דובי שנשבר הופך לתמיכה. הסימון = הנר שבדק את המרווח ההפוך ונדחה. 🎬 12-5, 25-1"
+f_mark(mFVG and sIFVG and ifvgBull, "iFVG", "iFVG שורי: המרווח הדובי " + str.tostring(sgBot, format.mintick) + "–" + str.tostring(sgTop, format.mintick) + " נשבר למעלה, המחיר חזר לבדוק אותו מלמעלה ונדחה → עכשיו תמיכה. " + tipIfvg, color.new(color.lime, 20), false, size.tiny)
+f_mark(mFVG and sIFVG and ifvgBear, "iFVG", "iFVG דובי: המרווח השורי " + str.tostring(bgBot, format.mintick) + "–" + str.tostring(bgTop, format.mintick) + " נשבר למטה, המחיר חזר לבדוק אותו מלמטה ונדחה → עכשיו התנגדות. " + tipIfvg, color.new(color.red, 20), true, size.tiny)
+tipBos = "BOS — שינוי מבנה: סגירה מעבר לפיבוט האחרון בכיוון המגמה. CHoCH — שינוי אופי: ה-BOS הראשון נגד הכיוון הקודם. הבסיס לכל הטריגרים. 🎬 10-4"
+f_mark(sBOS and bosUp and not chochUp and tfMin >= 15, "BOS", tipBos, color.new(color.green, 45), false, size.tiny)
+f_mark(sBOS and bosDn and not chochDn and tfMin >= 15, "BOS", tipBos, color.new(color.red, 45), true, size.tiny)
+f_mark(sBOS and chochUp, "CHoCH", tipBos, color.new(color.green, 15), false, size.tiny)
+f_mark(sBOS and chochDn, "CHoCH", tipBos, color.new(color.red, 15), true, size.tiny)
+tipBB = "BB — פריצת בולינגר אחרי סקוויז: הרצועות התכווצו (רוחב בתחתית 20% של 100 הנרות האחרונים) והמחיר סגר מחוץ לרצועה — התפרצות תנודתיות. אישור כללי, לא מהקורס"
+f_mark(mBB and sBBs and bbBrkUp, "BB", tipBB, color.new(color.blue, 30), false, size.tiny)
+f_mark(mBB and sBBs and bbBrkDn, "BB", tipBB, color.new(color.blue, 30), true, size.tiny)
+tipClimax = "💥 נר קליימקס: ווליום באחוזון " + str.tostring(climaxP) + "+ מתוך " + str.tostring(volLook) + " נרות. אדום למטה = קליימקס מכירה (מועמד לתחילת פאזה A), ירוק למעלה = קליימקס קנייה. 🎬 48-1"
+f_mark(sClimax and volClimax and barstate.isconfirmed, "💥", tipClimax, color.new(close < open ? color.red : color.green, 45), close > open, size.tiny)
+// ─── DD / DT — דאבל דאון/טופ מול רמת TF גבוה. כלל המשתמש (8/9): רק אם השפלים (כולל פתילים) באותו גובה. פתיל שממשיך
+// מעבר לשפל הקודם = חטיפת נזילות, לא דאבל. נבדק השפל הרץ של הנר הגדול הנוכחי מול השפל של הנר הגדול הקודם, בטולרנס dblTolPct ─
+ch240 = ta.change(time("240"))
+chD = ta.change(time("D"))
+chW = ta.change(time("W"))
+dblTol = close * dblTolPct / 100
+var float run4L = na
+var float run4H = na
+var float runDL = na
+var float runDH = na
+var float runWL = na
+var float runWH = na
+if nz(ch240, 0) != 0 or na(run4L)
+    run4L := low
+    run4H := high
+else
+    run4L := math.min(run4L, low)
+    run4H := math.max(run4H, high)
+if nz(chD, 0) != 0 or na(runDL)
+    runDL := low
+    runDH := high
+else
+    runDL := math.min(runDL, low)
+    runDH := math.max(runDH, high)
+if nz(chW, 0) != 0 or na(runWL)
+    runWL := low
+    runWH := high
+else
+    runWL := math.min(runWL, low)
+    runWH := math.max(runWH, high)
+var bool wm4Fired = false
+var bool wmDFired = false
+var bool wmWFired = false
+var label dd4Lb = na
+var label ddDLb = na
+var label ddWLb = na
+if nz(ch240, 0) != 0
+    wm4Fired := false
+    dd4Lb := na
+if nz(chD, 0) != 0
+    wmDFired := false
+    ddDLb := na
+if nz(chW, 0) != 0
+    wmWFired := false
+    ddWLb := na
+// דאבל = השפל הרץ של הנר הגדול שווה לשפל הקודם (±dblTol), הנר הזה נגע בו, והמחיר סגר מעליו
+f_dblW(float lvl, float runL) => not na(lvl) and math.abs(runL - lvl) <= dblTol and low <= lvl + dblTol and close > lvl
+f_dblM(float lvl, float runH) => not na(lvl) and math.abs(runH - lvl) <= dblTol and high >= lvl - dblTol and close < lvl
+w4Start = sWMlvl and tfMin <= 60 and not wm4Fired and f_dblW(h4L, run4L)
+m4Start = sWMlvl and tfMin <= 60 and not wm4Fired and f_dblM(h4H, run4H)
+wDStart = sWMlvl and tfMin < 240 and not wmDFired and f_dblW(dL, runDL)
+mDStart = sWMlvl and tfMin < 240 and not wmDFired and f_dblM(dH, runDH)
+wWStart = sWMlvl and tfMin < 1440 and not wmWFired and f_dblW(wkL, runWL)
+mWStart = sWMlvl and tfMin < 1440 and not wmWFired and f_dblM(wkH, runWH)
+tipDblW = "DD (דאבל דאון) — דאבל בוטום שמתחיל להיבנות: השפל של הנר הגדול הנוכחי שווה (±" + str.tostring(dblTolPct) + "%) לשפל של הנר הגדול הקודם, כולל הפתילים, והמחיר מעליו. פתיל שיורד מעבר לשפל הקודם = חטיפת נזילות, לא דאבל — הסימון נמחק. אישור = סגירה מעל הצוואר. 🎬 חידוד 08-30"
+tipDblM = "DT (דאבל טופ) — דאבל טופ שמתחיל להיבנות: השיא של הנר הגדול הנוכחי שווה לשיא של הנר הגדול הקודם, כולל הפתילים, והמחיר מתחתיו. פתיל שעולה מעבר לשיא הקודם = חטיפת נזילות, לא דאבל — הסימון נמחק. אישור = סגירה מתחת לצוואר"
+f_ddLb(bool up, string txt, string tip) => label.new(bar_index, up ? high : low, txt, xloc=xloc.bar_index, yloc=up ? yloc.abovebar : yloc.belowbar, style=up ? label.style_label_down : label.style_label_up, color=color.new(up ? color.maroon : color.teal, 15), textcolor=color.white, size=size.small, tooltip=tip)
+if w4Start or m4Start
+    wm4Fired := true
+    dd4Lb := f_ddLb(m4Start, m4Start ? "4DT" : "4DD", m4Start ? tipDblM : tipDblW)
+if wDStart or mDStart
+    wmDFired := true
+    ddDLb := f_ddLb(mDStart, mDStart ? "1D DT" : "1D DD", mDStart ? tipDblM : tipDblW)
+if wWStart or mWStart
+    wmWFired := true
+    ddWLb := f_ddLb(mWStart, mWStart ? "1W DT" : "1W DD", mWStart ? tipDblM : tipDblW)
+// הפתיל המשיך מעבר לרמה בתוך אותו נר גדול → חטיפת נזילות, לא דאבל: הסימון נמחק
+if not na(dd4Lb) and (run4L < h4L - dblTol or run4H > h4H + dblTol)
+    label.delete(dd4Lb)
+    dd4Lb := na
+if not na(ddDLb) and (runDL < dL - dblTol or runDH > dH + dblTol)
+    label.delete(ddDLb)
+    ddDLb := na
+if not na(ddWLb) and (runWL < wkL - dblTol or runWH > wkH + dblTol)
+    label.delete(ddWLb)
+    ddWLb := na
+starBull = confBull >= minConf and barstate.isconfirmed
+starBear = confBear >= minConf and barstate.isconfirmed
+f_mark(sStar and starBull, "⭐", "⭐ קונפלואנס לונג: " + str.tostring(confBull) + " אישורים בו-זמנית (BOS · Sweep · SMT · iFVG · Judas · צבת · ספרינג · ווליום · דיסקאונט · קיל-זון · BB). לבדוק את הצ'ק-ליסט בדשבורד", color.new(color.yellow, 0), false, size.small)
+f_mark(sStar and starBear, "⭐", "⭐ קונפלואנס שורט: " + str.tostring(confBear) + " אישורים בו-זמנית. לבדוק את הצ'ק-ליסט בדשבורד", color.new(color.yellow, 0), true, size.small)
+allOK = armDir != 0 and ckTest and ckZone and ckRRok and (armDir == 1 ? msDir >= 0 : msDir <= 0)
+f_mark(sFlag and allOK and not allOK[1], "🚩", tipFlag, color.new(color.yellow, 0), false, size.small)
+whMsg(string trig, string dir, float stopPx) => '{"secret":"' + secret + '","event":"htt","symbol":"' + syminfo.ticker + '","tf":"' + timeframe.period + '","trigger":"' + trig + '","direction":"' + dir + '","phase":"' + phName + '","session":"' + sesName + '","day":"' + dayName + '","amd":"' + amdPh + '","price":' + str.tostring(close) + ',"stop":' + str.tostring(stopPx) + ',"premium":' + (inPrem ? "true" : "false") + ',"clues":' + str.tostring(clues) + ',"rsi":' + str.tostring(rsiV, "#.#") + ',"time":' + str.tostring(math.round(time)) + '}'
+if sendWH and barstate.isconfirmed
+    if flyLong or flyShort
+        alert(whMsg("flight", flyLong ? "long" : "short", fS), alert.freq_once_per_bar_close)
+    if wingLong or wingShort
+        alert(whMsg("wing", wingLong ? "long" : "short", wS), alert.freq_once_per_bar_close)
+    if obLong or obShort
+        alert(whMsg("order_block", obLong ? "long" : "short", oS), alert.freq_once_per_bar_close)
+    if wSig or mSig
+        alert(whMsg("wm_pattern", wSig ? "long" : "short", wmS), alert.freq_once_per_bar_close)
+    if mcSig
+        alert(whMsg("monte_carlo", "long", lastPH), alert.freq_once_per_bar_close)
+    if engulfBear or engulfBull
+        alert(whMsg("engulf_exit", engulfBull ? "long" : "short", close), alert.freq_once_per_bar_close)
+    if starBull or starBear
+        alert(whMsg("confluence", starBull ? "long" : "short", close), alert.freq_once_per_bar_close)
+    if bosUp or bosDn
+        alert(whMsg(chochUp or chochDn ? "choch" : "bos", bosUp ? "long" : "short", close), alert.freq_once_per_bar_close)
+    if mFVG and (bullGap or bearGap)
+        alert(whMsg("fvg_created", bullGap ? "long" : "short", close), alert.freq_once_per_bar_close)
+    if ifvgBull or ifvgBear
+        alert(whMsg("ifvg", ifvgBull ? "long" : "short", close), alert.freq_once_per_bar_close)
+    if sweepLo or sweepHi
+        alert(whMsg("liquidity_sweep", sweepLo ? "long" : "short", close), alert.freq_once_per_bar_close)
+    if smtBull or ismtBull or smtBear or ismtBear
+        alert(whMsg("smt", smtBull or ismtBull ? "long" : "short", close), alert.freq_once_per_bar_close)
+    if ((spring or utSig) and not cExtNow) or volDirUp or volDirDn
+        alert(whMsg("wyckoff", spring or volDirUp ? "long" : "short", close), alert.freq_once_per_bar_close)
+    if judasBull or judasBear
+        alert(whMsg("judas", judasBull ? "long" : "short", close), alert.freq_once_per_bar_close)
+    if bbBrkUp or bbBrkDn
+        alert(whMsg("bb_break", bbBrkUp ? "long" : "short", close), alert.freq_once_per_bar_close)
+    if volClimax
+        alert(whMsg("volume_climax", close > open ? "long" : "short", close), alert.freq_once_per_bar_close)
+    if gapUp or gapDn
+        alert(whMsg("gap", gapUp ? "long" : "short", close[1]), alert.freq_once_per_bar_close)
+alertcondition(spring and not cExtNow, "HTT · S ספרינג", "S ספרינג — פאזה C שורית זוהתה — RSI {{plot(\"RSI\")}} · {{ticker}} {{interval}}")
+alertcondition(utSig and not cExtNow, "HTT · U אפ-טראסט", "U אפ-טראסט — פאזה C דובית זוהתה — RSI {{plot(\"RSI\")}} · {{ticker}} {{interval}}")
+alertcondition(volC, "HTT · V פאזה C לפי ווליום", "V — פאזה C לפי ווליום בלי ניעור; הכיוון ייקבע לפי LPS — RSI {{plot(\"RSI\")}} · {{ticker}} {{interval}}")
+alertcondition(volDirUp or lpsMark, "HTT · LPS — נקודת תמיכה אחרונה (לונג)", "LPS — שפל בווליום נמוך נשמר מעל קצה ה-C, ההיצע התייבש; מחכים ל-BOS — RSI {{plot(\"RSI\")}} · {{ticker}} {{interval}}")
+alertcondition(volDirDn or lpsyMark, "HTT · LPSY — נקודת היצע אחרונה (שורט)", "LPSY — שיא בווליום נמוך נכשל מתחת לקצה ה-C, הביקוש התייבש; מחכים ל-BOS — RSI {{plot(\"RSI\")}} · {{ticker}} {{interval}}")
+alertcondition(testOK and not testOK[1], "HTT · T טסט", "T טסט בווליום נמוך — ההיצע התייבש — RSI {{plot(\"RSI\")}} · {{ticker}} {{interval}}")
+alertcondition(armDir != 0 and armDir[1] == 0, "HTT · ⏳ סטאפ נפתח", "⏳ סטאפ חמוש — מחכים ל-BOS — RSI {{plot(\"RSI\")}} · {{ticker}} {{interval}}")
+alertcondition(allOK and not allOK[1], "HTT · 🚩 כל האישורים", "🚩 צ'ק-ליסט מלא — מחכים ל-BOS — RSI {{plot(\"RSI\")}} · {{ticker}} {{interval}}")
+alertcondition(flyLong, "HTT · ✈ טיסה לונג", "✈ טיסה לונג — BOS בסגירה — {{ticker}} {{interval}} @ {{close}} — RSI {{plot(\"RSI\")}}")
+alertcondition(flyShort, "HTT · ✈ טיסה שורט", "✈ טיסה שורט — BOS למטה בסגירה — {{ticker}} {{interval}} @ {{close}} — RSI {{plot(\"RSI\")}}")
+alertcondition(wingShort, "HTT · כנף שורט", "שבירת כנף שורט — {{ticker}} {{interval}} @ {{close}} — RSI {{plot(\"RSI\")}}")
+alertcondition(wingLong, "HTT · כנף לונג", "שבירת כנף לונג (מראה) — {{ticker}} {{interval}} @ {{close}} — RSI {{plot(\"RSI\")}}")
+alertcondition(obLong, "HTT · OB קנייה", "אורדר בלוק קנייה — כניסה לאזור + סגירה חוזרת — RSI {{plot(\"RSI\")}} · {{ticker}} {{interval}}")
+alertcondition(obShort, "HTT · OB מכירה", "אורדר בלוק מכירה — RSI {{plot(\"RSI\")}} · {{ticker}} {{interval}}")
+alertcondition(wState == 1 and wState[1] == 0, "HTT · W נבנית", "דאבל בוטום נבנה — צוואר מסומן — RSI {{plot(\"RSI\")}} · {{ticker}} {{interval}}")
+alertcondition(mState == 1 and mState[1] == 0, "HTT · M נבנית", "דאבל טופ נבנה — צוואר מסומן — RSI {{plot(\"RSI\")}} · {{ticker}} {{interval}}")
+alertcondition(wSig, "HTT · W✓ הושלם", "W הושלם — סגירה מעל הצוואר — RSI {{plot(\"RSI\")}} · {{ticker}} {{interval}}")
+alertcondition(mSig, "HTT · M✓ הושלם", "M הושלם — סגירה מתחת לצוואר — RSI {{plot(\"RSI\")}} · {{ticker}} {{interval}}")
+alertcondition(mcSig, "HTT · 🎲 מונטה-קרלו כניסה", "🎲 פריצה שהחזיקה — RSI {{plot(\"RSI\")}} · {{ticker}} {{interval}}")
+alertcondition(mcExh, "HTT · 🎲 מונטה-קרלו מיצוי", "🎲 הגעה ליעד ההקרנה — לחפש חולשה — RSI {{plot(\"RSI\")}} · {{ticker}} {{interval}}")
+alertcondition(engulfBear, "HTT · ✕ בולען דובי", "✕ נר בולען דובי (1H+) — שקול יציאה מלונג — RSI {{plot(\"RSI\")}} · {{ticker}} {{interval}}")
+alertcondition(engulfBull, "HTT · ✕ בולען שורי", "✕ נר בולען שורי (1H+) — שקול יציאה משורט — RSI {{plot(\"RSI\")}} · {{ticker}} {{interval}}")
+alertcondition(starBull, "HTT · ⭐ קונפלואנס לונג", "⭐ אישורים מרובים לונג — RSI {{plot(\"RSI\")}} · {{ticker}} {{interval}}")
+alertcondition(starBear, "HTT · ⭐ קונפלואנס שורט", "⭐ אישורים מרובים שורט — RSI {{plot(\"RSI\")}} · {{ticker}} {{interval}}")
+alertcondition(judasBull or judasBear, "HTT · J Judas", "J סחיטת טווח פתיחה (AMD) — RSI {{plot(\"RSI\")}} · {{ticker}} {{interval}}")
+alertcondition(sweepLo, "HTT · 💧 חטיפת שפל", "💧 חטיפת בריכת נזילות תחתונה — RSI {{plot(\"RSI\")}} · {{ticker}} {{interval}}")
+alertcondition(sweepHi, "HTT · 💧 חטיפת שיא", "💧 חטיפת בריכת נזילות עליונה — RSI {{plot(\"RSI\")}} · {{ticker}} {{interval}}")
+alertcondition(smtBull or ismtBull, "HTT · ⚡ SMT שורי", "⚡ SMT שורי — הנכס המשווה לא אישר שפל — RSI {{plot(\"RSI\")}} · {{ticker}} {{interval}}")
+alertcondition(smtBear or ismtBear, "HTT · ⚡ SMT דובי", "⚡ SMT דובי — הנכס המשווה לא אישר שיא — RSI {{plot(\"RSI\")}} · {{ticker}} {{interval}}")
+alertcondition(ifvgBull, "HTT · iFVG שורי", "iFVG — מרווח שנפרץ הפך לתמיכה — RSI {{plot(\"RSI\")}} · {{ticker}} {{interval}}")
+alertcondition(ifvgBear, "HTT · iFVG דובי", "iFVG — מרווח שנפרץ הפך להתנגדות — RSI {{plot(\"RSI\")}} · {{ticker}} {{interval}}")
+alertcondition(bosUp or bosDn, "HTT · BOS", "BOS — שינוי מבנה — RSI {{plot(\"RSI\")}} · {{ticker}} {{interval}}")
+alertcondition(bbBrkUp, "HTT · BB פריצה למעלה", "BB — פריצת בולינגר למעלה אחרי סקוויז — RSI {{plot(\"RSI\")}} · {{ticker}} {{interval}}")
+alertcondition(bbBrkDn, "HTT · BB פריצה למטה", "BB — פריצת בולינגר למטה אחרי סקוויז — RSI {{plot(\"RSI\")}} · {{ticker}} {{interval}}")
+alertcondition(volClimax and barstate.isconfirmed, "HTT · 💥 קליימקס ווליום", "💥 נר קליימקס — ווליום קיצוני — RSI {{plot(\"RSI\")}} · {{ticker}} {{interval}}")
+alertcondition(mFVG and (bullGap or bearGap), "HTT · FVG נוצר", "FVG — נוצר מרווח גופים — RSI {{plot(\"RSI\")}} · {{ticker}} {{interval}}")
+alertcondition(w4Start, "HTT · 4DD דאבל דאון 4H מתחיל", "4DD — השפל נגע בשפל ה-4H הקודם והמחיר מעליו: דאבל בוטום אפשרי ב-4H — RSI {{plot(\"RSI\")}} · {{ticker}} {{interval}}")
+alertcondition(m4Start, "HTT · 4DT דאבל טופ 4H מתחיל", "4DT — השיא נגע בשיא ה-4H הקודם והמחיר מתחתיו: דאבל טופ אפשרי ב-4H — RSI {{plot(\"RSI\")}} · {{ticker}} {{interval}}")
+alertcondition(wDStart, "HTT · 1D DD דאבל דאון יומי מתחיל", "1D DD — השפל נגע בשפל היום הקודם: דאבל בוטום אפשרי ביומי — RSI {{plot(\"RSI\")}} · {{ticker}} {{interval}}")
+alertcondition(mDStart, "HTT · 1D DT דאבל טופ יומי מתחיל", "1D DT — השיא נגע בשיא היום הקודם: דאבל טופ אפשרי ביומי — RSI {{plot(\"RSI\")}} · {{ticker}} {{interval}}")
+alertcondition(wWStart, "HTT · 1W DD דאבל דאון שבועי מתחיל", "1W DD — השפל נגע בשפל השבוע הקודם: דאבל בוטום אפשרי בשבועי — RSI {{plot(\"RSI\")}} · {{ticker}} {{interval}}")
+alertcondition(mWStart, "HTT · 1W DT דאבל טופ שבועי מתחיל", "1W DT — השיא נגע בשיא השבוע הקודם: דאבל טופ אפשרי בשבועי — RSI {{plot(\"RSI\")}} · {{ticker}} {{interval}}")
+alertcondition(gapUp or gapDn, "HTT · גאפ נפתח", "גאפ בין סגירה לפתיחה — יעד הסגירה = הקצה של הנר שלפניו (הקו המנוקד) — RSI {{plot(\"RSI\")}} · {{ticker}} {{interval}}")
+alertcondition(gapFilledNow, "HTT · גאפ נסגר", "הגאפ נסגר: המחיר הגיע לקצה של הנר שלפני הגאפ — RSI {{plot(\"RSI\")}} · {{ticker}} {{interval}}")
+alertcondition(chochUp or chochDn, "HTT · CHoCH", "CHoCH — שינוי אופי נגד הכיוון — RSI {{plot(\"RSI\")}} · {{ticker}} {{interval}}")
+
+// ═══ HTT ALERT BLOCK — סטאפ איכותי: 46 אישורים, רמה, webhook אחד (נוצר על ידי gen_chart_alert_block.py) ═══
+gQ = "סטאפ איכותי (התראה אחת עם כל האישורים)"
+qOn = input.bool(true, "לחשב רמה ולסמן ליד הטריגר", group=gQ)
+qMinLbl = input.int(2, "תווית רמה על הגרף מרמה", minval=0, maxval=10, group=gQ)
+qMinWH = input.int(1, "webhook: לשלוח סטאפ מרמה", minval=0, maxval=10, group=gQ)
+qBrk = input.bool(false, "טריגר פריצה (BOS/CHoCH בפאזה C/E) — לא נמדד עדיין", group=gQ)
+[htfMs, htfPh, htfBull] = request.security(syminfo.tickerid, tfMin < 60 ? "240" : tfMin < 240 ? "D" : "W", [msDir, phase, cIsBull ? 1 : 0], lookahead=barmerge.lookahead_off)
+// אזורי FVG מהקופסאות של הגרף עצמו (כל גיל): נגיעה באזור פעיל בכיוון העסקה
+fvgAtL = false
+fvgAtS = false
+ifvgAtL = false
+ifvgAtS = false
+if array.size(fvgBx) > 0
+    for qi = 0 to array.size(fvgBx) - 1
+        qt = array.get(fvgTop, qi)
+        qb = array.get(fvgBot, qi)
+        qd = array.get(fvgDir, qi)
+        qv = array.get(fvgInv, qi)
+        if bar_index > box.get_left(array.get(fvgBx, qi)) + 2
+            if qd == 1 and low <= qt and close > qb
+                if qv
+                    ifvgAtL := true
+                else
+                    fvgAtL := true
+            if qd == -1 and high >= qb and close < qt
+                if qv
+                    ifvgAtS := true
+                else
+                    fvgAtS := true
+ddAny = w4Start or wDStart or wWStart
+dtAny = m4Start or mDStart or mWStart
+atIceL = phase > 0 and not na(rLo) and low <= rLo + tol * 2 and close >= rLo - tol
+atCreekS = phase > 0 and not na(rHi) and high >= rHi - tol * 2 and close <= rHi + tol
+f_qnear(float px, float lvl) => not na(lvl) and math.abs(px - lvl) <= tol * 2
+atHtfL = f_qnear(low, h4L) or f_qnear(low, dL) or f_qnear(low, wkL)
+atHtfS = f_qnear(high, h4H) or f_qnear(high, dH) or f_qnear(high, wkH)
+atSesL = f_qnear(low, prevSesL) or f_qnear(low, asiaL)
+atSesS = f_qnear(high, prevSesH) or f_qnear(high, asiaH)
+atPoolL = f_qnear(low, poolLo)
+atPoolS = f_qnear(high, poolHi)
+orBrkUp = not inOR and not na(orH) and close > orH and close[1] <= orH
+orBrkDn = not inOR and not na(orL) and close < orL and close[1] >= orL
+recN = 10
+qL_bos = ta.barssince(bosUp) <= recN
+qS_bos = ta.barssince(bosDn) <= recN
+qL_choch = ta.barssince(chochUp) <= recN
+qS_choch = ta.barssince(chochDn) <= recN
+qL_sweep = ta.barssince(sweepLo) <= recN
+qS_sweep = ta.barssince(sweepHi) <= recN
+qL_smt = ta.barssince(smtBull) <= recN
+qS_smt = ta.barssince(smtBear) <= recN
+qL_ismt = ta.barssince(ismtBull) <= recN
+qS_ismt = ta.barssince(ismtBear) <= recN
+qL_ifvg = ta.barssince(ifvgBull) <= recN
+qS_ifvg = ta.barssince(ifvgBear) <= recN
+qL_fvg = ta.barssince(bullGap) <= recN
+qS_fvg = ta.barssince(bearGap) <= recN
+qL_judas = ta.barssince(judasBull) <= recN
+qS_judas = ta.barssince(judasBear) <= recN
+qL_tweezer = ta.barssince(twzBull) <= recN
+qS_tweezer = ta.barssince(twzBear) <= recN
+qL_shake = ta.barssince(spring) <= recN
+qS_shake = ta.barssince(utSig) <= recN
+qL_volC = ta.barssince(volC) <= recN
+qS_volC = ta.barssince(volC) <= recN
+qL_lps = ta.barssince(lpsMark or volDirUp) <= recN
+qS_lps = ta.barssince(lpsyMark or volDirDn) <= recN
+qL_gap = ta.barssince(gapUp) <= recN
+qS_gap = ta.barssince(gapDn) <= recN
+qL_ob = ta.barssince(obLong) <= recN
+qS_ob = ta.barssince(obShort) <= recN
+qL_wm = ta.barssince(wSig) <= recN
+qS_wm = ta.barssince(mSig) <= recN
+qL_ddt = ta.barssince(ddAny) <= recN
+qS_ddt = ta.barssince(dtAny) <= recN
+qL_engulf = ta.barssince(engulfBull) <= recN
+qS_engulf = ta.barssince(engulfBear) <= recN
+qL_bb = ta.barssince(bbBrkUp) <= recN
+qS_bb = ta.barssince(bbBrkDn) <= recN
+qL_rsi = ta.barssince(rsiV <= rsiLo) <= recN
+qS_rsi = ta.barssince(rsiV >= rsiHi) <= recN
+qL_climax = ta.barssince(volClimax) <= recN
+qS_climax = ta.barssince(volClimax) <= recN
+qL_fvgAt = ta.barssince(fvgAtL) <= recN
+qS_fvgAt = ta.barssince(fvgAtS) <= recN
+qL_ifvgAt = ta.barssince(ifvgAtL) <= recN
+qS_ifvgAt = ta.barssince(ifvgAtS) <= recN
+qL_atPool = ta.barssince(atPoolL) <= recN
+qS_atPool = ta.barssince(atPoolS) <= recN
+qL_orBrk = ta.barssince(orBrkUp) <= recN
+qS_orBrk = ta.barssince(orBrkDn) <= recN
+qL_test = testOK
+qS_test = testOK
+qL_pd = not inPrem
+qS_pd = inPrem
+qL_kz = inKZ
+qS_kz = inKZ
+qL_sesLon = sesIdx == 1
+qS_sesLon = sesIdx == 1
+qL_sesNY = sesIdx == 2
+qS_sesNY = sesIdx == 2
+qL_sesAsia = sesIdx == 0
+qS_sesAsia = sesIdx == 0
+qL_phC = phase == 3
+qS_phC = phase == 3
+qL_phD = phase == 4
+qS_phD = phase == 4
+qL_phE = phase == 5
+qS_phE = phase == 5
+qL_phAB = phase == 1 or phase == 2
+qS_phAB = phase == 1 or phase == 2
+qL_cDir = (phase == 3 or phase == 4) and cIsBull
+qS_cDir = (phase == 3 or phase == 4) and not cIsBull
+qL_clues3 = clues >= 3
+qS_clues3 = clues >= 3
+qL_volLow = volLow
+qS_volLow = volLow
+qL_htfMs = htfMs > 0
+qS_htfMs = htfMs < 0
+qL_htfCD = (htfPh == 3 or htfPh == 4) and htfBull == 1
+qS_htfCD = (htfPh == 3 or htfPh == 4) and htfBull == 0
+qL_amdD = amdPh == "D"
+qS_amdD = amdPh == "D"
+qL_conf4 = confBull >= 4
+qS_conf4 = confBear >= 4
+qL_rrOk = ckRRok
+qS_rrOk = ckRRok
+qL_atEdge = atIceL
+qS_atEdge = atCreekS
+qL_atHtfLvl = atHtfL
+qS_atHtfLvl = atHtfS
+qL_atSesLvl = atSesL
+qS_atSesLvl = atSesS
+qL_bbSq = bbSq
+qS_bbSq = bbSq
+qLvlL = (qL_judas ? 1 : 0) + (qL_ob ? 1 : 0) + (qL_phC ? 1 : 0) + (qL_fvgAt ? 1 : 0) + (qL_sweep ? 1 : 0) + (qL_kz ? 1 : 0) + (qL_sesLon ? 1 : 0) + (qL_htfMs ? 1 : 0) + (qL_fvg ? 1 : 0) + (qL_ddt ? 1 : 0) - ((qL_phD ? 1 : 0) + (qL_conf4 ? 1 : 0) + (qL_volLow ? 1 : 0) + (qL_amdD ? 1 : 0) + (qL_cDir ? 1 : 0) + (qL_htfCD ? 1 : 0) + (qL_rrOk ? 1 : 0) + (qL_ifvg ? 1 : 0) + (qL_lps ? 1 : 0) + (qL_shake ? 1 : 0))
+qLvlS = (qS_judas ? 1 : 0) + (qS_ob ? 1 : 0) + (qS_phC ? 1 : 0) + (qS_fvgAt ? 1 : 0) + (qS_sweep ? 1 : 0) + (qS_kz ? 1 : 0) + (qS_sesLon ? 1 : 0) + (qS_htfMs ? 1 : 0) + (qS_fvg ? 1 : 0) + (qS_ddt ? 1 : 0) - ((qS_phD ? 1 : 0) + (qS_conf4 ? 1 : 0) + (qS_volLow ? 1 : 0) + (qS_amdD ? 1 : 0) + (qS_cDir ? 1 : 0) + (qS_htfCD ? 1 : 0) + (qS_rrOk ? 1 : 0) + (qS_ifvg ? 1 : 0) + (qS_lps ? 1 : 0) + (qS_shake ? 1 : 0))
+f_qlist(bool isL, bool wantPos) =>
+    string s = ""
+    if wantPos and (isL ? qL_bos : qS_bos)
+        s += (s == "" ? "" : ",") + "\"bos\""
+    if wantPos and (isL ? qL_choch : qS_choch)
+        s += (s == "" ? "" : ",") + "\"choch\""
+    if wantPos and (isL ? qL_sweep : qS_sweep)
+        s += (s == "" ? "" : ",") + "\"sweep\""
+    if wantPos and (isL ? qL_smt : qS_smt)
+        s += (s == "" ? "" : ",") + "\"smt\""
+    if wantPos and (isL ? qL_ismt : qS_ismt)
+        s += (s == "" ? "" : ",") + "\"ismt\""
+    if not wantPos and (isL ? qL_ifvg : qS_ifvg)
+        s += (s == "" ? "" : ",") + "\"ifvg\""
+    if wantPos and (isL ? qL_fvg : qS_fvg)
+        s += (s == "" ? "" : ",") + "\"fvg\""
+    if wantPos and (isL ? qL_judas : qS_judas)
+        s += (s == "" ? "" : ",") + "\"judas\""
+    if wantPos and (isL ? qL_tweezer : qS_tweezer)
+        s += (s == "" ? "" : ",") + "\"tweezer\""
+    if not wantPos and (isL ? qL_shake : qS_shake)
+        s += (s == "" ? "" : ",") + "\"shake\""
+    if wantPos and (isL ? qL_volC : qS_volC)
+        s += (s == "" ? "" : ",") + "\"volC\""
+    if not wantPos and (isL ? qL_lps : qS_lps)
+        s += (s == "" ? "" : ",") + "\"lps\""
+    if wantPos and (isL ? qL_gap : qS_gap)
+        s += (s == "" ? "" : ",") + "\"gap\""
+    if wantPos and (isL ? qL_ob : qS_ob)
+        s += (s == "" ? "" : ",") + "\"ob\""
+    if wantPos and (isL ? qL_wm : qS_wm)
+        s += (s == "" ? "" : ",") + "\"wm\""
+    if wantPos and (isL ? qL_ddt : qS_ddt)
+        s += (s == "" ? "" : ",") + "\"ddt\""
+    if wantPos and (isL ? qL_engulf : qS_engulf)
+        s += (s == "" ? "" : ",") + "\"engulf\""
+    if wantPos and (isL ? qL_bb : qS_bb)
+        s += (s == "" ? "" : ",") + "\"bb\""
+    if wantPos and (isL ? qL_rsi : qS_rsi)
+        s += (s == "" ? "" : ",") + "\"rsi\""
+    if wantPos and (isL ? qL_climax : qS_climax)
+        s += (s == "" ? "" : ",") + "\"climax\""
+    if wantPos and (isL ? qL_fvgAt : qS_fvgAt)
+        s += (s == "" ? "" : ",") + "\"fvgAt\""
+    if wantPos and (isL ? qL_ifvgAt : qS_ifvgAt)
+        s += (s == "" ? "" : ",") + "\"ifvgAt\""
+    if wantPos and (isL ? qL_atPool : qS_atPool)
+        s += (s == "" ? "" : ",") + "\"atPool\""
+    if wantPos and (isL ? qL_orBrk : qS_orBrk)
+        s += (s == "" ? "" : ",") + "\"orBrk\""
+    if wantPos and (isL ? qL_test : qS_test)
+        s += (s == "" ? "" : ",") + "\"test\""
+    if wantPos and (isL ? qL_pd : qS_pd)
+        s += (s == "" ? "" : ",") + "\"pd\""
+    if wantPos and (isL ? qL_kz : qS_kz)
+        s += (s == "" ? "" : ",") + "\"kz\""
+    if wantPos and (isL ? qL_sesLon : qS_sesLon)
+        s += (s == "" ? "" : ",") + "\"sesLon\""
+    if wantPos and (isL ? qL_sesNY : qS_sesNY)
+        s += (s == "" ? "" : ",") + "\"sesNY\""
+    if wantPos and (isL ? qL_sesAsia : qS_sesAsia)
+        s += (s == "" ? "" : ",") + "\"sesAsia\""
+    if wantPos and (isL ? qL_phC : qS_phC)
+        s += (s == "" ? "" : ",") + "\"phC\""
+    if not wantPos and (isL ? qL_phD : qS_phD)
+        s += (s == "" ? "" : ",") + "\"phD\""
+    if wantPos and (isL ? qL_phE : qS_phE)
+        s += (s == "" ? "" : ",") + "\"phE\""
+    if wantPos and (isL ? qL_phAB : qS_phAB)
+        s += (s == "" ? "" : ",") + "\"phAB\""
+    if not wantPos and (isL ? qL_cDir : qS_cDir)
+        s += (s == "" ? "" : ",") + "\"cDir\""
+    if wantPos and (isL ? qL_clues3 : qS_clues3)
+        s += (s == "" ? "" : ",") + "\"clues3\""
+    if not wantPos and (isL ? qL_volLow : qS_volLow)
+        s += (s == "" ? "" : ",") + "\"volLow\""
+    if wantPos and (isL ? qL_htfMs : qS_htfMs)
+        s += (s == "" ? "" : ",") + "\"htfMs\""
+    if not wantPos and (isL ? qL_htfCD : qS_htfCD)
+        s += (s == "" ? "" : ",") + "\"htfCD\""
+    if not wantPos and (isL ? qL_amdD : qS_amdD)
+        s += (s == "" ? "" : ",") + "\"amdD\""
+    if not wantPos and (isL ? qL_conf4 : qS_conf4)
+        s += (s == "" ? "" : ",") + "\"conf4\""
+    if not wantPos and (isL ? qL_rrOk : qS_rrOk)
+        s += (s == "" ? "" : ",") + "\"rrOk\""
+    if wantPos and (isL ? qL_atEdge : qS_atEdge)
+        s += (s == "" ? "" : ",") + "\"atEdge\""
+    if wantPos and (isL ? qL_atHtfLvl : qS_atHtfLvl)
+        s += (s == "" ? "" : ",") + "\"atHtfLvl\""
+    if wantPos and (isL ? qL_atSesLvl : qS_atSesLvl)
+        s += (s == "" ? "" : ",") + "\"atSesLvl\""
+    if wantPos and (isL ? qL_bbSq : qS_bbSq)
+        s += (s == "" ? "" : ",") + "\"bbSq\""
+    s
+f_qhe(bool isL) =>
+    string s = ""
+    if (isL ? qL_bos : qS_bos)
+        s += (s == "" ? "" : " · ") + "BOS"
+    if (isL ? qL_choch : qS_choch)
+        s += (s == "" ? "" : " · ") + "CHoCH"
+    if (isL ? qL_sweep : qS_sweep)
+        s += (s == "" ? "" : " · ") + "חטיפת נזילות"
+    if (isL ? qL_smt : qS_smt)
+        s += (s == "" ? "" : " · ") + "SMT"
+    if (isL ? qL_ismt : qS_ismt)
+        s += (s == "" ? "" : " · ") + "iSMT"
+    if (isL ? qL_fvg : qS_fvg)
+        s += (s == "" ? "" : " · ") + "FVG חדש"
+    if (isL ? qL_judas : qS_judas)
+        s += (s == "" ? "" : " · ") + "ג'ודאס"
+    if (isL ? qL_tweezer : qS_tweezer)
+        s += (s == "" ? "" : " · ") + "צבת"
+    if (isL ? qL_volC : qS_volC)
+        s += (s == "" ? "" : " · ") + "C ווליום"
+    if (isL ? qL_gap : qS_gap)
+        s += (s == "" ? "" : " · ") + "גאפ"
+    if (isL ? qL_ob : qS_ob)
+        s += (s == "" ? "" : " · ") + "אורדר בלוק"
+    if (isL ? qL_wm : qS_wm)
+        s += (s == "" ? "" : " · ") + "W/M"
+    if (isL ? qL_ddt : qS_ddt)
+        s += (s == "" ? "" : " · ") + "DD/DT"
+    if (isL ? qL_engulf : qS_engulf)
+        s += (s == "" ? "" : " · ") + "בולען"
+    if (isL ? qL_bb : qS_bb)
+        s += (s == "" ? "" : " · ") + "בולינגר"
+    if (isL ? qL_rsi : qS_rsi)
+        s += (s == "" ? "" : " · ") + "RSI"
+    if (isL ? qL_climax : qS_climax)
+        s += (s == "" ? "" : " · ") + "קליימקס"
+    if (isL ? qL_fvgAt : qS_fvgAt)
+        s += (s == "" ? "" : " · ") + "מ-FVG"
+    if (isL ? qL_ifvgAt : qS_ifvgAt)
+        s += (s == "" ? "" : " · ") + "מ-iFVG"
+    if (isL ? qL_atPool : qS_atPool)
+        s += (s == "" ? "" : " · ") + "בריכה"
+    if (isL ? qL_orBrk : qS_orBrk)
+        s += (s == "" ? "" : " · ") + "פריצת OR"
+    if (isL ? qL_test : qS_test)
+        s += (s == "" ? "" : " · ") + "טסט"
+    if (isL ? qL_pd : qS_pd)
+        s += (s == "" ? "" : " · ") + "פרימיום/דיסקאונט"
+    if (isL ? qL_kz : qS_kz)
+        s += (s == "" ? "" : " · ") + "קיל-זון"
+    if (isL ? qL_sesLon : qS_sesLon)
+        s += (s == "" ? "" : " · ") + "לונדון"
+    if (isL ? qL_sesNY : qS_sesNY)
+        s += (s == "" ? "" : " · ") + "ניו-יורק"
+    if (isL ? qL_sesAsia : qS_sesAsia)
+        s += (s == "" ? "" : " · ") + "אסיה"
+    if (isL ? qL_phC : qS_phC)
+        s += (s == "" ? "" : " · ") + "פאזה C"
+    if (isL ? qL_phE : qS_phE)
+        s += (s == "" ? "" : " · ") + "פאזה E"
+    if (isL ? qL_phAB : qS_phAB)
+        s += (s == "" ? "" : " · ") + "פאזה A/B"
+    if (isL ? qL_clues3 : qS_clues3)
+        s += (s == "" ? "" : " · ") + "3 רמזים"
+    if (isL ? qL_htfMs : qS_htfMs)
+        s += (s == "" ? "" : " · ") + "מבנה HTF"
+    if (isL ? qL_atEdge : qS_atEdge)
+        s += (s == "" ? "" : " · ") + "אייס/קריק"
+    if (isL ? qL_atHtfLvl : qS_atHtfLvl)
+        s += (s == "" ? "" : " · ") + "רמת HTF"
+    if (isL ? qL_atSesLvl : qS_atSesLvl)
+        s += (s == "" ? "" : " · ") + "רמת סשן"
+    if (isL ? qL_bbSq : qS_bbSq)
+        s += (s == "" ? "" : " · ") + "סקוויז"
+    s
+f_qsr(bool isL) =>
+    string s = ""
+    if isL ? atIceL : atCreekS
+        s += (s == "" ? "" : ",") + (isL ? "\"ice\"" : "\"creek\"")
+    if isL ? atHtfL : atHtfS
+        s += (s == "" ? "" : ",") + "\"htf\""
+    if isL ? atSesL : atSesS
+        s += (s == "" ? "" : ",") + "\"ses\""
+    if isL ? atPoolL : atPoolS
+        s += (s == "" ? "" : ",") + "\"pool\""
+    if isL ? fvgAtL : fvgAtS
+        s += (s == "" ? "" : ",") + "\"fvg\""
+    if isL ? ifvgAtL : ifvgAtS
+        s += (s == "" ? "" : ",") + "\"ifvg\""
+    if isL ? obLong : obShort
+        s += (s == "" ? "" : ",") + "\"ob\""
+    s
+// טריגרים: ארבעת סוגי הכניסה שנמדדו + (אופציונלי) פריצה
+qBufQ = stopBuf / 100.0
+qBrkL = qBrk and (bosUp or chochUp) and (phase == 3 or phase == 5) and barstate.isconfirmed
+qBrkS = qBrk and (bosDn or chochDn) and (phase == 3 or phase == 5) and barstate.isconfirmed
+qTrigL = flyLong ? "F" : wingLong ? "W" : obLong ? "O" : wSig ? "M" : qBrkL ? "B" : ""
+qTrigS = flyShort ? "F" : wingShort ? "W" : obShort ? "O" : mSig ? "M" : qBrkS ? "B" : ""
+qStopL = flyLong ? math.min(nz(cExt, low), nz(lastPL, low)) * (1 - qBufQ) : wingLong ? nz(lastPL, low) * (1 - qBufQ) : obLong ? obLBot * (1 - qBufQ) : wSig ? nz(wLow2, low) * (1 - qBufQ) : nz(lastPL, low) * (1 - qBufQ)
+qStopS = flyShort ? math.max(nz(cExt, high), nz(lastPH, high)) * (1 + qBufQ) : wingShort ? nz(lastPH, high) * (1 + qBufQ) : obShort ? obSTop * (1 + qBufQ) : mSig ? nz(mHigh2, high) * (1 + qBufQ) : nz(lastPH, high) * (1 + qBufQ)
+qSigL = qOn and qTrigL != "" and close > qStopL
+qSigS = qOn and qTrigS != "" and close < qStopS
+qLvl = qSigL ? qLvlL : qSigS ? qLvlS : 0
+qTgtL = close + (close - qStopL) * targetR
+qTgtS = close - (qStopS - close) * targetR
+// תווית רמה ליד הטריגר (מרמה qMinLbl), עם כל האישורים ב-tooltip
+if (qSigL or qSigS) and qLvl >= qMinLbl and not cleanMode
+    qTxt = "רמה " + str.tostring(qLvl)
+    qTip = (qSigL ? "לונג · " : "שורט · ") + "טריגר " + (qSigL ? qTrigL : qTrigS) + " · פאזה " + phName + "\nאישורים: " + f_qhe(qSigL) + "\nרמה = אישורי דרגה 1 פחות אישורים נגד. סטופ " + str.tostring(qSigL ? qStopL : qStopS, format.mintick) + " · יעד 1:3 " + str.tostring(qSigL ? qTgtL : qTgtS, format.mintick)
+    label.new(bar_index, qSigL ? low : high, qTxt, xloc=xloc.bar_index, yloc=qSigL ? yloc.belowbar : yloc.abovebar, style=qSigL ? label.style_label_up : label.style_label_down, color=color.new(qLvl >= 4 ? color.lime : qLvl >= 2 ? color.teal : color.gray, 20), textcolor=color.white, size=size.small, tooltip=qTip)
+alertcondition((qSigL or qSigS) and qLvl >= 3, "HTT · סטאפ איכותי רמה 3+", "סטאפ איכותי רמה 3+ — RSI {{plot(\"RSI\")}} · {{ticker}} {{interval}} — הפירוט ב-webhook/באתר")
+alertcondition((qSigL or qSigS) and qLvl >= 5, "HTT · סטאפ זהב רמה 5+", "סטאפ זהב רמה 5+ — RSI {{plot(\"RSI\")}} · {{ticker}} {{interval}}")
+// webhook אחד עם הכל: האתר מסנן לפי htt_min_score ושולח לטלגרם
+if sendWH and (qSigL or qSigS) and qLvl >= qMinWH
+    qJ = "{\"secret\":\"" + secret + "\",\"event\":\"htt_setup\",\"symbol\":\"" + syminfo.ticker + "\",\"timeframe\":\"" + timeframe.period + "\",\"time\":" + str.tostring(time) + ",\"direction\":\"" + (qSigL ? "long" : "short") + "\",\"trigger\":\"" + (qSigL ? qTrigL : qTrigS) + "\",\"price\":" + str.tostring(close) + ",\"stop\":" + str.tostring(qSigL ? qStopL : qStopS) + ",\"target\":" + str.tostring(qSigL ? qTgtL : qTgtS) + ",\"score\":" + str.tostring(qLvl) + ",\"confirmations\":[" + f_qlist(qSigL, true) + "],\"negatives\":[" + f_qlist(qSigL, false) + "],\"phase\":\"" + phName + "\",\"sr\":[" + f_qsr(qSigL) + "],\"session\":\"" + sesName + "\",\"inKillZone\":" + (inKZ ? "true" : "false") + ",\"rsi\":" + str.tostring(rsiV, "#.#") + "}"
+    alert(qJ, alert.freq_once_per_bar_close)

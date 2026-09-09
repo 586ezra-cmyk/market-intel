@@ -326,6 +326,18 @@
    DD/DT; כמעט: פאזה D (−0.22), כיוון C תואם, iFVG, LPS/LPSY, ספרינג/UT, טסט ✓, דיסקאונט. ולידציה: משקלים מלאים מחזיקים בין נכסים
    (+0.3 ב-≥0.4) וב-4H בזמן, אבל נכשלים אינטראדיי בזמן (5m = 5 שבועות). כלל רובסטי ±1 (5 חיוביים/5 שליליים): ציון ≥2 חיובי בכל הפיצולים:
    הכל 678 סיגנלים +0.39/49%; 4H 2025+ +0.63; 15m +0.42; קצב 0.4/שבוע/נכס ב-4H, 2.7 ב-15m, 3.5 ב-5m. ממתין להחלטת המשתמש על מדרגות התראה.
+   🧩 10/9 01:00–02:00 (בקשת המשתמש: שילובי אישורים על הכל, בכל TF, לא לפספס אישורים, טבלה באתר, התראה אחת עם רמה נבחרת באתר):
+   • 8 אישורים חדשים (46 סה"כ): fvgAt (כניסה מ-FVG בכל גיל — "FVG לא חייב להיות טרי"), ifvgAt, atPool, orBrk, atEdge (אייס/קריק), atHtfLvl,
+     atSesLvl, bbSq. הבלוק המשותף (אזורי FVG + תמיכה/התנגדות) חי בתוך gen_backtest_pine.py ומועתק ל-Path Lab.
+   • Path Lab v3 הורץ על 12 השילובים (3,625 סיגנלים). כניסה מ-FVG: +0.18 יציב 3/3. DD/DT: n=92, +0.72 (רק פיצול אחד). רמת HTF: −0.03.
+   • build_combos.py: apriori על 2–5 אישורים (20,858 שילובים) → combos.json; rank_confirmations.py → rank.json; levels.json = נוסחת הרמה:
+     POS = judas, ob, phC, fvgAt, sweep, kz, sesLon, htfMs, fvg, ddt (+1 כל אחד); NEG = phD, conf4, volLow, amdD, cDir, htfCD, rrOk, ifvg, lps, shake (−1).
+     רמה ≥3: 881 סיגנלים, +0.42R (עד 2024 +0.14, 2025+ +0.54); ≥4: +0.58; ≥5: +0.86 (55% הלכו נכון). קצב 15m: ≥3 ≈ 3.9/שבוע/נכס, ≥4 ≈ 2.1.
+   • שרת: event htt_setup (routes/webhook.ts + services/httSetup.ts): saveAlert עם bypassMinScore, גייטינג לטלגרם לפי htt_min_score (ברירת מחדל 5);
+     7+ הולך גם ל-TOPIC_HIGH. אתר: ניהול התראות → "רמת אישורים מינימלית" (htt_min_score). טאב הבקטסט: דירוג + הסבר עמודות + רמות + שילובים.
+   • htt_chart.pine: HTT ALERT BLOCK (gen_chart_alert_block.py, מוחלף בכל הרצה) — רמה, תווית "רמה N" עם tooltip של כל האישורים, alertcondition
+     3+/5+, webhook אחד htt_setup (qMinWH ברירת מחדל 1). טריגר פריצה B (BOS/CHoCH ב-C/E) קיים כ-input כבוי — נמדד ב-Path Lab v4 (נוסף f_add("B")).
+   • gh device flow: הקודים פגים כל 15 דק' — המשתמש עדיין לא אישר. הכל בקומיטים מקומיים על main.
    📝 שמירת לייאאוט מהטאב: `TradingViewApi.saveChartToServer()` (עובד גם ל-Unnamed, בלי דיאלוג); `shouldBeSaved()` = יש שינויים
    לא שמורים; `saveChart(cb)` לא שמר. navigate נחסם ב-"Leave site?" כשיש שינויים — לשמור קודם.
    📝 העורך העצמאי: Save דרך תפריט הכותרת ("Save script") כשה-cmd+s הסינתטי מת; קונסול העורך נפתח באייקון שמאל-תחתון

@@ -34,6 +34,8 @@ export interface AlertPayload {
   factorDetails?: Record<string, any> | null
   /** Store and broadcast, but keep off Telegram — used by the tier gate. */
   suppressTelegram?: boolean
+  /** HTT setups are gated by htt_min_score in the webhook route, not by the general min_score. */
+  bypassMinScore?: boolean
 }
 
 export async function saveAlert(payload: AlertPayload): Promise<Alert> {
@@ -96,7 +98,7 @@ export async function saveAlert(payload: AlertPayload): Promise<Alert> {
   const minScore = getMinScore()
   if (payload.suppressTelegram) {
     console.log(`[Alert] ${payload.symbol} ${payload.timeframe} tier=site — stored only`)
-  } else if (payload.score >= minScore) {
+  } else if (payload.bypassMinScore || payload.score >= minScore) {
     sendTelegram(payload.messageHe, payload.score, payload.timeframe).catch(err =>
       console.error('[Telegram] Failed to send:', err)
     )

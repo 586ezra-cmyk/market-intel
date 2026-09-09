@@ -6,15 +6,17 @@ import json, glob, pathlib, itertools, math, datetime
 ROOT = pathlib.Path(__file__).resolve().parent
 FLAGS = [l.strip() for l in (ROOT / 'flags.txt').read_text(encoding='utf-8').splitlines() if l.strip()]
 FLAG_HE = {
-    'bos': 'BOS', 'choch': 'CHoCH', 'sweep': 'חטיפת נזילות', 'smt': 'SMT', 'ismt': 'iSMT', 'ifvg': 'iFVG', 'fvg': 'FVG',
+    'bos': 'BOS', 'choch': 'CHoCH', 'sweep': 'חטיפת נזילות', 'smt': 'SMT', 'ismt': 'iSMT', 'ifvg': 'iFVG', 'fvg': 'FVG נוצר עכשיו (10 נרות)',
     'judas': 'ג\'ודאס', 'tweezer': 'צבת', 'shake': 'ספרינג/UT', 'volC': 'C ווליום (V)', 'lps': 'LPS/LPSY', 'gap': 'גאפ',
     'ob': 'אורדר בלוק', 'wm': 'W/M', 'ddt': 'DD/DT', 'engulf': 'נר בולען', 'bb': 'פריצת בולינגר', 'rsi': 'RSI בקצה',
     'climax': 'ווליום קליימקס', 'test': 'טסט ✓', 'pd': 'דיסקאונט/פרימיום', 'kz': 'קיל-זון', 'sesLon': 'סשן לונדון',
     'sesNY': 'סשן ניו-יורק', 'sesAsia': 'סשן אסיה', 'phC': 'פאזה C', 'phD': 'פאזה D', 'phE': 'פאזה E', 'phAB': 'פאזה A/B',
     'cDir': 'כיוון C תואם', 'clues3': '3+ רמזים', 'volLow': 'ווליום נמוך', 'htfMs': 'מבנה HTF תואם', 'htfCD': 'HTF ב-C/D תואם',
     'amdD': 'AMD D', 'conf4': '4+ אישורים', 'rrOk': 'יחס 1:3 אפשרי',
+    'fvgAt': 'כניסה מ-FVG (כל גיל)', 'ifvgAt': 'כניסה מ-iFVG', 'atPool': 'בריכת נזילות (שוויון)', 'orBrk': 'פריצת טווח פתיחה',
+    'atEdge': 'הגיע לאייס/קריק', 'atHtfLvl': 'רמת 4H/יומי/שבועי', 'atSesLvl': 'רמת סשן/אסיה', 'bbSq': 'התכווצות בולינגר',
 }
-STRAT_HE = {'F': 'טיסה', 'W': 'שבירת כנף', 'O': 'אורדר בלוק', 'M': 'W/M'}
+STRAT_HE = {'F': 'טיסה', 'W': 'שבירת כנף', 'O': 'אורדר בלוק', 'M': 'W/M', 'B': 'פריצה (BOS/CHoCH)'}
 SES_HE = {0: 'אסיה', 1: 'לונדון', 2: 'ניו-יורק', 3: 'מחוץ לסשן'}
 PH_HE = {0: '—', 1: 'A', 2: 'B', 3: 'C', 4: 'D', 5: 'E'}
 TARGET_R = 3.0
