@@ -57,6 +57,41 @@ interface Trade {
   outcome: 'win' | 'loss' | 'flat' | 'open'
 }
 
+interface PathAgg {
+  n: number
+  rightDir1R?: number | null
+  reach?: Record<string, number | null>
+  reachFree?: Record<string, number | null>
+  stopped?: number | null
+  stoppedThenWent2R?: number | null
+  withTarget?: number
+  targetHit?: number | null
+  targetMedianR?: number | null
+  advBefore1R?: { p50: number | null; p70: number | null; p80: number | null; p90: number | null; n: number }
+  advBefore2R?: { p50: number | null; p70: number | null; p80: number | null; p90: number | null; n: number }
+  stopScan?: Array<{ stopMult: number; winRate: number; expR: number }>
+  tpScan?: Array<{ target: number; reach: number | null; expR: number }>
+  bestTP?: { target: number; reach: number | null; expR: number }
+  schemes?: Record<string, { he: string; n: number; avgR: number; winRate: number | null; sumR: number }>
+  medianBarsTo1R?: number | null
+  medianBarsTo2R?: number | null
+  significant?: boolean
+}
+
+interface PathStats {
+  generatedAt: string
+  minN: number
+  levels: number[]
+  schemesHe: Record<string, string>
+  stratHe: Record<string, string>
+  sesHe: Record<string, string>
+  phHe: Record<string, string>
+  nSignals: number
+  groups: { all: PathAgg; byStrat: Record<string, PathAgg>; byRes: Record<string, PathAgg>; bySym: Record<string, PathAgg>; bySide: Record<string, PathAgg>; bySes: Record<string, PathAgg>; byPhase: Record<string, PathAgg> }
+  flagRows: Array<{ flag: string; he: string; n: number; rightDir1R: number | null; reach2: number | null; reach3: number | null; bestScheme: string | null; bestSchemeR: number | null; s1R: number | null }>
+  setups: Array<{ flags: string[]; he: string[]; stats: PathAgg }>
+}
+
 interface Stats {
   generatedAt: string
   targetR: number
@@ -144,8 +179,136 @@ function AggTable({ title, rows, minN, hint }: { title: string; rows: Array<[str
   )
 }
 
+function PathSchemes({ title, rows, minN }: { title: string; rows: Array<[string, PathAgg]>; minN: number }) {
+  const keys = ['s1', 's2', 's3', 's4', 's5', 's6']
+  return (
+    <div className="card p-3 overflow-x-auto">
+      <h3 className="font-semibold mb-2">{title}</h3>
+      <table className="w-full text-sm">
+        <thead className="text-xs text-slate-400">
+          <tr>
+            <th className="text-right pb-1">קבוצה</th>
+            <th className="pb-1">סיגנלים</th>
+            <th className="pb-1">הלכו נכון (1R לפני הסטופ)</th>
+            <th className="pb-1">הגיעו ל-2R</th>
+            <th className="pb-1">הגיעו ל-3R</th>
+            <th className="pb-1">יעד מבני הושג</th>
+            {keys.map(k => <th key={k} className="pb-1">{k.toUpperCase()}</th>)}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(([name, a]) => (
+            <tr key={name} className={`border-b border-surface-border ${a.n < minN ? 'opacity-50' : ''}`}>
+              <td className="py-1.5 pr-2 text-right whitespace-nowrap">{name}</td>
+              <td className="py-1.5 text-center">{a.n}</td>
+              <td className="py-1.5 text-center">{pct(a.rightDir1R)}</td>
+              <td className="py-1.5 text-center">{pct(a.reach?.['2'])}</td>
+              <td className="py-1.5 text-center">{pct(a.reach?.['3'])}</td>
+              <td className="py-1.5 text-center">{pct(a.targetHit)}</td>
+              {keys.map(k => {
+                const sc = a.schemes?.[k]
+                const best = sc && Object.values(a.schemes ?? {}).every(v => v.avgR <= sc.avgR)
+                return <td key={k} className={`py-1.5 text-center ${best ? 'font-bold' : ''} ${rColor(sc?.avgR)}`}>{sc ? num(sc.avgR) : '—'}</td>
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function PathSection({ path }: { path: PathStats }) {
+  const a = path.groups.all
+  const stratRows: Array<[string, PathAgg]> = Object.entries(path.groups.byStrat).map(([k, v]) => [path.stratHe[k] ?? k, v])
+  const resRows: Array<[string, PathAgg]> = Object.entries(path.groups.byRes).map(([k, v]) => [resHe[k] ?? k, v])
+  const symRows: Array<[string, PathAgg]> = Object.entries(path.groups.bySym).map(([k, v]) => [k, v])
+  const sesRows: Array<[string, PathAgg]> = Object.entries(path.groups.bySes).map(([k, v]) => [path.sesHe[k] ?? k, v])
+  const phRows: Array<[string, PathAgg]> = Object.entries(path.groups.byPhase).map(([k, v]) => [`פאזה ${path.phHe[k] ?? k}`, v])
+  const sideRows: Array<[string, PathAgg]> = Object.entries(path.groups.bySide).map(([k, v]) => [k === 'L' ? 'לונג' : 'שורט', v])
+  const setupRows: Array<[string, PathAgg]> = path.setups.map(s => [s.he.join(' + '), s.stats])
+  const bestScheme = a.schemes ? Object.entries(a.schemes).sort((x, y) => y[1].avgR - x[1].avgR)[0] : null
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-baseline justify-between gap-2 pt-2">
+        <h2 className="text-xl font-bold">🛣️ מסלול המחיר אחרי כל סיגנל — סטופ, יעד וניהול</h2>
+        <div className="text-xs text-slate-500">מקור: "HTT Path Lab" ב-TradingView · כל סיגנל נמדד {'120'} נרות קדימה, בלי הגבלה של עסקה אחת · {path.nSignals} סיגנלים · עודכן {dt(Date.parse(path.generatedAt))}</div>
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+        <Kpi label="סיגנלים" value={String(a.n)} />
+        <Kpi label="הלכו בכיוון הנכון" value={pct(a.rightDir1R)} sub="הגיעו ל-1R לפני שהסטופ נפגע" tone="neutral" />
+        <Kpi label="הגיעו ל-2R / 3R" value={`${pct(a.reach?.['2'])} / ${pct(a.reach?.['3'])}`} sub="עם סטופ הקורס" />
+        <Kpi label="היעד המבני הושג" value={pct(a.targetHit)} sub={`חציון מרחק היעד ${num(a.targetMedianR, 1)}R · ${a.withTarget} עם יעד`} />
+        <Kpi label="נעצרו ואז הלכו 2R" value={pct(a.stoppedThenWent2R)} sub="סטופ הקורס היה צר מדי" tone="bad" />
+        <Kpi label="הניהול הטוב ביותר" value={bestScheme ? num(bestScheme[1].avgR) + ' R' : '—'} sub={bestScheme ? bestScheme[1].he : ''} tone={bestScheme && bestScheme[1].avgR > 0 ? 'good' : 'bad'} />
+      </div>
+
+      <div className="grid md:grid-cols-3 gap-4">
+        <div className="card p-3 overflow-x-auto">
+          <h3 className="font-semibold mb-1">איפה לשים סטופ</h3>
+          <p className="text-[11px] text-slate-500 mb-2">כמה נגד הלכו העסקאות שבסוף הגיעו ל-1R / 2R, ביחידות של סטופ הקורס (1.0 = סטופ הקורס). אחוזון 80 = סטופ ששומר 80% מהעסקאות שהיו מצליחות.</p>
+          <table className="w-full text-sm">
+            <thead className="text-xs text-slate-400"><tr><th className="text-right pb-1">לפני</th><th className="pb-1">חציון</th><th className="pb-1">70%</th><th className="pb-1">80%</th><th className="pb-1">90%</th><th className="pb-1">n</th></tr></thead>
+            <tbody>
+              <tr className="border-b border-surface-border"><td className="py-1 text-right">הגעה ל-1R</td><td className="text-center">{num(a.advBefore1R?.p50)}</td><td className="text-center">{num(a.advBefore1R?.p70)}</td><td className="text-center font-semibold">{num(a.advBefore1R?.p80)}</td><td className="text-center">{num(a.advBefore1R?.p90)}</td><td className="text-center">{a.advBefore1R?.n}</td></tr>
+              <tr className="border-b border-surface-border"><td className="py-1 text-right">הגעה ל-2R</td><td className="text-center">{num(a.advBefore2R?.p50)}</td><td className="text-center">{num(a.advBefore2R?.p70)}</td><td className="text-center font-semibold">{num(a.advBefore2R?.p80)}</td><td className="text-center">{num(a.advBefore2R?.p90)}</td><td className="text-center">{a.advBefore2R?.n}</td></tr>
+            </tbody>
+          </table>
+          <table className="w-full text-sm mt-3">
+            <thead className="text-xs text-slate-400"><tr><th className="text-right pb-1">סטופ (× הקורס)</th><th className="pb-1">הצלחה ליעד 2R</th><th className="pb-1">תוחלת R</th></tr></thead>
+            <tbody>
+              {(a.stopScan ?? []).map(r => <tr key={r.stopMult} className="border-b border-surface-border"><td className="py-1 text-right">{r.stopMult}</td><td className="text-center">{pct(r.winRate)}</td><td className={`text-center font-semibold ${rColor(r.expR)}`}>{num(r.expR)}</td></tr>)}
+            </tbody>
+          </table>
+        </div>
+        <div className="card p-3 overflow-x-auto">
+          <h3 className="font-semibold mb-1">איפה לקחת רווח</h3>
+          <p className="text-[11px] text-slate-500 mb-2">כמה מהסיגנלים הגיעו לכל רמה לפני הסטופ (עם סטופ הקורס), והתוחלת ליעד יחיד באותה רמה. טייק ראשון = רמה שרוב העסקאות מגיעות אליה, טייק שני = הרמה עם התוחלת הגבוהה.</p>
+          <table className="w-full text-sm">
+            <thead className="text-xs text-slate-400"><tr><th className="text-right pb-1">יעד (R)</th><th className="pb-1">הגיעו</th><th className="pb-1">בלי סטופ</th><th className="pb-1">תוחלת R</th></tr></thead>
+            <tbody>
+              {(a.tpScan ?? []).map(r => <tr key={r.target} className={`border-b border-surface-border ${a.bestTP?.target === r.target ? 'font-bold' : ''}`}><td className="py-1 text-right">{r.target}</td><td className="text-center">{pct(r.reach)}</td><td className="text-center text-slate-400">{pct(a.reachFree?.[String(r.target)])}</td><td className={`text-center ${rColor(r.expR)}`}>{num(r.expR)}</td></tr>)}
+            </tbody>
+          </table>
+          <p className="text-[11px] text-slate-500 mt-2">חציון נרות עד 1R: {a.medianBarsTo1R ?? '—'} · עד 2R: {a.medianBarsTo2R ?? '—'}</p>
+        </div>
+        <div className="card p-3 overflow-x-auto">
+          <h3 className="font-semibold mb-1">שש שיטות ניהול, כל הסיגנלים</h3>
+          <p className="text-[11px] text-slate-500 mb-2">ממוצע R לעסקה. עסקה שלא הוכרעה עד סוף האופק נספרת בשווי השוק שלה.</p>
+          <table className="w-full text-sm">
+            <thead className="text-xs text-slate-400"><tr><th className="text-right pb-1">שיטה</th><th className="pb-1">הצלחה</th><th className="pb-1">ממוצע R</th></tr></thead>
+            <tbody>
+              {Object.entries(a.schemes ?? {}).map(([k, v]) => <tr key={k} className={`border-b border-surface-border ${bestScheme && bestScheme[0] === k ? 'font-bold' : ''}`}><td className="py-1 text-right">{k.toUpperCase()} · {v.he}</td><td className="text-center">{pct(v.winRate)}</td><td className={`text-center ${rColor(v.avgR)}`}>{num(v.avgR)}</td></tr>)}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <PathSchemes title="לפי אסטרטגיה — כיוון, הגעה ליעדים, ושש שיטות הניהול (ממוצע R)" rows={stratRows} minN={path.minN} />
+      <div className="grid lg:grid-cols-2 gap-4">
+        <PathSchemes title="לפי מסגרת זמן" rows={resRows} minN={path.minN} />
+        <PathSchemes title="לפי נכס" rows={symRows} minN={path.minN} />
+        <PathSchemes title="לפי סשן" rows={sesRows} minN={path.minN} />
+        <PathSchemes title="לפי פאזה בכניסה" rows={phRows} minN={path.minN} />
+        <PathSchemes title="לונג מול שורט" rows={sideRows} minN={path.minN} />
+      </div>
+      <PathSchemes title="הסטאפים המובילים — מה הניהול הכי טוב לכל אחד" rows={setupRows} minN={path.minN} />
+      <div className="card p-3 overflow-x-auto">
+        <h3 className="font-semibold mb-2">כל אישור — כיוון נכון, הגעה ליעדים, והשיטה הטובה לו</h3>
+        <table className="w-full text-sm">
+          <thead className="text-xs text-slate-400"><tr><th className="text-right pb-1">אישור</th><th className="pb-1">סיגנלים</th><th className="pb-1">הלכו נכון</th><th className="pb-1">הגיעו ל-2R</th><th className="pb-1">הגיעו ל-3R</th><th className="pb-1">1:3 קבוע</th><th className="pb-1">השיטה הטובה</th><th className="pb-1">ממוצע R בשיטה הטובה</th></tr></thead>
+          <tbody>
+            {path.flagRows.map(f => <tr key={f.flag} className="border-b border-surface-border"><td className="py-1 pr-2 text-right whitespace-nowrap">{f.he}</td><td className="text-center">{f.n}</td><td className="text-center">{pct(f.rightDir1R)}</td><td className="text-center">{pct(f.reach2)}</td><td className="text-center">{pct(f.reach3)}</td><td className={`text-center ${rColor(f.s1R)}`}>{num(f.s1R)}</td><td className="text-center">{f.bestScheme ? f.bestScheme.toUpperCase() + ' · ' + path.schemesHe[f.bestScheme] : '—'}</td><td className={`text-center font-semibold ${rColor(f.bestSchemeR)}`}>{num(f.bestSchemeR)}</td></tr>)}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
 export default function TabHttBacktest() {
   const [stats, setStats] = useState<Stats | null>(null)
+  const [path, setPath] = useState<PathStats | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [stratFilter, setStratFilter] = useState<string>('all')
   const [comboFilter, setComboFilter] = useState<string>('all')
@@ -156,6 +319,10 @@ export default function TabHttBacktest() {
       .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json() })
       .then(setStats)
       .catch(e => setError(String(e)))
+    fetch('/htt-backtest/path.json', { cache: 'no-store' })
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => { if (d) setPath(d) })
+      .catch(() => {})
   }, [])
 
   const trades = useMemo(() => {
@@ -378,6 +545,8 @@ export default function TabHttBacktest() {
           </tbody>
         </table>
       </div>
+
+      {path && <PathSection path={path} />}
     </div>
   )
 }
