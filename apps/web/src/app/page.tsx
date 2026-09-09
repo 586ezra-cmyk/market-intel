@@ -18,6 +18,7 @@ import TabReports from '@/components/tabs/TabReports'
 import TabQuickConfluence from '@/components/tabs/TabQuickConfluence'
 import TabLearning from '@/components/tabs/TabLearning'
 import TabConnections from '@/components/tabs/TabConnections'
+import TabHttBacktest from '@/components/tabs/TabHttBacktest'
 import { useWebSocket } from '@/hooks/useWebSocket'
 
 export type TabId =
@@ -25,7 +26,7 @@ export type TabId =
   | 'journal' | 'backtest' | 'watchlist' | 'matrix'
   | 'history-scan' | 'economic-calendar' | 'knowledge-base'
   | 'notes' | 'reports' | 'quick-confluence' | 'learning'
-  | 'connections'
+  | 'connections' | 'htt-backtest'
 
 const TABS: Array<{ id: TabId; label: string; icon: string }> = [
   { id: 'connections',        label: 'חיבורים',          icon: '🔌' },
@@ -35,6 +36,7 @@ const TABS: Array<{ id: TabId; label: string; icon: string }> = [
   { id: 'alert-settings',    label: 'ניהול התראות',     icon: '⚙️' },
   { id: 'journal',           label: 'יומן מסחר',        icon: '📓' },
   { id: 'backtest',          label: 'בק-טסטינג',        icon: '🔬' },
+  { id: 'htt-backtest',      label: 'סטטיסטיקת בקטסט HTT', icon: '🧪' },
   { id: 'watchlist',         label: 'רשימת מעקב',       icon: '👁️' },
   { id: 'matrix',            label: 'מטריצה',           icon: '🗂️' },
   { id: 'history-scan',      label: 'סריקה היסטורית',   icon: '🔍' },
@@ -49,6 +51,12 @@ const TABS: Array<{ id: TabId; label: string; icon: string }> = [
 export default function HomePage() {
   const [activeTab, setActiveTab] = useState<TabId>('dashboard')
   useWebSocket()
+
+  // קישור ישיר לטאב: /?tab=htt-backtest
+  useEffect(() => {
+    const t = new URLSearchParams(window.location.search).get('tab') as TabId | null
+    if (t && TABS.some(x => x.id === t)) setActiveTab(t)
+  }, [])
 
   // Allow tabs to switch programmatically (e.g. from Matrix click)
   useEffect(() => {
@@ -89,6 +97,7 @@ export default function HomePage() {
             {activeTab === 'alert-settings'    && <TabAlertSettings />}
             {activeTab === 'journal'           && <TabJournal />}
             {activeTab === 'backtest'          && <TabBacktest />}
+            {activeTab === 'htt-backtest'      && <TabHttBacktest />}
             {activeTab === 'watchlist'         && <TabWatchlist />}
             {activeTab === 'matrix'            && <TabMatrix />}
             {activeTab === 'history-scan'      && <TabHistoryScan />}
