@@ -23,7 +23,7 @@ A('gQ = "סטאפ איכותי (התראה אחת עם כל האישורים)"')
 A('qOn = input.bool(true, "לחשב רמה ולסמן ליד הטריגר", group=gQ)')
 A('qMinLbl = input.int(2, "תווית רמה על הגרף מרמה", minval=0, maxval=10, group=gQ)')
 A('qMinWH = input.int(1, "webhook: לשלוח סטאפ מרמה", minval=0, maxval=10, group=gQ)')
-A('qBrk = input.bool(false, "טריגר פריצה (BOS/CHoCH בפאזה C/E) — לא נמדד עדיין", group=gQ)')
+A('qBrk = input.bool(true, "טריגר פריצה (BOS/CHoCH בפאזה C/E) — נמדד: כמו שאר הטריגרים כשמסננים לפי רמה", group=gQ)')
 A('[htfMs, htfPh, htfBull] = request.security(syminfo.tickerid, tfMin < 60 ? "240" : tfMin < 240 ? "D" : "W", [msDir, phase, cIsBull ? 1 : 0], lookahead=barmerge.lookahead_off)')
 A('''// אזורי FVG מהקופסאות של הגרף עצמו (כל גיל): נגיעה באזור פעיל בכיוון העסקה
 fvgAtL = false
