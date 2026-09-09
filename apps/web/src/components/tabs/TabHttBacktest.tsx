@@ -92,6 +92,43 @@ interface PathStats {
   setups: Array<{ flags: string[]; he: string[]; stats: PathAgg }>
 }
 
+interface FibAgg {
+  n: number
+  he?: string
+  rightDir1R?: number | null
+  reach2?: number | null
+  reach3?: number | null
+  s1AvgR?: number
+  s1Win?: number | null
+  s4AvgR?: number
+  s4Win?: number | null
+  fibStopR?: { p50: number | null; p25: number | null; p75: number | null; n: number }
+  fibStopHit?: number | null
+  courseStopHit?: number | null
+  t0?: { he: string; medianR: number | null; n: number; hitBeforeCourseStop: number | null; hitBeforeFibStop: number | null }
+  t1?: { he: string; medianR: number | null; n: number; hitBeforeCourseStop: number | null; hitBeforeFibStop: number | null }
+  t2?: { he: string; medianR: number | null; n: number; hitBeforeCourseStop: number | null; hitBeforeFibStop: number | null }
+  schemes?: Record<string, { n: number; avgR: number; winRate: number | null }>
+  significant?: boolean
+}
+
+interface FibStats {
+  generatedAt: string
+  minN: number
+  nSignals: number
+  nWithLeg: number
+  zonesHe: Record<string, string>
+  rangeZonesHe: Record<string, string>
+  stratHe: Record<string, string>
+  all: FibAgg
+  zones: Record<string, FibAgg>
+  zoneDist: Record<string, number>
+  rangeZones: Record<string, Record<string, FibAgg>>
+  flagRows: Array<{ flag: string; he: string; golden: FibAgg; other: FibAgg; liftS1: number; liftS4: number; liftDir: number }>
+  byStrat: Record<string, { golden: FibAgg; other: FibAgg }>
+  byRes: Record<string, { golden: FibAgg; other: FibAgg }>
+}
+
 interface Stats {
   generatedAt: string
   targetR: number
@@ -306,9 +343,122 @@ function PathSection({ path }: { path: PathStats }) {
   )
 }
 
+const FIB_SCHEME_HE: Record<string, string> = {
+  courseStop_t0: 'סטופ הקורס · יעד קצה התנועה (0)', courseStop_t1: 'סטופ הקורס · יעד 1.272', courseStop_t2: 'סטופ הקורס · יעד 1.618',
+  fibStop_t0: 'סטופ פיבו (מעבר ל-1.0) · יעד 0', fibStop_t1: 'סטופ פיבו · יעד 1.272', fibStop_t2: 'סטופ פיבו · יעד 1.618',
+}
+
+function FibRow({ name, a, minN }: { name: string; a: FibAgg; minN: number }) {
+  return (
+    <tr className={`border-b border-surface-border ${a.n < minN ? 'opacity-50' : ''}`}>
+      <td className="py-1.5 pr-2 text-right whitespace-nowrap">{name}</td>
+      <td className="py-1.5 text-center">{a.n}</td>
+      <td className="py-1.5 text-center">{pct(a.rightDir1R)}</td>
+      <td className="py-1.5 text-center">{pct(a.reach2)}</td>
+      <td className={`py-1.5 text-center ${rColor(a.s1AvgR)}`}>{num(a.s1AvgR)}</td>
+      <td className={`py-1.5 text-center font-semibold ${rColor(a.s4AvgR)}`}>{num(a.s4AvgR)}</td>
+      <td className="py-1.5 text-center">{pct(a.fibStopHit)} / {pct(a.courseStopHit)}</td>
+      <td className="py-1.5 text-center">{pct(a.t0?.hitBeforeFibStop)}</td>
+      <td className="py-1.5 text-center">{pct(a.t1?.hitBeforeFibStop)}</td>
+      <td className={`py-1.5 text-center ${rColor(a.schemes?.fibStop_t1?.avgR)}`}>{num(a.schemes?.fibStop_t1?.avgR)}</td>
+    </tr>
+  )
+}
+
+function FibTable({ title, rows, minN, hint }: { title: string; rows: Array<[string, FibAgg]>; minN: number; hint?: string }) {
+  return (
+    <div className="card p-3 overflow-x-auto">
+      <div className="flex items-baseline justify-between mb-1"><h3 className="font-semibold">{title}</h3>{hint && <span className="text-[11px] text-slate-500">{hint}</span>}</div>
+      <table className="w-full text-sm">
+        <thead className="text-xs text-slate-400">
+          <tr>
+            <th className="text-right pb-1">קבוצה</th>
+            <th className="pb-1">סיגנלים</th>
+            <th className="pb-1">הלכו נכון (1R)</th>
+            <th className="pb-1">הגיעו ל-2R</th>
+            <th className="pb-1">1:3 קבוע (R)</th>
+            <th className="pb-1">גרירה S4 (R)</th>
+            <th className="pb-1">סטופ פיבו / קורס נפגע</th>
+            <th className="pb-1">הגיעו לקצה התנועה</th>
+            <th className="pb-1">הגיעו ל-1.272</th>
+            <th className="pb-1">סטופ פיבו + יעד 1.272 (R)</th>
+          </tr>
+        </thead>
+        <tbody>{rows.map(([name, a]) => <FibRow key={name} name={name} a={a} minN={minN} />)}</tbody>
+      </table>
+    </div>
+  )
+}
+
+function FibSection({ fib }: { fib: FibStats }) {
+  const a = fib.all
+  const zoneRows: Array<[string, FibAgg]> = Object.entries(fib.zones).map(([k, v]) => [fib.zonesHe[k] ?? k, v])
+  const stratRows: Array<[string, FibAgg]> = Object.entries(fib.byStrat).flatMap(([k, v]) => [[`${fib.stratHe[k] ?? k} · באזור הזהב`, v.golden], [`${fib.stratHe[k] ?? k} · מחוץ לאזור הזהב`, v.other]] as Array<[string, FibAgg]>)
+  const resRows: Array<[string, FibAgg]> = Object.entries(fib.byRes).flatMap(([k, v]) => [[`${resHe[k] ?? k} · באזור הזהב`, v.golden], [`${resHe[k] ?? k} · מחוץ`, v.other]] as Array<[string, FibAgg]>)
+  const rangeRows = (scope: string): Array<[string, FibAgg]> => Object.entries(fib.rangeZones[scope] ?? {}).map(([k, v]) => [fib.rangeZonesHe[k] ?? k, v])
+  const golden = fib.zones.golden
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-baseline justify-between gap-2 pt-2">
+        <h2 className="text-xl font-bold">🌀 פיבונאצ'י — כאישור, לסטופ וליעד</h2>
+        <div className="text-xs text-slate-500">לפי הקורס (4-5, 4-6, 25-9): תנועה אחת, מפתיל לפתיל, מהפיבוט האחרון עד הקיצון שאחריו · אזור הזהב 0.618–0.786 · סטופ מעבר ל-1.0 · יעדים 0 / 1.272 / 1.618 · {fib.nWithLeg} מתוך {fib.nSignals} סיגנלים עם תנועה מדידה · עודכן {dt(Date.parse(fib.generatedAt))}</div>
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+        <Kpi label="כניסות באזור הזהב" value={String(golden?.n ?? 0)} sub={`${pct((golden?.n ?? 0) / Math.max(1, fib.nWithLeg))} מהסיגנלים`} />
+        <Kpi label="הלכו נכון: זהב מול השאר" value={`${pct(golden?.rightDir1R)} / ${pct(a.rightDir1R)}`} tone={(golden?.rightDir1R ?? 0) > (a.rightDir1R ?? 0) ? 'good' : 'bad'} />
+        <Kpi label="גרירה S4: זהב מול הכל" value={`${num(golden?.s4AvgR)} / ${num(a.s4AvgR)}`} tone={(golden?.s4AvgR ?? 0) > (a.s4AvgR ?? 0) ? 'good' : 'bad'} />
+        <Kpi label="סטופ פיבו לעומת סטופ הקורס" value={`×${num(a.fibStopR?.p50)}`} sub="חציון המרחק, 1.0 = סטופ הקורס" />
+        <Kpi label="סטופ פיבו נפגע / סטופ הקורס נפגע" value={`${pct(a.fibStopHit)} / ${pct(a.courseStopHit)}`} />
+        <Kpi label="הגיעו לקצה התנועה / ל-1.272" value={`${pct(a.t0?.hitBeforeFibStop)} / ${pct(a.t1?.hitBeforeFibStop)}`} sub="לפני סטופ הפיבו" />
+      </div>
+      <div className="grid md:grid-cols-2 gap-4">
+        <div className="card p-3 overflow-x-auto">
+          <h3 className="font-semibold mb-1">שש שיטות פיבונאצ'י לסטופ וליעד, כל הסיגנלים</h3>
+          <p className="text-[11px] text-slate-500 mb-2">ממוצע R ביחידות של הסטופ שבשימוש. עסקה שלא הוכרעה עד סוף האופק נספרת בשווי השוק.</p>
+          <table className="w-full text-sm">
+            <thead className="text-xs text-slate-400"><tr><th className="text-right pb-1">שיטה</th><th className="pb-1">סיגנלים</th><th className="pb-1">הצלחה</th><th className="pb-1">ממוצע R</th></tr></thead>
+            <tbody>
+              {Object.entries(a.schemes ?? {}).map(([k, v]) => <tr key={k} className="border-b border-surface-border"><td className="py-1 text-right">{FIB_SCHEME_HE[k] ?? k}</td><td className="text-center">{v.n}</td><td className="text-center">{pct(v.winRate)}</td><td className={`text-center font-semibold ${rColor(v.avgR)}`}>{num(v.avgR)}</td></tr>)}
+            </tbody>
+          </table>
+        </div>
+        <div className="card p-3 overflow-x-auto">
+          <h3 className="font-semibold mb-1">יעדי הפיבונאצ'י — מרחק והגעה</h3>
+          <table className="w-full text-sm">
+            <thead className="text-xs text-slate-400"><tr><th className="text-right pb-1">יעד</th><th className="pb-1">חציון מרחק (R של הקורס)</th><th className="pb-1">הושג לפני סטופ הקורס</th><th className="pb-1">הושג לפני סטופ הפיבו</th></tr></thead>
+            <tbody>
+              {(['t0', 't1', 't2'] as const).map(k => { const v = a[k]; return v ? <tr key={k} className="border-b border-surface-border"><td className="py-1 text-right">{v.he}</td><td className="text-center">{num(v.medianR, 1)}</td><td className="text-center">{pct(v.hitBeforeCourseStop)}</td><td className="text-center">{pct(v.hitBeforeFibStop)}</td></tr> : null })}
+            </tbody>
+          </table>
+          <p className="text-[11px] text-slate-500 mt-2">סטופ הפיבו: חציון ×{num(a.fibStopR?.p50)} מסטופ הקורס (רבעונים ×{num(a.fibStopR?.p25)} – ×{num(a.fibStopR?.p75)}).</p>
+        </div>
+      </div>
+      <FibTable title="לפי עומק התיקון בכניסה (כאישור)" rows={zoneRows} minN={fib.minN} hint="0 = בקצה התנועה, 1 = בתחילתה" />
+      <div className="grid lg:grid-cols-3 gap-4">
+        <FibTable title="מיקום בטווח התהליך" rows={rangeRows('process')} minN={fib.minN} />
+        <FibTable title="מיקום בטווח היומי" rows={rangeRows('daily')} minN={fib.minN} />
+        <FibTable title="מיקום בטווח השבועי" rows={rangeRows('weekly')} minN={fib.minN} />
+      </div>
+      <FibTable title="לפי אסטרטגיה — באזור הזהב מול מחוץ לו" rows={stratRows} minN={fib.minN} />
+      <FibTable title="לפי מסגרת זמן — באזור הזהב מול מחוץ לו" rows={resRows} minN={fib.minN} />
+      <div className="card p-3 overflow-x-auto">
+        <h3 className="font-semibold mb-1">אזור הזהב על גבי כל אחד מהאישורים שלנו</h3>
+        <p className="text-[11px] text-slate-500 mb-2">לכל אישור: הסיגנלים עם האישור שנכנסו באזור הזהב (0.618–0.786 של התנועה האחרונה) מול אלה שנכנסו מחוץ לו. שיפור = ההפרש בממוצע R עם גרירה (S4).</p>
+        <table className="w-full text-sm">
+          <thead className="text-xs text-slate-400"><tr><th className="text-right pb-1">אישור</th><th className="pb-1">בזהב: n</th><th className="pb-1">בזהב: הלכו נכון</th><th className="pb-1">בזהב: S4</th><th className="pb-1">מחוץ: n</th><th className="pb-1">מחוץ: הלכו נכון</th><th className="pb-1">מחוץ: S4</th><th className="pb-1">שיפור S4</th><th className="pb-1">שיפור כיוון</th></tr></thead>
+          <tbody>
+            {fib.flagRows.map(r => <tr key={r.flag} className="border-b border-surface-border"><td className="py-1 pr-2 text-right whitespace-nowrap">{r.he}</td><td className="text-center">{r.golden.n}</td><td className="text-center">{pct(r.golden.rightDir1R)}</td><td className={`text-center ${rColor(r.golden.s4AvgR)}`}>{num(r.golden.s4AvgR)}</td><td className="text-center">{r.other.n}</td><td className="text-center">{pct(r.other.rightDir1R)}</td><td className={`text-center ${rColor(r.other.s4AvgR)}`}>{num(r.other.s4AvgR)}</td><td className={`text-center font-semibold ${rColor(r.liftS4)}`}>{(r.liftS4 > 0 ? '+' : '') + r.liftS4.toFixed(2)}</td><td className={`text-center ${rColor(r.liftDir)}`}>{(r.liftDir > 0 ? '+' : '') + (r.liftDir * 100).toFixed(0)}%</td></tr>)}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
 export default function TabHttBacktest() {
   const [stats, setStats] = useState<Stats | null>(null)
   const [path, setPath] = useState<PathStats | null>(null)
+  const [fib, setFib] = useState<FibStats | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [stratFilter, setStratFilter] = useState<string>('all')
   const [comboFilter, setComboFilter] = useState<string>('all')
@@ -322,6 +472,10 @@ export default function TabHttBacktest() {
     fetch('/htt-backtest/path.json', { cache: 'no-store' })
       .then(r => (r.ok ? r.json() : null))
       .then(d => { if (d) setPath(d) })
+      .catch(() => {})
+    fetch('/htt-backtest/fib.json', { cache: 'no-store' })
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => { if (d) setFib(d) })
       .catch(() => {})
   }, [])
 
@@ -547,6 +701,8 @@ export default function TabHttBacktest() {
       </div>
 
       {path && <PathSection path={path} />}
+
+      {fib && <FibSection fib={fib} />}
     </div>
   )
 }
