@@ -1076,30 +1076,30 @@ f_rm(int i) =>
     array.remove(be2, i), array.remove(be3, i), array.remove(st4, i), array.remove(st6, i)
     array.remove(kFS, i), array.remove(kF0, i), array.remove(kF1, i), array.remove(kF2, i), array.remove(kRet, i), array.remove(kPosR, i), array.remove(kPosD, i), array.remove(kPosW, i)
     array.remove(kFSBar, i), array.remove(kF0Bar, i), array.remove(kF1Bar, i), array.remove(kF2Bar, i)
-f_add(string typ, bool isL, float stopPx) =>
-    rk = math.abs(close - stopPx)
-    ok = rk > 0 and (isL ? close > stopPx : close < stopPx)
+f_add(string typ, bool isL, float stopPx, float entryPx) =>
+    rk = math.abs(entryPx - stopPx)
+    ok = rk > 0 and (isL ? entryPx > stopPx : entryPx < stopPx)
     if ok
         // יעד מבני: הצד השני של הטווח בתהליך, אחרת בריכת נזילות, אחרת קיצון 100 נרות. חייב להיות מעבר לכניסה
-        float tg = isL ? (phase > 0 and not na(rHi) and rHi > close ? rHi : not na(poolHi) and poolHi > close ? poolHi : hi100 > close ? hi100 : na) : (phase > 0 and not na(rLo) and rLo < close ? rLo : not na(poolLo) and poolLo < close ? poolLo : lo100 < close ? lo100 : na)
-        array.push(kT, typ), array.push(kL, isL), array.push(kE, close), array.push(kS, stopPx), array.push(kRk, rk), array.push(kTg, tg)
+        float tg = isL ? (phase > 0 and not na(rHi) and rHi > entryPx ? rHi : not na(poolHi) and poolHi > entryPx ? poolHi : hi100 > entryPx ? hi100 : na) : (phase > 0 and not na(rLo) and rLo < entryPx ? rLo : not na(poolLo) and poolLo < entryPx ? poolLo : lo100 < entryPx ? lo100 : na)
+        array.push(kT, typ), array.push(kL, isL), array.push(kE, entryPx), array.push(kS, stopPx), array.push(kRk, rk), array.push(kTg, tg)
         array.push(kB0, bar_index), array.push(kT0, time), array.push(kFl, f_flags(isL)), array.push(kSes, sesIdx), array.push(kPh, phase), array.push(kCf, isL ? confBull : confBear)
         array.push(kMFE, 0.0), array.push(kMAE, 0.0), array.push(kMFEs, 0.0), array.push(kStopBar, -1), array.push(kB1, -1), array.push(kB2, -1), array.push(kB3, -1)
-        array.push(kMAEb1, 0.0), array.push(kMAEb2, 0.0), array.push(kTgBar, -1), array.push(kHH, close)
+        array.push(kMAEb1, 0.0), array.push(kMAEb2, 0.0), array.push(kTgBar, -1), array.push(kHH, entryPx)
         array.push(s1, float(na)), array.push(s2, float(na)), array.push(s3, float(na)), array.push(s4, float(na)), array.push(s5, float(na)), array.push(s6, float(na))
         array.push(be2, false), array.push(be3, false), array.push(st4, stopPx), array.push(st6, stopPx)
         float legLo = isL ? lastPL : legLoS
         float legHi = isL ? legHiL : lastPH
         float leg = legHi - legLo
         bool legOk = not na(legLo) and not na(legHi) and leg > 0
-        float ret = legOk ? (isL ? (legHi - close) / leg : (close - legLo) / leg) : na
+        float ret = legOk ? (isL ? (legHi - entryPx) / leg : (entryPx - legLo) / leg) : na
         float fs = legOk ? (isL ? legLo * (1 - stopBuf / 100.0) : legHi * (1 + stopBuf / 100.0)) : na
         float t0 = legOk ? (isL ? legHi : legLo) : na
         float t1 = legOk ? (isL ? legHi + 0.272 * leg : legLo - 0.272 * leg) : na
         float t2 = legOk ? (isL ? legHi + 0.618 * leg : legLo - 0.618 * leg) : na
-        float posR = pdHi > pdLo ? (close - pdLo) / (pdHi - pdLo) : na
-        float posD = dH > dL ? (close - dL) / (dH - dL) : na
-        float posW = wkH > wkL ? (close - wkL) / (wkH - wkL) : na
+        float posR = pdHi > pdLo ? (entryPx - pdLo) / (pdHi - pdLo) : na
+        float posD = dH > dL ? (entryPx - dL) / (dH - dL) : na
+        float posW = wkH > wkL ? (entryPx - wkL) / (wkH - wkL) : na
         array.push(kFS, fs), array.push(kF0, t0), array.push(kF1, t1), array.push(kF2, t2), array.push(kRet, ret), array.push(kPosR, posR), array.push(kPosD, posD), array.push(kPosW, posW)
         array.push(kFSBar, -1), array.push(kF0Bar, -1), array.push(kF1Bar, -1), array.push(kF2Bar, -1)
         if array.size(kT) > 80
@@ -1219,18 +1219,56 @@ if array.size(kT) > 0
 // ── סיגנלים חדשים (אותם טריגרים וסטופים כמו במנוע הבקטסט של הגרף) ──
 buf2 = stopBuf / 100.0
 if flyLong or flyShort
-    f_add("F", flyLong, flyLong ? math.min(nz(cExt, low), nz(lastPL, low)) * (1 - buf2) : math.max(nz(cExt, high), nz(lastPH, high)) * (1 + buf2))
+    f_add("F", flyLong, flyLong ? math.min(nz(cExt, low), nz(lastPL, low)) * (1 - buf2) : math.max(nz(cExt, high), nz(lastPH, high)) * (1 + buf2), close)
+    // G = טיסה עם הסטופ של המשתמש: מתחת לשפל שיצר את ה-BOS/צ'וץ' (הפיבוט האחרון), לא הנמוך מבין שניהם
+    f_add("G", flyLong, flyLong ? nz(lastPL, low) * (1 - buf2) : nz(lastPH, high) * (1 + buf2), close)
 if wingLong or wingShort
-    f_add("W", wingLong, wingLong ? nz(lastPL, low) * (1 - buf2) : nz(lastPH, high) * (1 + buf2))
+    f_add("W", wingLong, wingLong ? nz(lastPL, low) * (1 - buf2) : nz(lastPH, high) * (1 + buf2), close)
 if obLong or obShort
-    f_add("O", obLong, obLong ? obLBot * (1 - buf2) : obSTop * (1 + buf2))
+    f_add("O", obLong, obLong ? obLBot * (1 - buf2) : obSTop * (1 + buf2), close)
 if wSig or mSig
-    f_add("M", wSig, wSig ? nz(wLow2, low) * (1 - buf2) : nz(mHigh2, high) * (1 + buf2))
+    f_add("M", wSig, wSig ? nz(wLow2, low) * (1 - buf2) : nz(mHigh2, high) * (1 + buf2), close)
+// R = אורדר בלוק בכניסה בריטסט (הקורס 12-6: לימיט 21% לתוך הבלוק מהקצה הקרוב, סטופ מעבר לקצה הרחוק), עד 30 נרות להתמלא
+var float[] pdPx = array.new<float>()
+var float[] pdSt = array.new<float>()
+var int[] pdBar = array.new<int>()
+var bool[] pdL = array.new<bool>()
+var int obRetSignals = 0
+var int obRetFills = 0
+if obLong or obShort
+    obRetSignals += 1
+    array.push(pdPx, obLong ? obLTop - 0.21 * (obLTop - obLBot) : obSBot + 0.21 * (obSTop - obSBot))
+    array.push(pdSt, obLong ? obLBot * (1 - buf2) : obSTop * (1 + buf2))
+    array.push(pdBar, bar_index)
+    array.push(pdL, obLong)
+if array.size(pdPx) > 0
+    for pi = array.size(pdPx) - 1 to 0
+        pL = array.get(pdL, pi)
+        pPx = array.get(pdPx, pi)
+        if bar_index - array.get(pdBar, pi) > 30
+            array.remove(pdPx, pi), array.remove(pdSt, pi), array.remove(pdBar, pi), array.remove(pdL, pi)
+        else if bar_index > array.get(pdBar, pi) and (pL ? low <= pPx : high >= pPx)
+            obRetFills += 1
+            f_add("R", pL, array.get(pdSt, pi), pPx)
+            array.remove(pdPx, pi), array.remove(pdSt, pi), array.remove(pdBar, pi), array.remove(pdL, pi)
+// X = "3 אישורים = טריגר" (המשתמש): אישור חדש מגיע כשכבר יש 3+ אישורים בכיוון. סטופ מתחת למבנה שיצר את האישורים (פיבוט אחרון / שפל 10 נרות)
+xCntL = (evL_bos ? 1 : 0) + (evL_choch ? 1 : 0) + (evL_sweep ? 1 : 0) + (evL_smt ? 1 : 0) + (evL_ismt ? 1 : 0) + (evL_ifvg ? 1 : 0) + (evL_fvg ? 1 : 0) + (evL_judas ? 1 : 0) + (evL_tweezer ? 1 : 0) + (evL_shake ? 1 : 0) + (evL_volC ? 1 : 0) + (evL_lps ? 1 : 0) + (evL_gap ? 1 : 0) + (evL_ob ? 1 : 0) + (evL_wm ? 1 : 0) + (evL_ddt ? 1 : 0) + (evL_bb ? 1 : 0) + (evL_fvgAt ? 1 : 0) + (evL_ifvgAt ? 1 : 0) + (evL_atPool ? 1 : 0) + (evL_orBrk ? 1 : 0) + (evL_climax ? 1 : 0) + (atIceL ? 1 : 0) + (atHtfL ? 1 : 0) + (atSesL ? 1 : 0) + (testOK ? 1 : 0)
+xCntS = (evS_bos ? 1 : 0) + (evS_choch ? 1 : 0) + (evS_sweep ? 1 : 0) + (evS_smt ? 1 : 0) + (evS_ismt ? 1 : 0) + (evS_ifvg ? 1 : 0) + (evS_fvg ? 1 : 0) + (evS_judas ? 1 : 0) + (evS_tweezer ? 1 : 0) + (evS_shake ? 1 : 0) + (evS_volC ? 1 : 0) + (evS_lps ? 1 : 0) + (evS_gap ? 1 : 0) + (evS_ob ? 1 : 0) + (evS_wm ? 1 : 0) + (evS_ddt ? 1 : 0) + (evS_bb ? 1 : 0) + (evS_fvgAt ? 1 : 0) + (evS_ifvgAt ? 1 : 0) + (evS_atPool ? 1 : 0) + (evS_orBrk ? 1 : 0) + (evS_climax ? 1 : 0) + (atCreekS ? 1 : 0) + (atHtfS ? 1 : 0) + (atSesS ? 1 : 0) + (testOK ? 1 : 0)
+var int xLastL = -100
+var int xLastS = -100
+xL = xCntL >= 3 and xCntL > xCntL[1] and bar_index - xLastL > 10 and barstate.isconfirmed
+xS = xCntS >= 3 and xCntS > xCntS[1] and bar_index - xLastS > 10 and barstate.isconfirmed
+if xL
+    xLastL := bar_index
+    f_add("X", true, math.min(nz(lastPL, low), lo10) * (1 - buf2), close)
+if xS
+    xLastS := bar_index
+    f_add("X", false, math.max(nz(lastPH, high), hi10) * (1 + buf2), close)
 // טריגר פריצה (בקשת המשתמש): BOS/CHoCH בפאזה C או E, סטופ מעבר לפיבוט האחרון
 brkL = (bosUp or chochUp) and (phase == 3 or phase == 5) and barstate.isconfirmed
 brkS = (bosDn or chochDn) and (phase == 3 or phase == 5) and barstate.isconfirmed
 if brkL or brkS
-    f_add("B", brkL, brkL ? nz(lastPL, low) * (1 - buf2) : nz(lastPH, high) * (1 + buf2))
+    f_add("B", brkL, brkL ? nz(lastPL, low) * (1 - buf2) : nz(lastPH, high) * (1 + buf2), close)
 var int firstT = na
 if na(firstT)
     firstT := time
@@ -1241,4 +1279,4 @@ if barstate.islast and array.size(pLogs) > 0
         label.set_x(array.get(pLogs, j), bar_index)
 if barstate.islast
     label.delete(metaLb)
-    metaLb := label.new(bar_index, close, "META|" + syminfo.tickerid + "|" + timeframe.period + "|" + str.tostring(bar_index + 1) + "|" + str.tostring(firstT) + "|" + str.tostring(time) + "|open" + str.tostring(array.size(kT)), xloc=xloc.bar_index, style=label.style_none, textcolor=color.new(color.white, 100), size=size.tiny)
+    metaLb := label.new(bar_index, close, "META|" + syminfo.tickerid + "|" + timeframe.period + "|" + str.tostring(bar_index + 1) + "|" + str.tostring(firstT) + "|" + str.tostring(time) + "|open" + str.tostring(array.size(kT)) + "|obRet" + str.tostring(obRetFills) + "/" + str.tostring(obRetSignals), xloc=xloc.bar_index, style=label.style_none, textcolor=color.new(color.white, 100), size=size.tiny)
