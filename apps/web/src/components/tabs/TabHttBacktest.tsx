@@ -136,6 +136,26 @@ interface ComboGroup { base: { n: number; dir: number; r2: number; s4: number; s
 interface CombosData { generatedAt: string; nSignals: number; negativesExcluded: string[]; groups: Record<string, ComboGroup> }
 interface LevelsData { pos: string[]; neg: string[]; posHe: string[]; negHe: string[]; levels: Record<string, { all: { n: number; dir: number; r2: number; s4: number; s1: number }; per: Record<string, { n: number; dir: number; r2: number; s4: number; s1: number } | null> }> }
 
+interface YearBrief { n: number; rightDir1R?: number | null; reach2?: number | null; reach3?: number | null; s1R?: number | null; s4R?: number | null; s4Win?: number | null; advP80?: number | null; lift?: number }
+interface YearFlagRow { flag: string; he: string; byTf: Record<string, YearBrief>; bySym: Record<string, YearBrief>; all: YearBrief; stable: string | null }
+interface YearCoverage { sym: string; res: string; windows: number; bars: number; from: number | null; to: number | null; nAll: number; n365: number; dup: number; agree: number; errors: number }
+interface YearPool { he: string; types: string[]; nSignals: number; base: Record<string, YearBrief>; baseSym: Record<string, Record<string, YearBrief>>; flagRows: YearFlagRow[]; levels: Record<string, Record<string, YearBrief>> }
+interface YearData {
+  generatedAt: string
+  days: number
+  warmupBars: number
+  minN: number
+  nSignals: number
+  flagsHe: Record<string, string>
+  stratHe: Record<string, string>
+  pos: string[]
+  neg: string[]
+  coverage: Record<string, YearCoverage>
+  pools: Record<string, YearPool>
+  stratRows: Record<string, Record<string, YearBrief>>
+  months: Record<string, Record<string, number>>
+}
+
 interface Stats {
   generatedAt: string
   targetR: number
@@ -570,6 +590,160 @@ function CombosSection({ combos, group, setGroup, sort, setSort }: { combos: Com
   )
 }
 
+const signed = (v?: number | null, d = 2) => (v === null || v === undefined ? '—' : (v > 0 ? '+' : '') + v.toFixed(d))
+const YEAR_TFS: Array<[string, string]> = [['240', '4 שעות'], ['15', '15 דקות'], ['5', '5 דקות']]
+
+function YearCell({ b, minN, showR }: { b?: YearBrief; minN: number; showR?: boolean }) {
+  if (!b || !b.n) return <td className="text-center text-slate-600">—</td>
+  const weak = b.n < minN
+  return (
+    <td className={`text-center whitespace-nowrap ${weak ? 'opacity-40' : ''}`}>
+      <span className="text-slate-400">{b.n}</span>
+      {showR && <span className={`mr-1 ${rColor(b.s4R)}`}>{num(b.s4R)}</span>}
+      {b.lift !== undefined && <span className={`mr-1 font-semibold ${rColor(b.lift)}`}>{signed(b.lift)}</span>}
+    </td>
+  )
+}
+
+function YearSection({ year }: { year: YearData }) {
+  const [view, setView] = useState<'tf' | 'sym'>('tf')
+  const [sortTf, setSortTf] = useState<string>('all')
+  const [poolKey, setPoolKey] = useState<string>('course')
+  const P = year.pools[poolKey] ?? year.pools.course
+  const syms = Object.keys(P.baseSym)
+  const symHe = (s: string) => s.split(':')[1]?.replace('USDT', '') ?? s
+  const rows = useMemo(() => {
+    const key = (r: YearFlagRow) => {
+      const b = sortTf === 'all' ? r.all : view === 'tf' ? r.byTf[sortTf] : r.bySym[sortTf]
+      return b && b.n >= year.minN && b.lift !== undefined ? b.lift : -99
+    }
+    return [...P.flagRows].sort((a, b) => key(b) - key(a))
+  }, [P, sortTf, view, year.minN])
+  const cov = Object.entries(year.coverage)
+  const from = Math.min(...cov.map(([, c]) => c.from ?? Infinity))
+  const to = Math.max(...cov.map(([, c]) => c.to ?? 0))
+  const tierOf = (r: YearFlagRow) => {
+    const l = r.all.n >= year.minN ? r.all.lift : undefined
+    if (l === undefined) return ['—', 'text-slate-500']
+    return l >= 0.15 ? ['עוגן', 'text-emerald-400'] : l >= 0.05 ? ['תומך', 'text-emerald-300'] : l > -0.05 ? ['ניטרלי', 'text-slate-300'] : l > -0.15 ? ['מוריד', 'text-amber-400'] : ['נגד', 'text-red-400']
+  }
+  const levelKeys = Object.keys(P.levels.all ?? {}).filter(k => Number(k) >= 0)
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-baseline justify-between gap-2 pt-2">
+        <h2 className="text-xl font-bold">📅 בדיקת שנה — כל האישורים בכל מסגרות הזמן</h2>
+        <div className="text-xs text-slate-500">
+          {year.nSignals.toLocaleString()} סיגנלים · {year.days} ימים אחרונים ({dt(from)} → {dt(to)}) · 4 נכסים × 3 מסגרות · עודכן {dt(Date.parse(year.generatedAt))} · מובהק = לפחות {year.minN} סיגנלים
+        </div>
+      </div>
+      <div className="card p-3 text-xs text-slate-400 leading-relaxed">
+        <b className="text-slate-200">איך נאסף.</b> TradingView טוען רק כ-10,000 נרות לכל גרף (במנוי Plus), אז את השנה האחרונה אספתי ב"חלונות" של Bar Replay: כל חלון = 10,000 נרות אחורה מנקודת ה-Replay, החלונות חופפים, ו-{year.warmupBars.toLocaleString()} נרות החימום בתחילת כל חלון לא נספרים (שם המנוע עוד בלי היסטוריה). כל סיגנל נספר פעם אחת. 5 דקות ≈ 8–13 חלונות לנכס, 15 דקות ≈ 3–4, 4 שעות חלון אחד.
+        <br />
+        <b className="text-slate-200">איך לקרוא.</b> בכל תא: <span className="text-slate-400">מספר הסיגנלים</span> ואחריו <b>שיפור R</b> = ממוצע R לעסקה (ניהול בגרירה: איזון אחרי 1R ואז גרירה לפי פיבוטים) עם האישור, פחות הממוצע של כל הסיגנלים באותה מסגרת זמן. חיובי = האישור משפר, שלילי = מוריד. <b>יציבות</b> = בכמה מ-3 מסגרות הזמן (עם מדגם מספיק) השיפור חיובי. תא דהוי = מדגם קטן מדי. R = יחידת סיכון: המרחק מהכניסה לסטופ.
+      </div>
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        <span className="text-slate-500">על אילו סיגנלים מודדים:</span>
+        {Object.entries(year.pools).map(([k, pl]) => (
+          <button key={k} onClick={() => setPoolKey(k)} className={`px-2 py-1 rounded ${poolKey === k ? 'bg-emerald-700 text-white' : 'bg-surface-border text-slate-300'}`}>{pl.he} · {pl.nSignals.toLocaleString()}</button>
+        ))}
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {[['all', 'כל המסגרות'], ...YEAR_TFS].map(([k, he]) => {
+          const b = P.base[k]
+          return <Kpi key={k} label={`${he} — כל הסיגנלים`} value={`${num(b?.s4R)} R`} sub={`${b?.n?.toLocaleString() ?? 0} סיגנלים · ${pct(b?.rightDir1R)} הלכו נכון · ${pct(b?.reach2)} הגיעו ל-2R`} tone={(b?.s4R ?? 0) > 0 ? 'good' : 'bad'} />
+        })}
+      </div>
+      <div className="card p-3 overflow-x-auto">
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+          <h3 className="font-semibold">כל האישורים — שיפור R לפי {view === 'tf' ? 'מסגרת זמן' : 'נכס'}</h3>
+          <div className="flex flex-wrap gap-1 text-xs">
+            <button onClick={() => { setView('tf'); setSortTf('all') }} className={`px-2 py-1 rounded ${view === 'tf' ? 'bg-emerald-700 text-white' : 'bg-surface-border text-slate-300'}`}>לפי מסגרת זמן</button>
+            <button onClick={() => { setView('sym'); setSortTf('all') }} className={`px-2 py-1 rounded ${view === 'sym' ? 'bg-emerald-700 text-white' : 'bg-surface-border text-slate-300'}`}>לפי נכס</button>
+            <span className="text-slate-500 mr-2">מיון לפי:</span>
+            {[['all', 'הכול'], ...(view === 'tf' ? YEAR_TFS : syms.map(s => [s, symHe(s)] as [string, string]))].map(([k, he]) => (
+              <button key={k} onClick={() => setSortTf(k)} className={`px-2 py-1 rounded ${sortTf === k ? 'bg-slate-600 text-white' : 'bg-surface-border text-slate-300'}`}>{he}</button>
+            ))}
+          </div>
+        </div>
+        <table className="w-full text-sm">
+          <thead className="text-xs text-slate-400">
+            <tr>
+              <th className="text-right pb-1">דרגה</th><th className="text-right pb-1">אישור</th>
+              <th className="pb-1">כל המסגרות<br /><span className="font-normal">סיגנלים · R · שיפור</span></th>
+              {(view === 'tf' ? YEAR_TFS : syms.map(s => [s, symHe(s)] as [string, string])).map(([k, he]) => <th key={k} className="pb-1">{he}<br /><span className="font-normal">סיגנלים · שיפור</span></th>)}
+              <th className="pb-1">יציבות</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(r => {
+              const [tierHe, tierCls] = tierOf(r)
+              return (
+                <tr key={r.flag} className="border-b border-surface-border">
+                  <td className={`py-1 pr-2 text-right whitespace-nowrap ${tierCls}`}>{tierHe}</td>
+                  <td className="py-1 pr-2 text-right whitespace-nowrap">{r.he}</td>
+                  <YearCell b={r.all} minN={year.minN} showR />
+                  {(view === 'tf' ? YEAR_TFS.map(([k]) => r.byTf[k]) : syms.map(s => r.bySym[s])).map((b, i) => <YearCell key={i} b={b} minN={year.minN} />)}
+                  <td className="text-center">{r.stable ?? '—'}</td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+      <div className="grid lg:grid-cols-2 gap-4">
+        <div className="card p-3 overflow-x-auto">
+          <h3 className="font-semibold mb-1">לפי סוג טריגר</h3>
+          <p className="text-[11px] text-slate-500 mb-2">בכל תא: סיגנלים · ממוצע R בגרירה · אחוז שהלכו נכון (1R לפני הסטופ)</p>
+          <table className="w-full text-sm">
+            <thead className="text-xs text-slate-400"><tr><th className="text-right pb-1">טריגר</th><th className="pb-1">הכול</th>{YEAR_TFS.map(([k, he]) => <th key={k} className="pb-1">{he}</th>)}</tr></thead>
+            <tbody>
+              {Object.entries(year.stratRows).map(([k, v]) => (
+                <tr key={k} className="border-b border-surface-border">
+                  <td className="py-1 text-right whitespace-nowrap">{year.stratHe[k] ?? k}</td>
+                  {['all', '240', '15', '5'].map(tf => { const b = v[tf]; return <td key={tf} className={`text-center whitespace-nowrap ${b && b.n < year.minN ? 'opacity-40' : ''}`}>{b && b.n ? <><span className="text-slate-400">{b.n}</span> <span className={rColor(b.s4R)}>{num(b.s4R)}</span> <span className="text-slate-500">{pct(b.rightDir1R)}</span></> : '—'}</td> })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="card p-3 overflow-x-auto">
+          <h3 className="font-semibold mb-1">רמת ההתראה על נתוני השנה</h3>
+          <p className="text-[11px] text-slate-500 mb-2">רמה = אישורי דרגה 1 ({year.pos.map(k => year.flagsHe[k] ?? k).join(', ')}) פחות אישורים נגד ({year.neg.map(k => year.flagsHe[k] ?? k).join(', ')}). בכל תא: סיגנלים · ממוצע R בגרירה.</p>
+          <table className="w-full text-sm">
+            <thead className="text-xs text-slate-400"><tr><th className="text-right pb-1">רמה</th><th className="pb-1">הכול</th>{YEAR_TFS.map(([k, he]) => <th key={k} className="pb-1">{he}</th>)}</tr></thead>
+            <tbody>
+              {levelKeys.map(k => (
+                <tr key={k} className="border-b border-surface-border">
+                  <td className="py-1 text-right whitespace-nowrap">{k === '0' ? 'רמה 0 ומעלה' : `רמה ${k} ומעלה`}</td>
+                  {['all', '240', '15', '5'].map(tf => { const b = P.levels[tf]?.[k]; return <td key={tf} className={`text-center whitespace-nowrap ${b && b.n < year.minN ? 'opacity-40' : ''}`}>{b && b.n ? <><span className="text-slate-400">{b.n}</span> <span className={`font-semibold ${rColor(b.s4R)}`}>{num(b.s4R)}</span></> : '—'}</td> })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div className="card p-3 overflow-x-auto">
+        <h3 className="font-semibold mb-1">כיסוי הנתונים — מה נאסף לכל נכס ומסגרת</h3>
+        <table className="w-full text-sm">
+          <thead className="text-xs text-slate-400"><tr><th className="text-right pb-1">נכס · מסגרת</th><th className="pb-1">מתאריך</th><th className="pb-1">עד תאריך</th><th className="pb-1">חלונות Replay</th><th className="pb-1">נרות</th><th className="pb-1">סיגנלים (שנה)</th><th className="pb-1">כפילויות בחפיפה</th></tr></thead>
+          <tbody>
+            {cov.map(([k, c]) => (
+              <tr key={k} className="border-b border-surface-border">
+                <td className="py-1 text-right whitespace-nowrap">{symHe(c.sym)} · {resHe[c.res] ?? c.res}</td>
+                <td className="text-center">{dt(c.from)}</td><td className="text-center">{dt(c.to)}</td>
+                <td className="text-center">{c.windows}{c.errors ? ` (${c.errors} שגיאות)` : ''}</td>
+                <td className="text-center">{c.bars.toLocaleString()}</td>
+                <td className="text-center">{c.n365.toLocaleString()}</td>
+                <td className="text-center text-slate-500">{c.dup ? `${c.dup} · ${pct(c.agree / c.dup)} זהות` : '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
 export default function TabHttBacktest() {
   const [stats, setStats] = useState<Stats | null>(null)
   const [path, setPath] = useState<PathStats | null>(null)
@@ -577,6 +751,7 @@ export default function TabHttBacktest() {
   const [rank, setRank] = useState<RankData | null>(null)
   const [combos, setCombos] = useState<CombosData | null>(null)
   const [levels, setLevels] = useState<LevelsData | null>(null)
+  const [year, setYear] = useState<YearData | null>(null)
   const [comboGroup, setComboGroup] = useState<string>('all')
   const [comboSort, setComboSort] = useState<'byR' | 'byDir'>('byR')
   const [error, setError] = useState<string | null>(null)
@@ -597,7 +772,7 @@ export default function TabHttBacktest() {
       .then(r => (r.ok ? r.json() : null))
       .then(d => { if (d) setFib(d) })
       .catch(() => {})
-    for (const [file, setter] of [['rank', setRank], ['combos', setCombos], ['levels', setLevels]] as const) {
+    for (const [file, setter] of [['rank', setRank], ['combos', setCombos], ['levels', setLevels], ['year', setYear]] as const) {
       fetch(`/htt-backtest/${file}.json`, { cache: 'no-store' })
         .then(r => (r.ok ? r.json() : null))
         .then(d => { if (d) (setter as (v: any) => void)(d) })
@@ -635,6 +810,10 @@ export default function TabHttBacktest() {
           מובהק = לפחות {stats.minN} עסקאות
         </div>
       </div>
+
+      {year && <YearSection year={year} />}
+
+      <div className="pt-2 text-sm text-slate-500">⬇ הסעיפים הבאים — הבקטסט המקורי על טווח הנרות הטעון בגרף (קצר יותר מהשנה): אסטרטגיות, מסלול המחיר, דירוג, צירופים ופיבונאצ'י.</div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
         <Kpi label="עסקאות סגורות" value={String(b.n)} sub={`${b.open ?? 0} פתוחות`} />

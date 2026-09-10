@@ -91,6 +91,9 @@ var int[] kF0Bar = array.new<int>()
 var int[] kF1Bar = array.new<int>()
 var int[] kF2Bar = array.new<int>()
 var label[] pLogs = array.new<label>()
+var string pBuf = ""
+var int pBufN = 0
+var label pTail = na
 // ── פיבונאצ'י לפי הקורס (4-5, 4-6): תנועה אחת, מפתיל לפתיל — מהפיבוט האחרון עד הקיצון שאחריו. אזור הזהב 0.618–0.786 (+0.5).
 // סטופ פיבו = מעבר ל-1.0 (תחילת התנועה). יעדים: 0 (קצה התנועה = נזילות), 1.272 ו-1.618 (הרחבות). מיקום בטווח: תהליך/100 נרות, יומי, שבועי (25-9)
 legLenL = not na(lastPLi) ? math.max(1, math.min(bar_index - lastPLi + 1, 500)) : 1
@@ -241,10 +244,15 @@ if array.size(kT) > 0
             curR = (isL ? close - e : e - close) / rk
             tgR = na(tg) ? float(na) : (isL ? tg - e : e - tg) / rk
             txt = "P|" + array.get(kT, i) + "|" + (isL ? "L" : "S") + "|" + str.tostring(array.get(kT0, i)) + "|" + str.tostring(e, "#.####") + "|" + str.tostring(array.get(kS, i), "#.####") + "|" + f_s(tgR) + "|" + array.get(kFl, i) + "|" + str.tostring(array.get(kSes, i)) + "|" + str.tostring(array.get(kPh, i)) + "|" + str.tostring(array.get(kCf, i)) + "|" + f_s(array.get(kMFE, i)) + "|" + f_s(array.get(kMAE, i)) + "|" + f_s(array.get(kMFEs, i)) + "|" + str.tostring(array.get(kStopBar, i)) + "|" + str.tostring(array.get(kB1, i)) + "|" + str.tostring(array.get(kB2, i)) + "|" + str.tostring(array.get(kB3, i)) + "|" + f_s(array.get(kMAEb1, i)) + "|" + f_s(array.get(kMAEb2, i)) + "|" + str.tostring(array.get(kTgBar, i)) + "|" + f_s(array.get(s1, i)) + "|" + f_s(array.get(s2, i)) + "|" + f_s(array.get(s3, i)) + "|" + f_s(array.get(s4, i)) + "|" + f_s(array.get(s5, i)) + "|" + f_s(array.get(s6, i)) + "|" + f_s(curR) + "|" + f_s(array.get(kRet, i)) + "|" + f_s(na(array.get(kFS, i)) ? float(na) : (isL ? e - array.get(kFS, i) : array.get(kFS, i) - e) / rk) + "|" + f_s(na(array.get(kF0, i)) ? float(na) : (isL ? array.get(kF0, i) - e : e - array.get(kF0, i)) / rk) + "|" + f_s(na(array.get(kF1, i)) ? float(na) : (isL ? array.get(kF1, i) - e : e - array.get(kF1, i)) / rk) + "|" + f_s(na(array.get(kF2, i)) ? float(na) : (isL ? array.get(kF2, i) - e : e - array.get(kF2, i)) / rk) + "|" + str.tostring(array.get(kFSBar, i)) + "|" + str.tostring(array.get(kF0Bar, i)) + "|" + str.tostring(array.get(kF1Bar, i)) + "|" + str.tostring(array.get(kF2Bar, i)) + "|" + f_s(array.get(kPosR, i)) + "|" + f_s(array.get(kPosD, i)) + "|" + f_s(array.get(kPosW, i))
-            lb = label.new(bar_index, close, txt, xloc=xloc.bar_index, style=label.style_none, textcolor=color.new(color.white, 100), size=size.tiny)
-            array.push(pLogs, lb)
-            if array.size(pLogs) > 490
-                label.delete(array.shift(pLogs))
+            pBuf := pBuf + txt + "\\n"
+            pBufN += 1
+            if pBufN >= 8
+                lb = label.new(bar_index, close, pBuf, xloc=xloc.bar_index, style=label.style_none, textcolor=color.new(color.white, 100), size=size.tiny)
+                array.push(pLogs, lb)
+                if array.size(pLogs) > 490
+                    label.delete(array.shift(pLogs))
+                pBuf := ""
+                pBufN := 0
             f_rm(i)
 // ── סיגנלים חדשים (אותם טריגרים וסטופים כמו במנוע הבקטסט של הגרף) ──
 buf2 = stopBuf / 100.0
@@ -307,6 +315,10 @@ var label metaLb = na
 if barstate.islast and array.size(pLogs) > 0
     for j = 0 to array.size(pLogs) - 1
         label.set_x(array.get(pLogs, j), bar_index)
+if barstate.islast
+    label.delete(pTail)
+    if pBufN > 0
+        pTail := label.new(bar_index, close, pBuf, xloc=xloc.bar_index, style=label.style_none, textcolor=color.new(color.white, 100), size=size.tiny)
 if barstate.islast
     label.delete(metaLb)
     metaLb := label.new(bar_index, close, "META|" + syminfo.tickerid + "|" + timeframe.period + "|" + str.tostring(bar_index + 1) + "|" + str.tostring(firstT) + "|" + str.tostring(time) + "|open" + str.tostring(array.size(kT)) + "|obRet" + str.tostring(obRetFills) + "/" + str.tostring(obRetSignals), xloc=xloc.bar_index, style=label.style_none, textcolor=color.new(color.white, 100), size=size.tiny)''')

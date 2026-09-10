@@ -2,7 +2,7 @@
 """ניתוח מסלול המחיר אחרי כל סיגנל (HTT Path Lab): לאן הלכו העסקאות, איפה צריך סטופ, איפה לקחת רווח,
 ומה נתנו 6 שיטות ניהול. קלט: backtest/stats/trades/htt_path_store.json (תוויות "P|..." מ-TradingView).
 פלט: apps/web/public/htt-backtest/path.json לאתר."""
-import json, pathlib, statistics, itertools, datetime, collections
+import os, json, pathlib, statistics, itertools, datetime, collections
 ROOT = pathlib.Path(__file__).resolve().parent
 FLAGS = [l.strip() for l in (ROOT / 'flags.txt').read_text(encoding='utf-8').splitlines() if l.strip()]
 from build_stats import FLAG_HE, STRAT_HE, SES_HE, PH_HE  # אותם שמות בעברית
@@ -98,7 +98,7 @@ def analyze(ts):
     }
 
 def main():
-    d = json.loads((ROOT / 'trades' / 'htt_path_store.json').read_text(encoding='utf-8'))
+    d = json.loads((ROOT / 'trades' / os.environ.get('HTT_STORE', 'htt_path_store.json')).read_text(encoding='utf-8'))
     T = []
     for name, v in d['combos'].items():
         T += [x for x in (parse(r, name) for r in v.get('rows', [])) if x]
@@ -139,7 +139,7 @@ def main():
     }
     dest = ROOT.parents[1] / 'apps/web/public/htt-backtest'
     dest.mkdir(parents=True, exist_ok=True)
-    (dest / 'path.json').write_text(json.dumps(out, ensure_ascii=False), encoding='utf-8')
+    (dest / ('path' + os.environ.get('HTT_SUFFIX', '') + '.json')).write_text(json.dumps(out, ensure_ascii=False), encoding='utf-8')
     a = groups['all']
     print('signals', len(T), '| right dir (1R before stop)', a['rightDir1R'], '| reach 2R', a['reach']['2'], '3R', a['reach']['3'], '| target hit', a['targetHit'], 'of', a['withTarget'])
     print('adv before 1R p50/p80', a['advBefore1R']['p50'], a['advBefore1R']['p80'], '| stopped then went 2R', a['stoppedThenWent2R'])

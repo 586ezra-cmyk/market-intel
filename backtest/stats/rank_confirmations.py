@@ -1,13 +1,13 @@
 # -*- coding: utf-8 -*-
 """דירוג כל האישורים מנתוני מעבדת המסלול (3,600+ סיגנלים): לכל אישור — כמה עסקאות, הלכו נכון, ממוצע R בגרירה (S4) עם ובלי,
 שיפור, עקביות בין מסגרות זמן, ומשקל מומלץ לציון סטאפ. ואז: ציון מצטבר לכל סיגנל ותוחלת לפי מדרגות ציון → מדרגות התראה."""
-import json, pathlib, collections, statistics
+import os, json, pathlib, collections, statistics
 ROOT = pathlib.Path(__file__).resolve().parent
 from build_fib_stats import parse
 from build_stats import FLAG_HE
 FLAGS = [l.strip() for l in (ROOT / 'flags.txt').read_text(encoding='utf-8').splitlines() if l.strip()]
 idx = {k: i for i, k in enumerate(FLAGS)}
-d = json.loads((ROOT / 'trades' / 'htt_path_store.json').read_text(encoding='utf-8'))
+d = json.loads((ROOT / 'trades' / os.environ.get('HTT_STORE', 'htt_path_store.json')).read_text(encoding='utf-8'))
 T = []
 for name, v in d['combos'].items():
     T += [x for x in (parse(r, name) for r in v.get('rows', [])) if x]
@@ -72,4 +72,4 @@ for res, days in (('240', 4.5 * 365), ('15', 130), ('5', 38)):
     for th in (0.3, 0.5):
         sub = [t for t in tot if t['score'] >= th]
         print(f"  {res:>4}: ציון ≥{th}: {len(sub)/4/days*7:.1f} התראות לשבוע לנכס (מתוך {len(tot)/4/days*7:.1f})")
-json.dump({'rows': rows, 'weights': W}, open(ROOT.parents[1] / 'apps/web/public/htt-backtest/rank.json', 'w', encoding='utf-8'), ensure_ascii=False)
+json.dump({'rows': rows, 'weights': W}, open(ROOT.parents[1] / ('apps/web/public/htt-backtest/rank' + os.environ.get('HTT_SUFFIX', '') + '.json'), 'w', encoding='utf-8'), ensure_ascii=False)

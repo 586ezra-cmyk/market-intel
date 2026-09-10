@@ -2,13 +2,13 @@
 """אילו אישורים ביחד נותנים את ההצלחה הגבוהה ביותר — חיפוש שיטתי (apriori) על שילובים של 2–5 אישורים,
 בכל מסגרת זמן בנפרד ובכולן יחד. מדדים: הלכו נכון (1R לפני הסטופ), הגיעו ל-2R, ממוצע R בגרירה (S4), ממוצע R ב-1:3 (S1).
 פלט: public/htt-backtest/combos.json"""
-import json, pathlib, datetime, itertools
+import os, json, pathlib, datetime, itertools
 ROOT = pathlib.Path(__file__).resolve().parent
 from build_fib_stats import parse
 from build_stats import FLAG_HE
 FLAGS = [l.strip() for l in (ROOT / 'flags.txt').read_text(encoding='utf-8').splitlines() if l.strip()]
 idx = {k: i for i, k in enumerate(FLAGS)}
-d = json.loads((ROOT / 'trades' / 'htt_path_store.json').read_text(encoding='utf-8'))
+d = json.loads((ROOT / 'trades' / os.environ.get('HTT_STORE', 'htt_path_store.json')).read_text(encoding='utf-8'))
 T = []
 for name, v in d['combos'].items():
     T += [x for x in (parse(r, name) for r in v.get('rows', [])) if x]
@@ -57,7 +57,7 @@ for res in ('240', '15', '5'):
     out['groups'][res] = search([t for t in T if t['res'] == res], 25)
 for sym in sorted(set(t['sym'] for t in T)):
     out['groups'][sym] = search([t for t in T if t['sym'] == sym], 25, max_k=4, top=20)
-(ROOT.parents[1] / 'apps/web/public/htt-backtest/combos.json').write_text(json.dumps(out, ensure_ascii=False), encoding='utf-8')
+(ROOT.parents[1] / ('apps/web/public/htt-backtest/combos' + os.environ.get('HTT_SUFFIX', '') + '.json')).write_text(json.dumps(out, ensure_ascii=False), encoding='utf-8')
 for g in ('all', '240', '15', '5'):
     r = out['groups'][g]
     print(f"\n### {g}: base n={r['base']['n']} dir={r['base']['dir']} S4={r['base']['s4']} | שילובים שנבדקו: {r['searched']}")
