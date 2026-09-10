@@ -157,17 +157,19 @@ interface YearData {
 }
 
 interface SynRow { state: string; he: string; all: YearBrief; share: number | null; bySide: Record<string, YearBrief>; byTf: Record<string, YearBrief>; bySym: Record<string, YearBrief>; byStrat: Record<string, YearBrief> }
-interface SynPool { he: string; types: string[]; nSignals: number; base: Record<string, YearBrief>; rows: SynRow[]; d3Levels: Record<string, YearBrief>; d3Flags: Array<YearBrief & { flag: string; he: string }> }
-interface SynData {
+interface NestPool { he: string; nSignals: number; base: Record<string, YearBrief>; rows: SynRow[]; s3Levels: Record<string, YearBrief> }
+interface NestTrade { time: number; sym: string; res: string; strat: string; side: string; entry: number; stop: number; tgtR: number | null; s1: number | null; s4: number | null; mfe: number | null; rightDir: boolean; level: number; flags: string[]; phs: number[] }
+interface NestPair { nHi: number; hiWithLo: number; hiWithLoAnyDir: number; pctHiWithLo: number | null; nLo: number; loInsideHi: number; pctLoInsideHi: number | null }
+interface NestedData {
   generatedAt: string
   minN: number
-  nSignals: number
-  nUnknown: number
-  xcheck: { n: number; agree: number | null }
+  phaseHe: Record<string, string>
+  modeHe: Record<string, string>
   statesHe: Record<string, string>
   stratHe: Record<string, string>
-  pools: Record<string, SynPool>
-  timeShare: Record<string, { n5: number; d3Long: number; d3Short: number; anyD240: number; anyD15: number; anyD5: number }>
+  nesting: Record<string, Record<string, { '240_15': NestPair; '15_5': NestPair; '240_5': NestPair; triple: { n240: number; withNested15and5: number; pct: number | null }; durationBars: Record<string, { median: number | null; n: number }> }>>
+  results: Record<string, { phase: string; mode: string; nSignals: number; pools: Record<string, NestPool> }>
+  trades: Record<string, NestTrade[]>
 }
 
 interface Stats {
@@ -763,33 +765,66 @@ function SynCell({ b, minN }: { b?: YearBrief; minN: number }) {
   return <td className={`text-center whitespace-nowrap ${b.n < minN ? 'opacity-40' : ''}`}><span className="text-slate-400">{b.n}</span> <span className={`font-semibold ${rColor(b.s4R)}`}>{num(b.s4R)}</span></td>
 }
 
-function SynergySection({ syn }: { syn: SynData }) {
+const NEST_MODES = ['CDx3', 'CD_CD_C', 'CD_C_C', 'CCC', 'DDD']
+
+function NestedSection({ nest }: { nest: NestedData }) {
+  const [mode, setMode] = useState<string>('CDx3')
+  const [strict, setStrict] = useState<'strict' | 'live'>('strict')
   const [poolKey, setPoolKey] = useState<string>('course')
-  const P = syn.pools[poolKey] ?? syn.pools.course
-  const syms = Object.keys(syn.timeShare)
+  const [showAll, setShowAll] = useState(false)
+  const R = nest.results[`${mode}_${strict}`]
+  const P = R?.pools[poolKey] ?? R?.pools.course
+  const N = nest.nesting[mode] ?? {}
+  const trades = nest.trades[`${mode}_${strict}_${poolKey}`] ?? []
   const symHe = (s: string) => s.split(':')[1]?.replace('USDT', '') ?? s
-  const d3 = P.rows.find(r => r.state === 'D3')
+  const s3 = P?.rows.find(r => r.state === 'S3')
+  if (!R || !P) return null
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-baseline justify-between gap-2 pt-2">
-        <h2 className="text-xl font-bold">🔗 סינרגיית פאזה D — 4 שעות + 15 דקות + 5 דקות באותו כיוון</h2>
-        <div className="text-xs text-slate-500">{syn.nSignals.toLocaleString()} סיגנלים עם מצב ידוע בשלוש המסגרות · 365 יום · עודכן {dt(Date.parse(syn.generatedAt))} · מובהק = לפחות {syn.minN}</div>
+        <h2 className="text-xl font-bold">🔗 סינרגיה בין מסגרות — 4 שעות ← 15 דקות ← 5 דקות</h2>
+        <div className="text-xs text-slate-500">365 יום · 4 נכסים · עודכן {dt(Date.parse(nest.generatedAt))} · מובהק = לפחות {nest.minN} סיגנלים</div>
       </div>
       <div className="card p-3 text-xs text-slate-400 leading-relaxed">
-        <b className="text-slate-200">איך נמדד.</b> לכל נכס נבנה ציר זמן של הפאזה והכיוון (הצטברות = לונג, הפצה = שורט) בכל אחת משלוש המסגרות, מאותו מנוע וויקוף של HTT. לכל סיגנל בדקנו מה היה המצב בכל מסגרת ברגע הכניסה, רק לפי נרות שכבר נסגרו (בלי הצצה קדימה).
-        <b> "באותו כיוון"</b> = פאזה D של הצטברות כשהעסקה לונג, פאזה D של הפצה כשהעסקה שורט. <b>שיפור</b> = ממוצע R לעסקה (בגרירה) במצב הזה פחות הממוצע של כל הסיגנלים באותה בריכה. הצלבה מול request.security בטריידינגוויו: {syn.xcheck.n.toLocaleString()} בדיקות, {pct(syn.xcheck.agree)} זהות.
+        <b className="text-slate-200">מה נמדד.</b> לכל נכס נבנה ציר זמן של הפאזה והכיוון (הצטברות = לונג, הפצה = שורט) בכל מסגרת, מאותו מנוע וויקוף של HTT ועם ההיסטוריה המלאה של כל מסגרת.
+        <b> הקינון</b> בודק את הטענה "בכל פאזה של 4 שעות יש פאזה של 15 דקות ובתוכה של 5 דקות": כמה מהפאזות ב-4 שעות הכילו פאזה מתאימה ב-15 דקות (אותו כיוון), וכמה מה-15 דקות הכילו 5 דקות.
+        <b> העסקאות</b> = סיגנלים שנכנסו כששלוש המסגרות היו בפאזה הנבחרת באותו כיוון של העסקה. במנוע שלנו פאזה C נמשכת בדרך כלל נר אחד (הניעור), ואחרי הסגירה הראשונה מעל שיא הניעור זה כבר D. לכן "C או D" הוא הצירוף שמתאים למה שנקרא בקורס אזור הבדיקה שאחרי הניעור.
+        <b> סגור</b> = רק נרות שנסגרו לפני הכניסה (בלי הצצה קדימה). <b>חי</b> = הנר של המסגרת הגבוהה שבו נמצאים, כולל מה שקרה עד סגירתו (כמו סוחר שרואה את הניעור מתהווה).
       </div>
       <div className="flex flex-wrap items-center gap-2 text-xs">
-        <span className="text-slate-500">על אילו סיגנלים מודדים:</span>
-        {Object.entries(syn.pools).map(([k, pl]) => (
-          <button key={k} onClick={() => setPoolKey(k)} className={`px-2 py-1 rounded ${poolKey === k ? 'bg-emerald-700 text-white' : 'bg-surface-border text-slate-300'}`}>{pl.he} · {pl.nSignals.toLocaleString()}</button>
-        ))}
+        <span className="text-slate-500">פאזות:</span>
+        {NEST_MODES.map(k => <button key={k} onClick={() => { setMode(k); setShowAll(false) }} className={`px-2 py-1 rounded ${mode === k ? 'bg-emerald-700 text-white' : 'bg-surface-border text-slate-300'}`}>{nest.phaseHe[k]}</button>)}
+      </div>
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        <span className="text-slate-500">מידע:</span>
+        {(['strict', 'live'] as const).map(k => <button key={k} onClick={() => { setStrict(k); setShowAll(false) }} className={`px-2 py-1 rounded ${strict === k ? 'bg-slate-600 text-white' : 'bg-surface-border text-slate-300'}`}>{nest.modeHe[k]}</button>)}
+        <span className="text-slate-500 mr-3">סיגנלים:</span>
+        {Object.entries(R.pools).map(([k, pl]) => <button key={k} onClick={() => { setPoolKey(k); setShowAll(false) }} className={`px-2 py-1 rounded ${poolKey === k ? 'bg-slate-600 text-white' : 'bg-surface-border text-slate-300'}`}>{pl.he} · {pl.nSignals.toLocaleString()}</button>)}
+      </div>
+      <div className="card p-3 overflow-x-auto">
+        <h3 className="font-semibold mb-1">קינון הפאזות — {nest.phaseHe[mode]}</h3>
+        <p className="text-[11px] text-slate-500 mb-2">בכל תא: מספר הפאזות ואורך חציוני בנרות · אחוז הפאזות ב-4 שעות שהכילו פאזה מתאימה ב-15 דקות · אחוז ה-15 דקות שהכילו 5 דקות · אחוז ה-15 דקות שהיו בתוך פאזה של 4 שעות · אחוז ה-4 שעות עם קינון מלא (15 דקות ובתוכה 5 דקות)</p>
+        <table className="w-full text-sm">
+          <thead className="text-xs text-slate-400"><tr><th className="text-right pb-1">נכס</th><th className="pb-1">פאזות 4 שעות</th><th className="pb-1">פאזות 15 דקות</th><th className="pb-1">פאזות 5 דקות</th><th className="pb-1">4 שעות ⊃ 15 דקות</th><th className="pb-1">15 דקות ⊃ 5 דקות</th><th className="pb-1">15 דקות בתוך 4 שעות</th><th className="pb-1">קינון מלא</th></tr></thead>
+          <tbody>
+            {Object.entries(N).map(([sym, r]) => (
+              <tr key={sym} className="border-b border-surface-border">
+                <td className="py-1 text-right">{symHe(sym)}</td>
+                {(['240', '15', '5'] as const).map(tf => <td key={tf} className="text-center text-slate-400">{r.durationBars[tf]?.n ?? 0} · {r.durationBars[tf]?.median ?? '—'} נרות</td>)}
+                <td className="text-center">{pct(r['240_15']?.pctHiWithLo)}</td>
+                <td className="text-center">{pct(r['15_5']?.pctHiWithLo)}</td>
+                <td className="text-center">{pct(r['240_15']?.pctLoInsideHi)}</td>
+                <td className="text-center font-semibold">{r.triple ? `${r.triple.withNested15and5}/${r.triple.n240} (${pct(r.triple.pct)})` : '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Kpi label="כל הסיגנלים בבריכה" value={`${num(P.base.all?.s4R)} R`} sub={`${P.base.all?.n?.toLocaleString() ?? 0} · ${pct(P.base.all?.rightDir1R)} הלכו נכון`} tone={(P.base.all?.s4R ?? 0) > 0 ? 'good' : 'bad'} />
-        <Kpi label="D בשלוש המסגרות — הכול" value={`${num(d3?.all.s4R)} R`} sub={`${d3?.all.n ?? 0} סיגנלים (${pct(d3?.share)}) · ${pct(d3?.all.rightDir1R)} הלכו נכון`} tone={(d3?.all.s4R ?? 0) > (P.base.all?.s4R ?? 0) ? 'good' : 'bad'} />
-        <Kpi label="D בשלוש — לונג" value={`${num(d3?.bySide.L?.s4R)} R`} sub={`${d3?.bySide.L?.n ?? 0} סיגנלים · בסיס לונג ${num(P.base.L?.s4R)}`} tone={(d3?.bySide.L?.s4R ?? 0) > (P.base.L?.s4R ?? 0) ? 'good' : 'bad'} />
-        <Kpi label="D בשלוש — שורט" value={`${num(d3?.bySide.S?.s4R)} R`} sub={`${d3?.bySide.S?.n ?? 0} סיגנלים · בסיס שורט ${num(P.base.S?.s4R)}`} tone={(d3?.bySide.S?.s4R ?? 0) > (P.base.S?.s4R ?? 0) ? 'good' : 'bad'} />
+        <Kpi label="שלוש המסגרות באותו כיוון" value={`${num(s3?.all.s4R)} R`} sub={`${s3?.all.n ?? 0} סיגנלים (${pct(s3?.share)}) · ${pct(s3?.all.rightDir1R)} הלכו נכון`} tone={(s3?.all.s4R ?? 0) > (P.base.all?.s4R ?? 0) ? 'good' : 'bad'} />
+        <Kpi label="שלוש — לונג" value={`${num(s3?.bySide.L?.s4R)} R`} sub={`${s3?.bySide.L?.n ?? 0} סיגנלים · בסיס לונג ${num(P.base.L?.s4R)}`} tone={(s3?.bySide.L?.s4R ?? 0) > (P.base.L?.s4R ?? 0) ? 'good' : 'bad'} />
+        <Kpi label="שלוש — שורט" value={`${num(s3?.bySide.S?.s4R)} R`} sub={`${s3?.bySide.S?.n ?? 0} סיגנלים · בסיס שורט ${num(P.base.S?.s4R)}`} tone={(s3?.bySide.S?.s4R ?? 0) > (P.base.S?.s4R ?? 0) ? 'good' : 'bad'} />
       </div>
       <div className="card p-3 overflow-x-auto">
         <h3 className="font-semibold mb-1">כל צירופי המסגרות — בכל תא: סיגנלים · ממוצע R בגרירה</h3>
@@ -799,60 +834,54 @@ function SynergySection({ syn }: { syn: SynData }) {
           </thead>
           <tbody>
             {P.rows.map(r => (
-              <tr key={r.state} className={`border-b border-surface-border ${r.state === 'D3' ? 'bg-emerald-900/20' : ''}`}>
+              <tr key={r.state} className={`border-b border-surface-border ${r.state === 'S3' ? 'bg-emerald-900/20' : ''}`}>
                 <td className="py-1 pr-2 text-right">{r.he}</td>
                 <td className="text-center text-slate-400">{pct(r.share)}</td>
-                <SynCell b={r.all} minN={syn.minN} />
+                <SynCell b={r.all} minN={nest.minN} />
                 <td className={`text-center font-semibold ${rColor(r.all.lift)}`}>{signed(r.all.lift)}</td>
                 <td className="text-center">{pct(r.all.rightDir1R)}</td>
-                <SynCell b={r.bySide.L} minN={syn.minN} />
-                <SynCell b={r.bySide.S} minN={syn.minN} />
-                {['240', '15', '5'].map(tf => <SynCell key={tf} b={r.byTf[tf]} minN={syn.minN} />)}
+                <SynCell b={r.bySide.L} minN={nest.minN} />
+                <SynCell b={r.bySide.S} minN={nest.minN} />
+                {['240', '15', '5'].map(tf => <SynCell key={tf} b={r.byTf[tf]} minN={nest.minN} />)}
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-      {d3 && (
+      {s3 && (
         <div className="grid lg:grid-cols-3 gap-4">
-          <div className="card p-3 overflow-x-auto">
-            <h3 className="font-semibold mb-1">D בשלוש — לפי נכס</h3>
-            <table className="w-full text-sm"><tbody>
-              {Object.entries(d3.bySym).map(([s, b]) => <tr key={s} className="border-b border-surface-border"><td className="py-1 text-right">{symHe(s)}</td><SynCell b={b} minN={syn.minN} /></tr>)}
-            </tbody></table>
-          </div>
-          <div className="card p-3 overflow-x-auto">
-            <h3 className="font-semibold mb-1">D בשלוש — לפי טריגר</h3>
-            <table className="w-full text-sm"><tbody>
-              {Object.entries(d3.byStrat).map(([s, b]) => <tr key={s} className="border-b border-surface-border"><td className="py-1 text-right">{syn.stratHe[s] ?? s}</td><SynCell b={b} minN={syn.minN} /></tr>)}
-            </tbody></table>
-          </div>
-          <div className="card p-3 overflow-x-auto">
-            <h3 className="font-semibold mb-1">D בשלוש — לפי רמת ההתראה</h3>
-            <table className="w-full text-sm"><tbody>
-              {Object.entries(P.d3Levels).map(([k, b]) => <tr key={k} className="border-b border-surface-border"><td className="py-1 text-right">רמה {k} ומעלה</td><SynCell b={b} minN={syn.minN} /></tr>)}
-            </tbody></table>
-          </div>
+          <div className="card p-3 overflow-x-auto"><h3 className="font-semibold mb-1">שלוש המסגרות — לפי נכס</h3><table className="w-full text-sm"><tbody>{Object.entries(s3.bySym).map(([k, b]) => <tr key={k} className="border-b border-surface-border"><td className="py-1 text-right">{symHe(k)}</td><SynCell b={b} minN={nest.minN} /></tr>)}</tbody></table></div>
+          <div className="card p-3 overflow-x-auto"><h3 className="font-semibold mb-1">שלוש המסגרות — לפי טריגר</h3><table className="w-full text-sm"><tbody>{Object.entries(s3.byStrat).map(([k, b]) => <tr key={k} className="border-b border-surface-border"><td className="py-1 text-right">{nest.stratHe[k] ?? k}</td><SynCell b={b} minN={nest.minN} /></tr>)}</tbody></table></div>
+          <div className="card p-3 overflow-x-auto"><h3 className="font-semibold mb-1">שלוש המסגרות — לפי רמת ההתראה</h3><table className="w-full text-sm"><tbody>{Object.entries(P.s3Levels).map(([k, b]) => <tr key={k} className="border-b border-surface-border"><td className="py-1 text-right">רמה {k} ומעלה</td><SynCell b={b} minN={nest.minN} /></tr>)}</tbody></table></div>
         </div>
       )}
-      <div className="grid lg:grid-cols-2 gap-4">
+      {trades.length > 0 && (
         <div className="card p-3 overflow-x-auto">
-          <h3 className="font-semibold mb-1">בתוך הסינרגיה — אילו אישורים עוד משפרים</h3>
-          <p className="text-[11px] text-slate-500 mb-2">סיגנלים ב-D בשלוש המסגרות שיש בהם גם את האישור, מול כל סיגנלי D בשלוש. בכל שורה: סיגנלים · R · שיפור.</p>
-          <table className="w-full text-sm"><tbody>
-            {P.d3Flags.slice(0, 12).map(f => <tr key={f.flag} className="border-b border-surface-border"><td className="py-1 text-right">{f.he}</td><SynCell b={f} minN={syn.minN} /><td className={`text-center font-semibold ${rColor(f.lift)}`}>{signed(f.lift)}</td></tr>)}
-          </tbody></table>
-        </div>
-        <div className="card p-3 overflow-x-auto">
-          <h3 className="font-semibold mb-1">כמה מהזמן השוק בסינרגיה (לפי סיגנלי 5 דקות)</h3>
-          <table className="w-full text-sm">
-            <thead className="text-xs text-slate-400"><tr><th className="text-right pb-1">נכס</th><th className="pb-1">D בשלוש — לונג</th><th className="pb-1">D בשלוש — שורט</th><th className="pb-1">4 שעות ב-D</th><th className="pb-1">15 דקות ב-D</th><th className="pb-1">5 דקות ב-D</th></tr></thead>
+          <h3 className="font-semibold mb-1">העסקאות עצמן — {nest.phaseHe[mode]} · {trades.length} האחרונות</h3>
+          <p className="text-[11px] text-slate-500 mb-2">R בגרירה = איזון אחרי 1R ואז גרירה לפי פיבוטים · R 1:3 = סטופ הקורס ויעד 1:3 · הלכו נכון = הגיע ל-1R לפני הסטופ</p>
+          <table className="w-full text-xs">
+            <thead className="text-slate-400"><tr><th className="text-right pb-1">זמן</th><th className="pb-1">נכס</th><th className="pb-1">מסגרת</th><th className="pb-1">טריגר</th><th className="pb-1">כיוון</th><th className="pb-1">כניסה</th><th className="pb-1">סטופ</th><th className="pb-1">R גרירה</th><th className="pb-1">R 1:3</th><th className="pb-1">הלך נכון</th><th className="pb-1">רמה</th><th className="text-right pb-1">אישורים</th></tr></thead>
             <tbody>
-              {syms.map(s => { const t = syn.timeShare[s]; return <tr key={s} className="border-b border-surface-border"><td className="py-1 text-right">{symHe(s)}</td><td className="text-center">{pct(t.d3Long)}</td><td className="text-center">{pct(t.d3Short)}</td><td className="text-center">{pct(t.anyD240)}</td><td className="text-center">{pct(t.anyD15)}</td><td className="text-center">{pct(t.anyD5)}</td></tr> })}
+              {(showAll ? trades : trades.slice(0, 40)).map((t, i) => (
+                <tr key={`${t.time}-${i}`} className="border-b border-surface-border align-top">
+                  <td className="py-1 text-right whitespace-nowrap">{dt(t.time)}</td>
+                  <td className="text-center">{symHe(t.sym)}</td>
+                  <td className="text-center">{resHe[t.res] ?? t.res}</td>
+                  <td className="text-center">{nest.stratHe[t.strat] ?? t.strat}</td>
+                  <td className={`text-center ${t.side === 'L' ? 'text-emerald-400' : 'text-red-400'}`}>{t.side === 'L' ? 'לונג' : 'שורט'}</td>
+                  <td className="text-center">{t.entry}</td><td className="text-center">{t.stop}</td>
+                  <td className={`text-center font-semibold ${rColor(t.s4)}`}>{num(t.s4)}</td>
+                  <td className={`text-center ${rColor(t.s1)}`}>{num(t.s1)}</td>
+                  <td className="text-center">{t.rightDir ? '✅' : '❌'}</td>
+                  <td className="text-center">{t.level}</td>
+                  <td className="text-right text-slate-400">{t.flags.join(' · ')}</td>
+                </tr>
+              ))}
             </tbody>
           </table>
+          {trades.length > 40 && <button onClick={() => setShowAll(v => !v)} className="mt-2 px-2 py-1 rounded bg-surface-border text-slate-300 text-xs">{showAll ? 'פחות' : `הצג את כל ${trades.length}`}</button>}
         </div>
-      </div>
+      )}
     </div>
   )
 }
@@ -865,7 +894,7 @@ export default function TabHttBacktest() {
   const [combos, setCombos] = useState<CombosData | null>(null)
   const [levels, setLevels] = useState<LevelsData | null>(null)
   const [year, setYear] = useState<YearData | null>(null)
-  const [syn, setSyn] = useState<SynData | null>(null)
+  const [nest, setNest] = useState<NestedData | null>(null)
   const [comboGroup, setComboGroup] = useState<string>('all')
   const [comboSort, setComboSort] = useState<'byR' | 'byDir'>('byR')
   const [error, setError] = useState<string | null>(null)
@@ -886,7 +915,7 @@ export default function TabHttBacktest() {
       .then(r => (r.ok ? r.json() : null))
       .then(d => { if (d) setFib(d) })
       .catch(() => {})
-    for (const [file, setter] of [['rank', setRank], ['combos', setCombos], ['levels', setLevels], ['year', setYear], ['synergy', setSyn]] as const) {
+    for (const [file, setter] of [['rank', setRank], ['combos', setCombos], ['levels', setLevels], ['year', setYear], ['nested', setNest]] as const) {
       fetch(`/htt-backtest/${file}.json`, { cache: 'no-store' })
         .then(r => (r.ok ? r.json() : null))
         .then(d => { if (d) (setter as (v: any) => void)(d) })
@@ -927,7 +956,7 @@ export default function TabHttBacktest() {
 
       {year && <YearSection year={year} />}
 
-      {syn && <SynergySection syn={syn} />}
+      {nest && <NestedSection nest={nest} />}
 
       <div className="pt-2 text-sm text-slate-500">⬇ הסעיפים הבאים — הבקטסט המקורי על טווח הנרות הטעון בגרף (קצר יותר מהשנה): אסטרטגיות, מסלול המחיר, דירוג, צירופים ופיבונאצ'י.</div>
 
