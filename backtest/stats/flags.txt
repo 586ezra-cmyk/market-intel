@@ -44,3 +44,7 @@ atEdge
 atHtfLvl
 atSesLvl
 bbSq
+vixOk
+vixHigh
+vixSpike
+vixDiv

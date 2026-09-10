@@ -26,6 +26,7 @@ def parse(row, combo):
     t = parse_base(row, combo)
     if t is None:
         return None
+    t['flags'] = t['flags'].ljust(len(FLAGS), '0')
     p = row.split('|')
     if len(p) < 40:
         return None

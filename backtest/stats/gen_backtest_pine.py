@@ -62,6 +62,10 @@ STATES = [
     ('atHtfLvl', 'atHtfL',                      'atHtfS'),
     ('atSesLvl', 'atSesL',                      'atSesS'),
     ('bbSq',    'bbSq',                         'bbSq'),
+    ('vixOk',   'vixOkL',                       'vixOkS'),
+    ('vixHigh', 'vixHigh',                      'vixHigh'),
+    ('vixSpike', 'vixSpike',                    'vixSpike'),
+    ('vixDiv',  'vixDivBull',                   'vixDivBear'),
 ]
 FLAGS = [e[0] for e in EVENTS] + [s[0] for s in STATES]
 
@@ -184,6 +188,15 @@ atPoolL = f_near(low, poolLo)
 atPoolS = f_near(high, poolHi)
 orBrkUp = not inOR and not na(orH) and close > orH and close[1] <= orH
 orBrkDn = not inOR and not na(orL) and close < orL and close[1] >= orL
+// VIX (מדד הפחד) — משטר יומי: רמה, מעל/מתחת ממוצע 20, זינוק, ודיברגנס מול הנכס (הנכס שיא 5 ימים בלי שה-VIX עשה שפל 5 ימים)
+[vixC, vixMA, vixChg, vixLo5, vixHi5] = request.security("TVC:VIX", "D", [close, ta.sma(close, 20), (close / close[1] - 1) * 100, ta.lowest(low, 5), ta.highest(high, 5)], lookahead=barmerge.lookahead_off)
+[dHi5, dLo5, dHiNow, dLoNow] = request.security(syminfo.tickerid, "D", [ta.highest(high, 5)[1], ta.lowest(low, 5)[1], high, low], lookahead=barmerge.lookahead_off)
+vixHigh = not na(vixC) and vixC >= 20
+vixSpike = not na(vixChg) and vixChg >= 10
+vixOkL = not na(vixC) and not na(vixMA) and vixC < vixMA
+vixOkS = not na(vixC) and not na(vixMA) and vixC > vixMA
+vixDivBear = not na(dHi5) and dHiNow > dHi5 and not na(vixLo5) and vixC > vixLo5
+vixDivBull = not na(dLo5) and dLoNow < dLo5 and not na(vixHi5) and vixC < vixHi5
 recN = 10''')
 A('// אירועים: קרו ב-recN הנרות האחרונים (ta.barssince ברמה העליונה)')
 for name, lexp, sexp in EVENTS:
