@@ -1060,6 +1060,23 @@ var int[] kFSBar = array.new<int>()
 var int[] kF0Bar = array.new<int>()
 var int[] kF1Bar = array.new<int>()
 var int[] kF2Bar = array.new<int>()
+var int[] kPh240 = array.new<int>()
+var int[] kBu240 = array.new<int>()
+var int[] kPh15 = array.new<int>()
+var int[] kBu15 = array.new<int>()
+var int[] kPh5 = array.new<int>()
+var int[] kBu5 = array.new<int>()
+// סינרגיית פאזות: הפאזה והכיוון (cIsBull) ב-4H / 15m / 5m בזמן הסיגנל — שתי קריאות security לשתי המסגרות שאינן הגרף
+tfSynA = timeframe.period == "240" ? "15" : "240"
+tfSynB = timeframe.period == "5" ? "15" : "5"
+[phSynA, buSynA] = request.security(syminfo.tickerid, tfSynA, [phase, cIsBull ? 1 : 0], lookahead=barmerge.lookahead_off)
+[phSynB, buSynB] = request.security(syminfo.tickerid, tfSynB, [phase, cIsBull ? 1 : 0], lookahead=barmerge.lookahead_off)
+ph240 = timeframe.period == "240" ? phase : phSynA
+bu240 = timeframe.period == "240" ? (cIsBull ? 1 : 0) : buSynA
+ph15 = timeframe.period == "15" ? phase : (timeframe.period == "240" ? phSynA : phSynB)
+bu15 = timeframe.period == "15" ? (cIsBull ? 1 : 0) : (timeframe.period == "240" ? buSynA : buSynB)
+ph5 = timeframe.period == "5" ? phase : phSynB
+bu5 = timeframe.period == "5" ? (cIsBull ? 1 : 0) : buSynB
 var label[] pLogs = array.new<label>()
 var string pBuf = ""
 var int pBufN = 0
@@ -1077,7 +1094,7 @@ f_rm(int i) =>
     array.remove(kMAEb1, i), array.remove(kMAEb2, i), array.remove(kTgBar, i), array.remove(kHH, i)
     array.remove(s1, i), array.remove(s2, i), array.remove(s3, i), array.remove(s4, i), array.remove(s5, i), array.remove(s6, i)
     array.remove(be2, i), array.remove(be3, i), array.remove(st4, i), array.remove(st6, i)
-    array.remove(kFS, i), array.remove(kF0, i), array.remove(kF1, i), array.remove(kF2, i), array.remove(kRet, i), array.remove(kPosR, i), array.remove(kPosD, i), array.remove(kPosW, i)
+    array.remove(kFS, i), array.remove(kF0, i), array.remove(kF1, i), array.remove(kF2, i), array.remove(kRet, i), array.remove(kPosR, i), array.remove(kPosD, i), array.remove(kPosW, i), array.remove(kPh240, i), array.remove(kBu240, i), array.remove(kPh15, i), array.remove(kBu15, i), array.remove(kPh5, i), array.remove(kBu5, i)
     array.remove(kFSBar, i), array.remove(kF0Bar, i), array.remove(kF1Bar, i), array.remove(kF2Bar, i)
 f_add(string typ, bool isL, float stopPx, float entryPx) =>
     rk = math.abs(entryPx - stopPx)
@@ -1103,7 +1120,7 @@ f_add(string typ, bool isL, float stopPx, float entryPx) =>
         float posR = pdHi > pdLo ? (entryPx - pdLo) / (pdHi - pdLo) : na
         float posD = dH > dL ? (entryPx - dL) / (dH - dL) : na
         float posW = wkH > wkL ? (entryPx - wkL) / (wkH - wkL) : na
-        array.push(kFS, fs), array.push(kF0, t0), array.push(kF1, t1), array.push(kF2, t2), array.push(kRet, ret), array.push(kPosR, posR), array.push(kPosD, posD), array.push(kPosW, posW)
+        array.push(kFS, fs), array.push(kF0, t0), array.push(kF1, t1), array.push(kF2, t2), array.push(kRet, ret), array.push(kPosR, posR), array.push(kPosD, posD), array.push(kPosW, posW), array.push(kPh240, -1), array.push(kBu240, -1), array.push(kPh15, -1), array.push(kBu15, -1), array.push(kPh5, -1), array.push(kBu5, -1)
         array.push(kFSBar, -1), array.push(kF0Bar, -1), array.push(kF1Bar, -1), array.push(kF2Bar, -1)
         if array.size(kT) > 80
             f_rm(0)
@@ -1213,7 +1230,7 @@ if array.size(kT) > 0
         if bars >= horizon
             curR = (isL ? close - e : e - close) / rk
             tgR = na(tg) ? float(na) : (isL ? tg - e : e - tg) / rk
-            txt = "P|" + array.get(kT, i) + "|" + (isL ? "L" : "S") + "|" + str.tostring(array.get(kT0, i)) + "|" + str.tostring(e, "#.####") + "|" + str.tostring(array.get(kS, i), "#.####") + "|" + f_s(tgR) + "|" + array.get(kFl, i) + "|" + str.tostring(array.get(kSes, i)) + "|" + str.tostring(array.get(kPh, i)) + "|" + str.tostring(array.get(kCf, i)) + "|" + f_s(array.get(kMFE, i)) + "|" + f_s(array.get(kMAE, i)) + "|" + f_s(array.get(kMFEs, i)) + "|" + str.tostring(array.get(kStopBar, i)) + "|" + str.tostring(array.get(kB1, i)) + "|" + str.tostring(array.get(kB2, i)) + "|" + str.tostring(array.get(kB3, i)) + "|" + f_s(array.get(kMAEb1, i)) + "|" + f_s(array.get(kMAEb2, i)) + "|" + str.tostring(array.get(kTgBar, i)) + "|" + f_s(array.get(s1, i)) + "|" + f_s(array.get(s2, i)) + "|" + f_s(array.get(s3, i)) + "|" + f_s(array.get(s4, i)) + "|" + f_s(array.get(s5, i)) + "|" + f_s(array.get(s6, i)) + "|" + f_s(curR) + "|" + f_s(array.get(kRet, i)) + "|" + f_s(na(array.get(kFS, i)) ? float(na) : (isL ? e - array.get(kFS, i) : array.get(kFS, i) - e) / rk) + "|" + f_s(na(array.get(kF0, i)) ? float(na) : (isL ? array.get(kF0, i) - e : e - array.get(kF0, i)) / rk) + "|" + f_s(na(array.get(kF1, i)) ? float(na) : (isL ? array.get(kF1, i) - e : e - array.get(kF1, i)) / rk) + "|" + f_s(na(array.get(kF2, i)) ? float(na) : (isL ? array.get(kF2, i) - e : e - array.get(kF2, i)) / rk) + "|" + str.tostring(array.get(kFSBar, i)) + "|" + str.tostring(array.get(kF0Bar, i)) + "|" + str.tostring(array.get(kF1Bar, i)) + "|" + str.tostring(array.get(kF2Bar, i)) + "|" + f_s(array.get(kPosR, i)) + "|" + f_s(array.get(kPosD, i)) + "|" + f_s(array.get(kPosW, i))
+            txt = "P|" + array.get(kT, i) + "|" + (isL ? "L" : "S") + "|" + str.tostring(array.get(kT0, i)) + "|" + str.tostring(e, "#.####") + "|" + str.tostring(array.get(kS, i), "#.####") + "|" + f_s(tgR) + "|" + array.get(kFl, i) + "|" + str.tostring(array.get(kSes, i)) + "|" + str.tostring(array.get(kPh, i)) + "|" + str.tostring(array.get(kCf, i)) + "|" + f_s(array.get(kMFE, i)) + "|" + f_s(array.get(kMAE, i)) + "|" + f_s(array.get(kMFEs, i)) + "|" + str.tostring(array.get(kStopBar, i)) + "|" + str.tostring(array.get(kB1, i)) + "|" + str.tostring(array.get(kB2, i)) + "|" + str.tostring(array.get(kB3, i)) + "|" + f_s(array.get(kMAEb1, i)) + "|" + f_s(array.get(kMAEb2, i)) + "|" + str.tostring(array.get(kTgBar, i)) + "|" + f_s(array.get(s1, i)) + "|" + f_s(array.get(s2, i)) + "|" + f_s(array.get(s3, i)) + "|" + f_s(array.get(s4, i)) + "|" + f_s(array.get(s5, i)) + "|" + f_s(array.get(s6, i)) + "|" + f_s(curR) + "|" + f_s(array.get(kRet, i)) + "|" + f_s(na(array.get(kFS, i)) ? float(na) : (isL ? e - array.get(kFS, i) : array.get(kFS, i) - e) / rk) + "|" + f_s(na(array.get(kF0, i)) ? float(na) : (isL ? array.get(kF0, i) - e : e - array.get(kF0, i)) / rk) + "|" + f_s(na(array.get(kF1, i)) ? float(na) : (isL ? array.get(kF1, i) - e : e - array.get(kF1, i)) / rk) + "|" + f_s(na(array.get(kF2, i)) ? float(na) : (isL ? array.get(kF2, i) - e : e - array.get(kF2, i)) / rk) + "|" + str.tostring(array.get(kFSBar, i)) + "|" + str.tostring(array.get(kF0Bar, i)) + "|" + str.tostring(array.get(kF1Bar, i)) + "|" + str.tostring(array.get(kF2Bar, i)) + "|" + f_s(array.get(kPosR, i)) + "|" + f_s(array.get(kPosD, i)) + "|" + f_s(array.get(kPosW, i)) + "|" + str.tostring(array.get(kPh240, i)) + "|" + str.tostring(array.get(kBu240, i)) + "|" + str.tostring(array.get(kPh15, i)) + "|" + str.tostring(array.get(kBu15, i)) + "|" + str.tostring(array.get(kPh5, i)) + "|" + str.tostring(array.get(kBu5, i))
             pBuf := pBuf + txt + "\n"
             pBufN += 1
             if pBufN >= 8
@@ -1282,6 +1299,28 @@ if na(firstT)
     firstT := time
 var label metaLb = na
 // כל תוויות הלוג מוזזות לנר האחרון: ה-API של הגרף חושף רק ציורים בטווח הנראה
+// מילוי הפאזות של שלוש המסגרות לסיגנלים שנוספו בנר הזה (מחוץ ל-f_add — מגבלת 254 אלמנטים חיצוניים בפונקציה)
+if array.size(kPh240) > 0
+    for j = array.size(kPh240) - 1 to 0
+        if array.get(kB0, j) != bar_index
+            break
+        array.set(kPh240, j, nz(ph240, -1))
+        array.set(kBu240, j, nz(bu240, -1))
+        array.set(kPh15, j, nz(ph15, -1))
+        array.set(kBu15, j, nz(bu15, -1))
+        array.set(kPh5, j, nz(ph5, -1))
+        array.set(kBu5, j, nz(bu5, -1))
+// ציר הזמן של הפאזות במסגרת הגרף: שורת H בכל שינוי פאזה/כיוון + פעימה כל 100 נרות (לסינרגיה בין מסגרות מחוץ ל-TV)
+if phase != phase[1] or cIsBull != cIsBull[1] or bar_index % 100 == 0
+    pBuf := pBuf + "H|" + str.tostring(time) + "|" + str.tostring(phase) + "|" + (cIsBull ? "1" : "0") + "\n"
+    pBufN += 1
+    if pBufN >= 8
+        hb = label.new(bar_index, close, pBuf, xloc=xloc.bar_index, style=label.style_none, textcolor=color.new(color.white, 100), size=size.tiny)
+        array.push(pLogs, hb)
+        if array.size(pLogs) > 490
+            label.delete(array.shift(pLogs))
+        pBuf := ""
+        pBufN := 0
 if barstate.islast and array.size(pLogs) > 0
     for j = 0 to array.size(pLogs) - 1
         label.set_x(array.get(pLogs, j), bar_index)

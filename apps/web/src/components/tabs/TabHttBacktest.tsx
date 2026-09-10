@@ -156,6 +156,20 @@ interface YearData {
   months: Record<string, Record<string, number>>
 }
 
+interface SynRow { state: string; he: string; all: YearBrief; share: number | null; bySide: Record<string, YearBrief>; byTf: Record<string, YearBrief>; bySym: Record<string, YearBrief>; byStrat: Record<string, YearBrief> }
+interface SynPool { he: string; types: string[]; nSignals: number; base: Record<string, YearBrief>; rows: SynRow[]; d3Levels: Record<string, YearBrief>; d3Flags: Array<YearBrief & { flag: string; he: string }> }
+interface SynData {
+  generatedAt: string
+  minN: number
+  nSignals: number
+  nUnknown: number
+  xcheck: { n: number; agree: number | null }
+  statesHe: Record<string, string>
+  stratHe: Record<string, string>
+  pools: Record<string, SynPool>
+  timeShare: Record<string, { n5: number; d3Long: number; d3Short: number; anyD240: number; anyD15: number; anyD5: number }>
+}
+
 interface Stats {
   generatedAt: string
   targetR: number
@@ -744,6 +758,105 @@ function YearSection({ year }: { year: YearData }) {
   )
 }
 
+function SynCell({ b, minN }: { b?: YearBrief; minN: number }) {
+  if (!b || !b.n) return <td className="text-center text-slate-600">—</td>
+  return <td className={`text-center whitespace-nowrap ${b.n < minN ? 'opacity-40' : ''}`}><span className="text-slate-400">{b.n}</span> <span className={`font-semibold ${rColor(b.s4R)}`}>{num(b.s4R)}</span></td>
+}
+
+function SynergySection({ syn }: { syn: SynData }) {
+  const [poolKey, setPoolKey] = useState<string>('course')
+  const P = syn.pools[poolKey] ?? syn.pools.course
+  const syms = Object.keys(syn.timeShare)
+  const symHe = (s: string) => s.split(':')[1]?.replace('USDT', '') ?? s
+  const d3 = P.rows.find(r => r.state === 'D3')
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-baseline justify-between gap-2 pt-2">
+        <h2 className="text-xl font-bold">🔗 סינרגיית פאזה D — 4 שעות + 15 דקות + 5 דקות באותו כיוון</h2>
+        <div className="text-xs text-slate-500">{syn.nSignals.toLocaleString()} סיגנלים עם מצב ידוע בשלוש המסגרות · 365 יום · עודכן {dt(Date.parse(syn.generatedAt))} · מובהק = לפחות {syn.minN}</div>
+      </div>
+      <div className="card p-3 text-xs text-slate-400 leading-relaxed">
+        <b className="text-slate-200">איך נמדד.</b> לכל נכס נבנה ציר זמן של הפאזה והכיוון (הצטברות = לונג, הפצה = שורט) בכל אחת משלוש המסגרות, מאותו מנוע וויקוף של HTT. לכל סיגנל בדקנו מה היה המצב בכל מסגרת ברגע הכניסה, רק לפי נרות שכבר נסגרו (בלי הצצה קדימה).
+        <b> "באותו כיוון"</b> = פאזה D של הצטברות כשהעסקה לונג, פאזה D של הפצה כשהעסקה שורט. <b>שיפור</b> = ממוצע R לעסקה (בגרירה) במצב הזה פחות הממוצע של כל הסיגנלים באותה בריכה. הצלבה מול request.security בטריידינגוויו: {syn.xcheck.n.toLocaleString()} בדיקות, {pct(syn.xcheck.agree)} זהות.
+      </div>
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        <span className="text-slate-500">על אילו סיגנלים מודדים:</span>
+        {Object.entries(syn.pools).map(([k, pl]) => (
+          <button key={k} onClick={() => setPoolKey(k)} className={`px-2 py-1 rounded ${poolKey === k ? 'bg-emerald-700 text-white' : 'bg-surface-border text-slate-300'}`}>{pl.he} · {pl.nSignals.toLocaleString()}</button>
+        ))}
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <Kpi label="כל הסיגנלים בבריכה" value={`${num(P.base.all?.s4R)} R`} sub={`${P.base.all?.n?.toLocaleString() ?? 0} · ${pct(P.base.all?.rightDir1R)} הלכו נכון`} tone={(P.base.all?.s4R ?? 0) > 0 ? 'good' : 'bad'} />
+        <Kpi label="D בשלוש המסגרות — הכול" value={`${num(d3?.all.s4R)} R`} sub={`${d3?.all.n ?? 0} סיגנלים (${pct(d3?.share)}) · ${pct(d3?.all.rightDir1R)} הלכו נכון`} tone={(d3?.all.s4R ?? 0) > (P.base.all?.s4R ?? 0) ? 'good' : 'bad'} />
+        <Kpi label="D בשלוש — לונג" value={`${num(d3?.bySide.L?.s4R)} R`} sub={`${d3?.bySide.L?.n ?? 0} סיגנלים · בסיס לונג ${num(P.base.L?.s4R)}`} tone={(d3?.bySide.L?.s4R ?? 0) > (P.base.L?.s4R ?? 0) ? 'good' : 'bad'} />
+        <Kpi label="D בשלוש — שורט" value={`${num(d3?.bySide.S?.s4R)} R`} sub={`${d3?.bySide.S?.n ?? 0} סיגנלים · בסיס שורט ${num(P.base.S?.s4R)}`} tone={(d3?.bySide.S?.s4R ?? 0) > (P.base.S?.s4R ?? 0) ? 'good' : 'bad'} />
+      </div>
+      <div className="card p-3 overflow-x-auto">
+        <h3 className="font-semibold mb-1">כל צירופי המסגרות — בכל תא: סיגנלים · ממוצע R בגרירה</h3>
+        <table className="w-full text-sm">
+          <thead className="text-xs text-slate-400">
+            <tr><th className="text-right pb-1">מצב בזמן הכניסה</th><th className="pb-1">חלק</th><th className="pb-1">הכול</th><th className="pb-1">שיפור</th><th className="pb-1">הלכו נכון</th><th className="pb-1">לונג</th><th className="pb-1">שורט</th><th className="pb-1">סיגנל 4 שעות</th><th className="pb-1">סיגנל 15 דקות</th><th className="pb-1">סיגנל 5 דקות</th></tr>
+          </thead>
+          <tbody>
+            {P.rows.map(r => (
+              <tr key={r.state} className={`border-b border-surface-border ${r.state === 'D3' ? 'bg-emerald-900/20' : ''}`}>
+                <td className="py-1 pr-2 text-right">{r.he}</td>
+                <td className="text-center text-slate-400">{pct(r.share)}</td>
+                <SynCell b={r.all} minN={syn.minN} />
+                <td className={`text-center font-semibold ${rColor(r.all.lift)}`}>{signed(r.all.lift)}</td>
+                <td className="text-center">{pct(r.all.rightDir1R)}</td>
+                <SynCell b={r.bySide.L} minN={syn.minN} />
+                <SynCell b={r.bySide.S} minN={syn.minN} />
+                {['240', '15', '5'].map(tf => <SynCell key={tf} b={r.byTf[tf]} minN={syn.minN} />)}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {d3 && (
+        <div className="grid lg:grid-cols-3 gap-4">
+          <div className="card p-3 overflow-x-auto">
+            <h3 className="font-semibold mb-1">D בשלוש — לפי נכס</h3>
+            <table className="w-full text-sm"><tbody>
+              {Object.entries(d3.bySym).map(([s, b]) => <tr key={s} className="border-b border-surface-border"><td className="py-1 text-right">{symHe(s)}</td><SynCell b={b} minN={syn.minN} /></tr>)}
+            </tbody></table>
+          </div>
+          <div className="card p-3 overflow-x-auto">
+            <h3 className="font-semibold mb-1">D בשלוש — לפי טריגר</h3>
+            <table className="w-full text-sm"><tbody>
+              {Object.entries(d3.byStrat).map(([s, b]) => <tr key={s} className="border-b border-surface-border"><td className="py-1 text-right">{syn.stratHe[s] ?? s}</td><SynCell b={b} minN={syn.minN} /></tr>)}
+            </tbody></table>
+          </div>
+          <div className="card p-3 overflow-x-auto">
+            <h3 className="font-semibold mb-1">D בשלוש — לפי רמת ההתראה</h3>
+            <table className="w-full text-sm"><tbody>
+              {Object.entries(P.d3Levels).map(([k, b]) => <tr key={k} className="border-b border-surface-border"><td className="py-1 text-right">רמה {k} ומעלה</td><SynCell b={b} minN={syn.minN} /></tr>)}
+            </tbody></table>
+          </div>
+        </div>
+      )}
+      <div className="grid lg:grid-cols-2 gap-4">
+        <div className="card p-3 overflow-x-auto">
+          <h3 className="font-semibold mb-1">בתוך הסינרגיה — אילו אישורים עוד משפרים</h3>
+          <p className="text-[11px] text-slate-500 mb-2">סיגנלים ב-D בשלוש המסגרות שיש בהם גם את האישור, מול כל סיגנלי D בשלוש. בכל שורה: סיגנלים · R · שיפור.</p>
+          <table className="w-full text-sm"><tbody>
+            {P.d3Flags.slice(0, 12).map(f => <tr key={f.flag} className="border-b border-surface-border"><td className="py-1 text-right">{f.he}</td><SynCell b={f} minN={syn.minN} /><td className={`text-center font-semibold ${rColor(f.lift)}`}>{signed(f.lift)}</td></tr>)}
+          </tbody></table>
+        </div>
+        <div className="card p-3 overflow-x-auto">
+          <h3 className="font-semibold mb-1">כמה מהזמן השוק בסינרגיה (לפי סיגנלי 5 דקות)</h3>
+          <table className="w-full text-sm">
+            <thead className="text-xs text-slate-400"><tr><th className="text-right pb-1">נכס</th><th className="pb-1">D בשלוש — לונג</th><th className="pb-1">D בשלוש — שורט</th><th className="pb-1">4 שעות ב-D</th><th className="pb-1">15 דקות ב-D</th><th className="pb-1">5 דקות ב-D</th></tr></thead>
+            <tbody>
+              {syms.map(s => { const t = syn.timeShare[s]; return <tr key={s} className="border-b border-surface-border"><td className="py-1 text-right">{symHe(s)}</td><td className="text-center">{pct(t.d3Long)}</td><td className="text-center">{pct(t.d3Short)}</td><td className="text-center">{pct(t.anyD240)}</td><td className="text-center">{pct(t.anyD15)}</td><td className="text-center">{pct(t.anyD5)}</td></tr> })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function TabHttBacktest() {
   const [stats, setStats] = useState<Stats | null>(null)
   const [path, setPath] = useState<PathStats | null>(null)
@@ -752,6 +865,7 @@ export default function TabHttBacktest() {
   const [combos, setCombos] = useState<CombosData | null>(null)
   const [levels, setLevels] = useState<LevelsData | null>(null)
   const [year, setYear] = useState<YearData | null>(null)
+  const [syn, setSyn] = useState<SynData | null>(null)
   const [comboGroup, setComboGroup] = useState<string>('all')
   const [comboSort, setComboSort] = useState<'byR' | 'byDir'>('byR')
   const [error, setError] = useState<string | null>(null)
@@ -772,7 +886,7 @@ export default function TabHttBacktest() {
       .then(r => (r.ok ? r.json() : null))
       .then(d => { if (d) setFib(d) })
       .catch(() => {})
-    for (const [file, setter] of [['rank', setRank], ['combos', setCombos], ['levels', setLevels], ['year', setYear]] as const) {
+    for (const [file, setter] of [['rank', setRank], ['combos', setCombos], ['levels', setLevels], ['year', setYear], ['synergy', setSyn]] as const) {
       fetch(`/htt-backtest/${file}.json`, { cache: 'no-store' })
         .then(r => (r.ok ? r.json() : null))
         .then(d => { if (d) (setter as (v: any) => void)(d) })
@@ -812,6 +926,8 @@ export default function TabHttBacktest() {
       </div>
 
       {year && <YearSection year={year} />}
+
+      {syn && <SynergySection syn={syn} />}
 
       <div className="pt-2 text-sm text-slate-500">⬇ הסעיפים הבאים — הבקטסט המקורי על טווח הנרות הטעון בגרף (קצר יותר מהשנה): אסטרטגיות, מסלול המחיר, דירוג, צירופים ופיבונאצ'י.</div>
 
