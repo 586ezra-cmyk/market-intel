@@ -886,6 +886,66 @@ function NestedSection({ nest }: { nest: NestedData }) {
   )
 }
 
+const DECISION_TRIGGERS: Array<[string, string, string, string, string]> = [
+  ['✈ טיסה (F)', 'פאזה D (או C כשמתג "טיסה קפדנית" כבוי) + מחוץ ל-60% המרכזיים של הטווח + BOS: נר 15m ומעלה שסוגר מעבר לפיבוט', 'מתחת ל-min(קצה C, פיבוט אחרון) / מעל ל-max', '10-4', '5m −0.02 · 15m −0.02 · 4H +0.31'],
+  ['כנף (W)', 'אחרי C/D + סגירה מעבר לקו הכנף (האלכסון של שני פיבוטים)', 'מעבר לפיבוט האחרון', '10-5/6/7', '5m +0.05 · 15m +0.07 · 4H +0.12'],
+  ['אורדר בלוק (O)', 'OB נרשם (התכווצות → מרווח גופים → נר סימון) + כניסה 21% לתוך הבלוק', 'מעבר לקצה הרחוק של הבלוק', '12-5', '5m +0.01 · 15m +0.29 · 4H +0.85 (בריטסט: 15m +0.34 · 4H +1.24)'],
+  ['W/M (M)', 'דאבל בוטום/טופ הושלם: סגירה מעבר לצוואר', 'מתחת לשפל השני / מעל השיא השני', 'חידוד 08-30', '5m +0.01 · 15m +0.11 · 4H +0.42'],
+  ['פריצה (B)', 'BOS או CHoCH בפאזה C או E, נר מאושר', 'מעבר לפיבוט האחרון', '48-1', '+0.03 בכל המסגרות'],
+]
+const DECISION_LEVELS: Array<[string, string, string, string]> = [
+  ['כל הסיגנלים', '+0.27 (379)', '+0.08 (6,188)', '+0.02 (18,913)'],
+  ['רמה 3 ומעלה', '+0.64 (142)', '+0.24 (1,329)', '+0.08 (2,900)'],
+  ['רמה 4 ומעלה', '+0.94 (87)', '+0.33 (592)', '+0.08 (1,201)'],
+  ['רמה 5 ומעלה', '+0.82 (43)', '+0.67 (240)', '−0.05 (400)'],
+]
+const CONNECTION_STEPS: Array<[string, string, 'done' | 'pending' | 'blocked']> = [
+  ['HTT Master עם בלוק ההתראות שמור ב-TradingView', 'שמור. לא מותקן על הלייאאוט שלך — מחכה ל"סגור"', 'pending'],
+  ['התראת TradingView: "Any alert() function call" על HTT Master עם webhook לשרת', 'נוצרת אחרי ההתקנה', 'pending'],
+  ['השרת: אירוע htt_setup → שמירה, הודעה בעברית, סינון לפי הרמה שנבחרה, שליחה לנושא "7+"', 'קוד מוכן. לא פרוס — הדחיפה לגיטהאב מחכה לאימות המייל שלך', 'blocked'],
+  ['האתר: הרמה המינימלית בטאב "ניהול התראות" + הסטטיסטיקה כאן', 'קוד מוכן, רץ מקומית. פריסה אחרי הדחיפה', 'blocked'],
+  ['בדיקת קצה-לקצה: webhook מדומה → טלגרם → השוואה לגרף', 'אחרי שלבים 1–3', 'pending'],
+]
+
+function DecisionsSection() {
+  const tone = (s: 'done' | 'pending' | 'blocked') => (s === 'done' ? 'text-emerald-400' : s === 'blocked' ? 'text-red-400' : 'text-amber-400')
+  const icon = (s: 'done' | 'pending' | 'blocked') => (s === 'done' ? '✅' : s === 'blocked' ? '⛔' : '⬜')
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-baseline justify-between gap-2 pt-2">
+        <h2 className="text-xl font-bold">🧭 ההחלטות של המערכת — למה נכנסים, איפה הסטופ, מתי מתריעים</h2>
+        <div className="text-xs text-slate-500">מהקוד עצמו (HTT Master + בלוק ההתראות) · המספרים = ממוצע R לעסקה בגרירה, שנה אחרונה · המסמך המלא: backtest/13_מסמך_ההחלטות.md</div>
+      </div>
+      <div className="card p-3 overflow-x-auto">
+        <h3 className="font-semibold mb-1">1. למה נכנסים — הטריגרים (סדר עדיפות: טיסה → כנף → אורדר בלוק → W/M → פריצה)</h3>
+        <table className="w-full text-sm">
+          <thead className="text-xs text-slate-400"><tr><th className="text-right pb-1">טריגר</th><th className="text-right pb-1">התנאי המלא בקוד</th><th className="text-right pb-1">הסטופ (הקורס, מרווח 0.1%)</th><th className="pb-1">שיעור</th><th className="text-right pb-1">מה נמדד</th></tr></thead>
+          <tbody>{DECISION_TRIGGERS.map(r => <tr key={r[0]} className="border-b border-surface-border align-top"><td className="py-1 pr-2 text-right whitespace-nowrap font-semibold">{r[0]}</td><td className="py-1 pr-2 text-right">{r[1]}</td><td className="py-1 pr-2 text-right">{r[2]}</td><td className="py-1 text-center whitespace-nowrap">{r[3]}</td><td className="py-1 text-right whitespace-nowrap">{r[4]}</td></tr>)}</tbody>
+        </table>
+        <p className="text-[11px] text-slate-500 mt-2">כלל משותף: הסיגנל תקף רק אם הסגירה בצד הנכון של הסטופ. היעד בהודעה = 1:3 מהסטופ; הניהול שנמדד כטוב ביותר: איזון אחרי 1R ואז גרירה מתחת/מעל הפיבוט האחרון.</p>
+      </div>
+      <div className="grid lg:grid-cols-2 gap-4">
+        <div className="card p-3 overflow-x-auto">
+          <h3 className="font-semibold mb-1">2. הרמה — מה הופך טריגר להתראה</h3>
+          <p className="text-xs text-slate-400 mb-2">רמה = אישורי דרגה 1 שנוכחים (ג'ודאס, אורדר בלוק, פאזה C, כניסה מ-FVG, חטיפת נזילות, קיל-זון, סשן לונדון, מבנה HTF תואם, FVG טרי, DD/DT) פחות אישורים נגד (פאזה D, "4+ אישורים", ווליום נמוך, AMD D, כיוון C תואם, HTF ב-C/D, יחס 1:3 אפשרי, iFVG, LPS/LPSY, ספרינג/UT). אירועים נספרים אם קרו ב-10 הנרות האחרונים. ה-webhook יוצא מרמה 1 והאתר מסנן לפי הרמה שבחרת.</p>
+          <table className="w-full text-sm">
+            <thead className="text-xs text-slate-400"><tr><th className="text-right pb-1">רמה</th><th className="pb-1">4 שעות</th><th className="pb-1">15 דקות</th><th className="pb-1">5 דקות</th></tr></thead>
+            <tbody>{DECISION_LEVELS.map(r => <tr key={r[0]} className="border-b border-surface-border"><td className="py-1 text-right">{r[0]}</td><td className="text-center">{r[1]}</td><td className="text-center">{r[2]}</td><td className="text-center">{r[3]}</td></tr>)}</tbody>
+          </table>
+          <p className="text-[11px] text-slate-500 mt-2">הצעה לסף: 4 שעות רמה 3 · 15 דקות רמה 4 · 5 דקות רק אורדר בלוק בריטסט ו-W/M.</p>
+        </div>
+        <div className="card p-3 overflow-x-auto">
+          <h3 className="font-semibold mb-1">3. החיבור — הצינור מקצה לקצה</h3>
+          <table className="w-full text-sm">
+            <tbody>{CONNECTION_STEPS.map((r, i) => <tr key={i} className="border-b border-surface-border align-top"><td className="py-1 pl-2 text-center">{icon(r[2])}</td><td className="py-1 pr-2 text-right">{r[0]}</td><td className={`py-1 text-right text-xs ${tone(r[2])}`}>{r[1]}</td></tr>)}</tbody>
+          </table>
+          <p className="text-[11px] text-slate-500 mt-2">ידוע כלא מדויק עדיין: פאזה C נמשכת נר אחד במנוע (בקורס היא כוללת את הטסט) · שורות המסגרות הגבוהות בדשבורד מחושבות על טווח הגרף בלבד (אמין מגרף שעה ומעלה) · טיסה שלילית ב-5m/15m · הרמה לא עובדת ב-5 דקות.</p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function TabHttBacktest() {
   const [stats, setStats] = useState<Stats | null>(null)
   const [path, setPath] = useState<PathStats | null>(null)
@@ -953,6 +1013,8 @@ export default function TabHttBacktest() {
           מובהק = לפחות {stats.minN} עסקאות
         </div>
       </div>
+
+      <DecisionsSection />
 
       {year && <YearSection year={year} />}
 
