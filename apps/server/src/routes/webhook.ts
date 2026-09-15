@@ -13,7 +13,7 @@ import { evaluateConfluence } from '../services/confluenceEngine'
 import { parseTF } from '../utils/timeframe'
 import type { Direction, Timeframe } from '@market/shared'
 import { getSetting } from './settings'
-import { saveAlert } from '../services/alertDispatcher'
+import { saveAlert, TOPIC_HIGH } from '../services/alertDispatcher'
 import { buildHttMessage, httFactors } from '../services/httSetup'
 
 const router = Router()
@@ -419,6 +419,7 @@ router.post('/tradingview', async (req: Request, res: Response) => {
           factorDetails: { htt: input },
           suppressTelegram: level < minLevel,
           bypassMinScore: true,
+          topicOverride: TOPIC_HIGH,   // זרם אחד: כל הסטאפים של HTT לנושא "7+", הרמה נבחרת באתר
         })
         res.json({ ok: true, alert, telegram: level >= minLevel, minLevel })
         break

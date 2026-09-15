@@ -36,6 +36,8 @@ export interface AlertPayload {
   suppressTelegram?: boolean
   /** HTT setups are gated by htt_min_score in the webhook route, not by the general min_score. */
   bypassMinScore?: boolean
+  /** Send to exactly this Telegram topic instead of the TF/category/high routing (HTT setups → the "7+" stream). */
+  topicOverride?: string
 }
 
 export async function saveAlert(payload: AlertPayload): Promise<Alert> {
@@ -99,7 +101,7 @@ export async function saveAlert(payload: AlertPayload): Promise<Alert> {
   if (payload.suppressTelegram) {
     console.log(`[Alert] ${payload.symbol} ${payload.timeframe} tier=site — stored only`)
   } else if (payload.bypassMinScore || payload.score >= minScore) {
-    sendTelegram(payload.messageHe, payload.score, payload.timeframe).catch(err =>
+    sendTelegram(payload.messageHe, payload.score, payload.timeframe, payload.topicOverride).catch(err =>
       console.error('[Telegram] Failed to send:', err)
     )
   } else {
@@ -286,7 +288,7 @@ export async function sendTelegram(
 }
 
 // Export topic constants so scheduler can use them
-export { TOPIC_BRIEFING, TOPIC_ECONOMIC }
+export { TOPIC_BRIEFING, TOPIC_ECONOMIC, TOPIC_HIGH }
 
 function dbRowToAlert(r: any): Alert & { entryPrice?: number | null; tp1Label?: string | null; tp2Label?: string | null; tp3Label?: string | null; r1?: string | null; r2?: string | null; r3?: string | null; slReason?: string | null } {
   return {
