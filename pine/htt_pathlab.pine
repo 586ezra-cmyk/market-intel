@@ -42,6 +42,11 @@ fvgMaxAge = input.int(200, "FVG: אורך חיים מקסימלי על הגרף 
 bbLen = input.int(20, "בולינגר: אורך", minval=5, group=g0)
 bbMult = input.float(2.0, "בולינגר: סטיות תקן", minval=0.5, step=0.25, group=g0)
 
+gWy = "וויקוף מתקדם (המצגת: חוקי הברזל, ריטסט הקריק, הקשר)"
+useCtx = input.bool(false, "חוק הקונטקסט: איסוף/פיזור חוזר לפי מגמת המסגרת הגבוהה (תהליך בלי קליימקס; ניעור נגד המגמה דורש קליימקס)", group=gWy)
+rtBars = input.int(40, "ריטסט קריק/אייס (BUTTC/RBTI): חלון נרות אחרי הקפיצה", minval=5, maxval=200, group=gWy)
+rtVolK = input.float(0.8, "ריטסט: ווליום הנר לעומת נר הקפיצה (מקסימום)", minval=0.1, maxval=2.0, step=0.1, group=gWy)
+
 gS = "סשנים (שעון ישראל)"
 sesAsia = input.session("0200-1000", "אסיה", group=gS)
 sesLon  = input.session("1000-1800", "לונדון", group=gS)
@@ -110,6 +115,9 @@ if is15New
 bos15Up = not na(c15b) and not na(lastPH) and c15a > lastPH and c15b <= lastPH
 bos15Dn = not na(c15b) and not na(lastPL) and c15a < lastPL and c15b >= lastPL
 bosUpF = tfMin >= 15 ? bosUp : bos15Up
+// ─── הקשר (חוק הקונטקסט מהמצגת): מבנה השוק במסגרת הגבוהה — 4H מתחת לשעה, יומי מתחת ל-4H, שבועי מעל ───
+ctxTF = tfMin < 60 ? "240" : tfMin < 240 ? "D" : "W"
+ctxMs = request.security(syminfo.tickerid, ctxTF, msDir, lookahead=barmerge.lookahead_off)
 bosDnF = tfMin >= 15 ? bosDn : bos15Dn
 
 // ─── וויקוף — לפי הקורס: A = קליימקס (SC/BC) → AR (33-10) · B = ST + איסוף נזילות · C = ניעור (ספרינג/UT) + טסט · D = תפיסת כיוון = ה-BOS הראשון אחרי C (48-1) · E = יציאה לדרך מעבר לקריק/אייס (41-5)
@@ -139,6 +147,24 @@ var float cOpp = na
 var float eExt = na
 var float eOpp = na
 var int aExtBar = na
+// המצגת (16/9): JAC/BUTTC, ניעור סופי, איסוף חוזר, איכות D
+var int jacBar = na
+var float jacLvl = na
+var float jacVol = na
+var int jacDir = 0
+var bool cTso = false
+var bool reacc = false
+var float dImpVol = 0.0
+var float dPullVol = 0.0
+var float dImpBody = 0.0
+var float dPullBody = 0.0
+var int dImpN = 0
+var int dPullN = 0
+var bool dSosOk = false
+volSma20 = ta.sma(volume, 20)
+pauseHi = ta.highest(high, 15)
+pauseLo = ta.lowest(low, 15)
+volHi30 = ta.highest(volume, 30)
 lo30 = ta.lowest(low, 30)
 hi30 = ta.highest(high, 30)
 // קליימקס בקצה של מגמה: SC = ווליום קיצוני בשפל 30 נרות אחרי ירידה; BC = בשיא אחרי עלייה. קליימקס באמצע תנועה אינו A
@@ -196,7 +222,7 @@ if phase == 2 or phase == 3 or phase == 4
         swpVol := math.max(swpVol, volume)
         swpRank := math.max(swpRank, volRank)
         if close > rLo
-            if (phase == 3 and not cDirOpen and cIsBull) or swpVol >= aVol * cVolK or swpRank >= climaxP
+            if ((phase == 3 and not cDirOpen and cIsBull) or swpVol >= aVol * cVolK or swpRank >= climaxP) and (not useCtx or ctxMs >= 0 or swpRank >= climaxP)
                 spring := true
             swpDir := 0
         else if close < rLo - rngH * 0.25 or bar_index - swpBar > 20
@@ -214,7 +240,7 @@ if phase == 2 or phase == 3 or phase == 4
         swpVol := math.max(swpVol, volume)
         swpRank := math.max(swpRank, volRank)
         if close < rHi
-            if (phase == 3 and not cDirOpen and not cIsBull) or swpVol >= aVol * cVolK or swpRank >= climaxP
+            if ((phase == 3 and not cDirOpen and not cIsBull) or swpVol >= aVol * cVolK or swpRank >= climaxP) and (not useCtx or ctxMs <= 0 or swpRank >= climaxP)
                 utSig := true
             swpDir := 0
         else if close > rHi + rngH * 0.25 or bar_index - swpBar > 20
@@ -229,10 +255,14 @@ if phase == 2 or phase == 3 or phase == 4
         phase := 0
 // ניעור נוסף באותו כיוון בזמן C = הרחבה של אותו ניעור (הקצה והנר הנגדי מתעדכנים, הקופסה לא זזה). ניעור מתוך D = C חדשה
 cExtNow = false
+tsoNow = false
 if spring or utSig
     sameC = phase == 3 and not cDirOpen and cIsBull == spring
     cExtNow := sameC
     keepOld = sameC and not na(cExt) and (spring ? swpExt >= cExt : swpExt <= cExt)
+    // ניעור סופי (TSO/TUT): ניעור נוסף באותו כיוון, עמוק יותר מקודמו ובווליום לא נמוך ממנו
+    tsoNow := sameC and not na(cExt) and not keepOld and swpVol >= nz(cVolC, 0)
+    cTso := sameC ? (cTso or tsoNow) : false
     phase := 3
     cIsBull := spring
     cBar := bar_index
@@ -365,6 +395,69 @@ if (scBar or bcBar) and (phase == 0 or ((phase == 5 and bar_index - eBar > 20 or
     swpDir := 0
     testOK := false
     noC := false
+// איסוף/פיזור חוזר (המצגת, מודלים 3-4): תחנת התרעננות בתוך מגמת המסגרת הגבוהה, בלי קליימקס — נפתחת ישר ב-B (רק עם חוק הקונטקסט)
+pauseRng = pauseHi - pauseLo
+impUp = close - close[30] >= atr * 3
+impDn = close[30] - close >= atr * 3
+if useCtx and phase == 0 and pauseRng > 0 and pauseRng < atr * 3 and ((ctxMs > 0 and impUp) or (ctxMs < 0 and impDn))
+    phase := 2
+    procDir := ctxMs > 0 ? 1 : -1
+    aVol := volHi30
+    aBar := bar_index - 15
+    bBar := bar_index
+    aExtBar := bar_index - 15
+    rHi := pauseHi
+    rLo := pauseLo
+    cIsBull := ctxMs > 0
+    swpDir := 0
+    testOK := false
+    noC := false
+    reacc := true
+if phase == 0 or phase == 1
+    reacc := false
+// ─── JAC / BUTTC (איסוף) · FTI / RBTI (פיזור) — המצגת: הקפיצה מעבר לקריק וחזרה אליו בווליום נמוך = האישור לפני הזינוק ───
+jacUp = false
+jacDn = false
+if (phase == 4 or phase == 5) and cIsBull and not na(rHi) and close > rHi and close[1] <= rHi and jacDir != 1
+    jacUp := true
+    jacDir := 1
+    jacBar := bar_index
+    jacLvl := rHi
+    jacVol := volume
+if (phase == 4 or phase == 5) and not cIsBull and not na(rLo) and close < rLo and close[1] >= rLo and jacDir != -1
+    jacDn := true
+    jacDir := -1
+    jacBar := bar_index
+    jacLvl := rLo
+    jacVol := volume
+buttcL = jacDir == 1 and not jacUp and bar_index - jacBar <= rtBars and low <= jacLvl + tol and close > jacLvl and close > open and volume <= jacVol * rtVolK and barstate.isconfirmed
+rbtiS = jacDir == -1 and not jacDn and bar_index - jacBar <= rtBars and high >= jacLvl - tol and close < jacLvl and close < open and volume <= jacVol * rtVolK and barstate.isconfirmed
+if buttcL or rbtiS or (jacDir != 0 and bar_index - jacBar > rtBars) or (jacDir == 1 and close < jacLvl) or (jacDir == -1 and close > jacLvl) or phase <= 3
+    jacDir := 0
+// ─── חוקי הברזל של פאזה D (המצגת, שקף 19): מאמץ מול תוצאה · זוויות התקפה · SOS אמיתי · מגנט לקריק/אייס ───
+if phase == 4 and phase[1] != 4
+    dImpVol := 0.0
+    dPullVol := 0.0
+    dImpBody := 0.0
+    dPullBody := 0.0
+    dImpN := 0
+    dPullN := 0
+    dSosOk := volume > volSma20
+if phase == 4
+    if cIsBull ? close > open : close < open
+        dImpVol += volume
+        dImpBody += math.abs(close - open)
+        dImpN += 1
+    else
+        dPullVol += volume
+        dPullBody += math.abs(close - open)
+        dPullN += 1
+dqEffort = dImpN >= 2 and dPullN >= 2 and dPullVol / math.max(dPullN, 1) < dImpVol / math.max(dImpN, 1) * 0.85
+dqAngle = dImpN >= 2 and dPullN >= 2 and dImpBody / math.max(dImpN, 1) > dPullBody / math.max(dPullN, 1) * 1.2
+dqSos = dSosOk
+rng4 = ta.highest(high, 4) - ta.lowest(low, 4)
+dqMagnet = phase == 4 and rng4 < atr * 1.5 and (cIsBull ? (rHi - close <= tol * 2 and close <= rHi + tol) : (close - rLo <= tol * 2 and close >= rLo - tol))
+dQ = phase == 4 ? (dqEffort ? 1 : 0) + (dqAngle ? 1 : 0) + (dqSos ? 1 : 0) + (dqMagnet ? 1 : 0) : 0
 inMid = phase > 0 and not na(rHi) and close < rHi - (rHi - rLo) * 0.2 and close > rLo + (rHi - rLo) * 0.2
 var float flipPx = na
 var int flipBar = na
@@ -961,6 +1054,12 @@ evL_atPool = ta.barssince(atPoolL) <= recN
 evS_atPool = ta.barssince(atPoolS) <= recN
 evL_orBrk = ta.barssince(orBrkUp) <= recN
 evS_orBrk = ta.barssince(orBrkDn) <= recN
+evL_jac = ta.barssince(jacUp) <= recN
+evS_jac = ta.barssince(jacDn) <= recN
+evL_crkRt = ta.barssince(buttcL) <= recN
+evS_crkRt = ta.barssince(rbtiS) <= recN
+evL_tso = ta.barssince(tsoNow and spring) <= recN
+evS_tso = ta.barssince(tsoNow and utSig) <= recN
 f_flags(bool isL) =>
     string s = ""
     s += (isL ? evL_bos : evS_bos) ? "1" : "0"
@@ -987,6 +1086,9 @@ f_flags(bool isL) =>
     s += (isL ? evL_ifvgAt : evS_ifvgAt) ? "1" : "0"
     s += (isL ? evL_atPool : evS_atPool) ? "1" : "0"
     s += (isL ? evL_orBrk : evS_orBrk) ? "1" : "0"
+    s += (isL ? evL_jac : evS_jac) ? "1" : "0"
+    s += (isL ? evL_crkRt : evS_crkRt) ? "1" : "0"
+    s += (isL ? evL_tso : evS_tso) ? "1" : "0"
     s += (isL ? (testOK) : (testOK)) ? "1" : "0"
     s += (isL ? (not inPrem) : (inPrem)) ? "1" : "0"
     s += (isL ? (inKZ) : (inKZ)) ? "1" : "0"
@@ -1013,6 +1115,11 @@ f_flags(bool isL) =>
     s += (isL ? (vixHigh) : (vixHigh)) ? "1" : "0"
     s += (isL ? (vixSpike) : (vixSpike)) ? "1" : "0"
     s += (isL ? (vixDivBull) : (vixDivBear)) ? "1" : "0"
+    s += (isL ? (dQ >= 2) : (dQ >= 2)) ? "1" : "0"
+    s += (isL ? (dQ >= 3) : (dQ >= 3)) ? "1" : "0"
+    s += (isL ? (dqMagnet) : (dqMagnet)) ? "1" : "0"
+    s += (isL ? (cTso and cIsBull) : (cTso and not cIsBull)) ? "1" : "0"
+    s += (isL ? (reacc and cIsBull) : (reacc and not cIsBull)) ? "1" : "0"
     s
 // ── מעקב מסלול: מערכים מקבילים, סיגנל = שורה ──
 var string[] kT = array.new<string>()
@@ -1096,14 +1203,16 @@ f_rm(int i) =>
     array.remove(be2, i), array.remove(be3, i), array.remove(st4, i), array.remove(st6, i)
     array.remove(kFS, i), array.remove(kF0, i), array.remove(kF1, i), array.remove(kF2, i), array.remove(kRet, i), array.remove(kPosR, i), array.remove(kPosD, i), array.remove(kPosW, i), array.remove(kPh240, i), array.remove(kBu240, i), array.remove(kPh15, i), array.remove(kBu15, i), array.remove(kPh5, i), array.remove(kBu5, i)
     array.remove(kFSBar, i), array.remove(kF0Bar, i), array.remove(kF1Bar, i), array.remove(kF2Bar, i)
-f_add(string typ, bool isL, float stopPx, float entryPx) =>
+flagsL = f_flags(true)
+flagsS = f_flags(false)
+f_add(string typ, bool isL, float stopPx, float entryPx, string fl) =>
     rk = math.abs(entryPx - stopPx)
     ok = rk > 0 and (isL ? entryPx > stopPx : entryPx < stopPx)
     if ok
         // יעד מבני: הצד השני של הטווח בתהליך, אחרת בריכת נזילות, אחרת קיצון 100 נרות. חייב להיות מעבר לכניסה
         float tg = isL ? (phase > 0 and not na(rHi) and rHi > entryPx ? rHi : not na(poolHi) and poolHi > entryPx ? poolHi : hi100 > entryPx ? hi100 : na) : (phase > 0 and not na(rLo) and rLo < entryPx ? rLo : not na(poolLo) and poolLo < entryPx ? poolLo : lo100 < entryPx ? lo100 : na)
         array.push(kT, typ), array.push(kL, isL), array.push(kE, entryPx), array.push(kS, stopPx), array.push(kRk, rk), array.push(kTg, tg)
-        array.push(kB0, bar_index), array.push(kT0, time), array.push(kFl, f_flags(isL)), array.push(kSes, sesIdx), array.push(kPh, phase), array.push(kCf, isL ? confBull : confBear)
+        array.push(kB0, bar_index), array.push(kT0, time), array.push(kFl, fl), array.push(kSes, sesIdx), array.push(kPh, phase), array.push(kCf, isL ? confBull : confBear)
         array.push(kMFE, 0.0), array.push(kMAE, 0.0), array.push(kMFEs, 0.0), array.push(kStopBar, -1), array.push(kB1, -1), array.push(kB2, -1), array.push(kB3, -1)
         array.push(kMAEb1, 0.0), array.push(kMAEb2, 0.0), array.push(kTgBar, -1), array.push(kHH, entryPx)
         array.push(s1, float(na)), array.push(s2, float(na)), array.push(s3, float(na)), array.push(s4, float(na)), array.push(s5, float(na)), array.push(s6, float(na))
@@ -1244,15 +1353,18 @@ if array.size(kT) > 0
 // ── סיגנלים חדשים (אותם טריגרים וסטופים כמו במנוע הבקטסט של הגרף) ──
 buf2 = stopBuf / 100.0
 if flyLong or flyShort
-    f_add("F", flyLong, flyLong ? math.min(nz(cExt, low), nz(lastPL, low)) * (1 - buf2) : math.max(nz(cExt, high), nz(lastPH, high)) * (1 + buf2), close)
+    f_add("F", flyLong, flyLong ? math.min(nz(cExt, low), nz(lastPL, low)) * (1 - buf2) : math.max(nz(cExt, high), nz(lastPH, high)) * (1 + buf2), close, flyLong ? flagsL : flagsS)
     // G = טיסה עם הסטופ של המשתמש: מתחת לשפל שיצר את ה-BOS/צ'וץ' (הפיבוט האחרון), לא הנמוך מבין שניהם
-    f_add("G", flyLong, flyLong ? nz(lastPL, low) * (1 - buf2) : nz(lastPH, high) * (1 + buf2), close)
+    f_add("G", flyLong, flyLong ? nz(lastPL, low) * (1 - buf2) : nz(lastPH, high) * (1 + buf2), close, flyLong ? flagsL : flagsS)
 if wingLong or wingShort
-    f_add("W", wingLong, wingLong ? nz(lastPL, low) * (1 - buf2) : nz(lastPH, high) * (1 + buf2), close)
+    f_add("W", wingLong, wingLong ? nz(lastPL, low) * (1 - buf2) : nz(lastPH, high) * (1 + buf2), close, wingLong ? flagsL : flagsS)
 if obLong or obShort
-    f_add("O", obLong, obLong ? obLBot * (1 - buf2) : obSTop * (1 + buf2), close)
+    f_add("O", obLong, obLong ? obLBot * (1 - buf2) : obSTop * (1 + buf2), close, obLong ? flagsL : flagsS)
 if wSig or mSig
-    f_add("M", wSig, wSig ? nz(wLow2, low) * (1 - buf2) : nz(mHigh2, high) * (1 + buf2), close)
+    f_add("M", wSig, wSig ? nz(wLow2, low) * (1 - buf2) : nz(mHigh2, high) * (1 + buf2), close, wSig ? flagsL : flagsS)
+// K = ריטסט הקריק/אייס אחרי הקפיצה (BUTTC/RBTI, המצגת): סטופ מעבר לקו או לשפל/שיא נר הריטסט
+if buttcL or rbtiS
+    f_add("K", buttcL, buttcL ? math.min(low, jacLvl) * (1 - buf2) : math.max(high, jacLvl) * (1 + buf2), close, buttcL ? flagsL : flagsS)
 // R = אורדר בלוק בכניסה בריטסט (הקורס 12-6: לימיט 21% לתוך הבלוק מהקצה הקרוב, סטופ מעבר לקצה הרחוק), עד 30 נרות להתמלא
 var float[] pdPx = array.new<float>()
 var float[] pdSt = array.new<float>()
@@ -1274,7 +1386,7 @@ if array.size(pdPx) > 0
             array.remove(pdPx, pi), array.remove(pdSt, pi), array.remove(pdBar, pi), array.remove(pdL, pi)
         else if bar_index > array.get(pdBar, pi) and (pL ? low <= pPx : high >= pPx)
             obRetFills += 1
-            f_add("R", pL, array.get(pdSt, pi), pPx)
+            f_add("R", pL, array.get(pdSt, pi), pPx, pL ? flagsL : flagsS)
             array.remove(pdPx, pi), array.remove(pdSt, pi), array.remove(pdBar, pi), array.remove(pdL, pi)
 // X = "3 אישורים = טריגר" (המשתמש): אישור חדש מגיע כשכבר יש 3+ אישורים בכיוון. סטופ מתחת למבנה שיצר את האישורים (פיבוט אחרון / שפל 10 נרות)
 xCntL = (evL_bos ? 1 : 0) + (evL_choch ? 1 : 0) + (evL_sweep ? 1 : 0) + (evL_smt ? 1 : 0) + (evL_ismt ? 1 : 0) + (evL_ifvg ? 1 : 0) + (evL_fvg ? 1 : 0) + (evL_judas ? 1 : 0) + (evL_tweezer ? 1 : 0) + (evL_shake ? 1 : 0) + (evL_volC ? 1 : 0) + (evL_lps ? 1 : 0) + (evL_gap ? 1 : 0) + (evL_ob ? 1 : 0) + (evL_wm ? 1 : 0) + (evL_ddt ? 1 : 0) + (evL_bb ? 1 : 0) + (evL_fvgAt ? 1 : 0) + (evL_ifvgAt ? 1 : 0) + (evL_atPool ? 1 : 0) + (evL_orBrk ? 1 : 0) + (evL_climax ? 1 : 0) + (atIceL ? 1 : 0) + (atHtfL ? 1 : 0) + (atSesL ? 1 : 0) + (testOK ? 1 : 0)
@@ -1285,15 +1397,15 @@ xL = xCntL >= 3 and xCntL > xCntL[1] and bar_index - xLastL > 10 and barstate.is
 xS = xCntS >= 3 and xCntS > xCntS[1] and bar_index - xLastS > 10 and barstate.isconfirmed
 if xL
     xLastL := bar_index
-    f_add("X", true, math.min(nz(lastPL, low), lo10) * (1 - buf2), close)
+    f_add("X", true, math.min(nz(lastPL, low), lo10) * (1 - buf2), close, flagsL)
 if xS
     xLastS := bar_index
-    f_add("X", false, math.max(nz(lastPH, high), hi10) * (1 + buf2), close)
+    f_add("X", false, math.max(nz(lastPH, high), hi10) * (1 + buf2), close, flagsS)
 // טריגר פריצה (בקשת המשתמש): BOS/CHoCH בפאזה C או E, סטופ מעבר לפיבוט האחרון
 brkL = (bosUp or chochUp) and (phase == 3 or phase == 5) and barstate.isconfirmed
 brkS = (bosDn or chochDn) and (phase == 3 or phase == 5) and barstate.isconfirmed
 if brkL or brkS
-    f_add("B", brkL, brkL ? nz(lastPL, low) * (1 - buf2) : nz(lastPH, high) * (1 + buf2), close)
+    f_add("B", brkL, brkL ? nz(lastPL, low) * (1 - buf2) : nz(lastPH, high) * (1 + buf2), close, brkL ? flagsL : flagsS)
 var int firstT = na
 if na(firstT)
     firstT := time
@@ -1311,8 +1423,8 @@ if array.size(kPh240) > 0
         array.set(kPh5, j, nz(ph5, -1))
         array.set(kBu5, j, nz(bu5, -1))
 // ציר הזמן של הפאזות במסגרת הגרף: שורת H בכל שינוי פאזה/כיוון + פעימה כל 100 נרות (לסינרגיה בין מסגרות מחוץ ל-TV)
-if phase != phase[1] or cIsBull != cIsBull[1] or bar_index % 100 == 0
-    pBuf := pBuf + "H|" + str.tostring(time) + "|" + str.tostring(phase) + "|" + (cIsBull ? "1" : "0") + "\n"
+if phase != phase[1] or cIsBull != cIsBull[1] or dQ != dQ[1] or bar_index % 100 == 0
+    pBuf := pBuf + "H|" + str.tostring(time) + "|" + str.tostring(phase) + "|" + (cIsBull ? "1" : "0") + "|" + str.tostring(dQ) + "\n"
     pBufN += 1
     if pBufN >= 8
         hb = label.new(bar_index, close, pBuf, xloc=xloc.bar_index, style=label.style_none, textcolor=color.new(color.white, 100), size=size.tiny)

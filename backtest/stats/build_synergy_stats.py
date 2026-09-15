@@ -69,7 +69,7 @@ def timelines(raw):
                 t = int(p[1])
                 if t < minT or t in rows:
                     continue
-                rows[t] = (int(p[2]), int(p[3]))
+                rows[t] = (int(p[2]), int(p[3]), int(p[4]) if len(p) > 4 and p[4].lstrip('-').isdigit() else -1)
         ts = sorted(rows)
         tl[(cb['sym'], res)] = (ts, [rows[t] for t in ts])
     return tl

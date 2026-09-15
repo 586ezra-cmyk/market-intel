@@ -15,6 +15,8 @@ export const HTT_FLAG_HE: Record<string, string> = {
   phC: 'פאזה C', phD: 'פאזה D', phE: 'פאזה E', phAB: 'פאזה A/B', cDir: 'כיוון C תואם', clues3: '3+ רמזים',
   volLow: 'ווליום נמוך', htfMs: 'מבנה HTF תואם', htfCD: 'HTF ב-C/D תואם', amdD: 'AMD D', conf4: '4+ אישורים',
   rrOk: 'יחס 1:3 אפשרי', atEdge: 'הגיע לאייס/קריק', atHtfLvl: 'רמת 4H/יומי/שבועי', atSesLvl: 'רמת סשן/אסיה', bbSq: 'התכווצות בולינגר',
+  vixOk: 'VIX תומך', vixHigh: 'VIX מעל 20', vixSpike: 'זינוק VIX', vixDiv: 'דיברגנס VIX',
+  jac: 'JAC/FTI — קפיצה מעבר לקריק/אייס', crkRt: 'BUTTC/RBTI — ריטסט הקריק/אייס', tso: 'ניעור סופי (TSO/TUT)', dq2: 'איכות D ≥ 2', dq3: 'איכות D ≥ 3', dqMag: 'מגנט לקריק/אייס', cTso: 'C עם ניעור סופי', reacc: 'איסוף/פיזור חוזר',
 }
 
 /** Map HTT keys onto the site's fixed factor vocabulary (for the alerts tab chips). */
@@ -42,7 +44,7 @@ export interface HttSetupInput {
   rsi?: number | null
 }
 
-const TRIGGER_HE: Record<string, string> = { F: 'טיסה', W: 'שבירת כנף', O: 'אורדר בלוק', M: 'W/M', B: 'פריצה (BOS/CHoCH)' }
+const TRIGGER_HE: Record<string, string> = { F: 'טיסה', W: 'שבירת כנף', O: 'אורדר בלוק', M: 'W/M', K: 'ריטסט הקריק/אייס (BUTTC/RBTI)', B: 'פריצה (BOS/CHoCH)' }
 const SR_HE: Record<string, string> = { ice: 'אייס (תמיכת הטווח)', creek: 'קריק (התנגדות הטווח)', htf: 'רמת 4H/יומי/שבועי', ses: 'רמת סשן/אסיה', pool: 'בריכת נזילות', fvg: 'FVG', ifvg: 'iFVG', ob: 'אורדר בלוק' }
 
 export function httFactors(keys: string[]): AlertFactor[] {

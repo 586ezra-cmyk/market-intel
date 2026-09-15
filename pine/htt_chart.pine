@@ -41,6 +41,11 @@ fvgMaxAge = input.int(200, "FVG: אורך חיים מקסימלי על הגרף 
 bbLen = input.int(20, "בולינגר: אורך", minval=5, group=g0)
 bbMult = input.float(2.0, "בולינגר: סטיות תקן", minval=0.5, step=0.25, group=g0)
 
+gWy = "וויקוף מתקדם (המצגת: חוקי הברזל, ריטסט הקריק, הקשר)"
+useCtx = input.bool(false, "חוק הקונטקסט: איסוף/פיזור חוזר לפי מגמת המסגרת הגבוהה (תהליך בלי קליימקס; ניעור נגד המגמה דורש קליימקס)", group=gWy)
+rtBars = input.int(40, "ריטסט קריק/אייס (BUTTC/RBTI): חלון נרות אחרי הקפיצה", minval=5, maxval=200, group=gWy)
+rtVolK = input.float(0.8, "ריטסט: ווליום הנר לעומת נר הקפיצה (מקסימום)", minval=0.1, maxval=2.0, step=0.1, group=gWy)
+
 gS = "סשנים (שעון ישראל)"
 sesAsia = input.session("0200-1000", "אסיה", group=gS)
 sesLon  = input.session("1000-1800", "לונדון", group=gS)
@@ -109,6 +114,9 @@ if is15New
 bos15Up = not na(c15b) and not na(lastPH) and c15a > lastPH and c15b <= lastPH
 bos15Dn = not na(c15b) and not na(lastPL) and c15a < lastPL and c15b >= lastPL
 bosUpF = tfMin >= 15 ? bosUp : bos15Up
+// ─── הקשר (חוק הקונטקסט מהמצגת): מבנה השוק במסגרת הגבוהה — 4H מתחת לשעה, יומי מתחת ל-4H, שבועי מעל ───
+ctxTF = tfMin < 60 ? "240" : tfMin < 240 ? "D" : "W"
+ctxMs = request.security(syminfo.tickerid, ctxTF, msDir, lookahead=barmerge.lookahead_off)
 bosDnF = tfMin >= 15 ? bosDn : bos15Dn
 
 // ─── וויקוף — לפי הקורס: A = קליימקס (SC/BC) → AR (33-10) · B = ST + איסוף נזילות · C = ניעור (ספרינג/UT) + טסט · D = תפיסת כיוון = ה-BOS הראשון אחרי C (48-1) · E = יציאה לדרך מעבר לקריק/אייס (41-5)
@@ -138,6 +146,24 @@ var float cOpp = na
 var float eExt = na
 var float eOpp = na
 var int aExtBar = na
+// המצגת (16/9): JAC/BUTTC, ניעור סופי, איסוף חוזר, איכות D
+var int jacBar = na
+var float jacLvl = na
+var float jacVol = na
+var int jacDir = 0
+var bool cTso = false
+var bool reacc = false
+var float dImpVol = 0.0
+var float dPullVol = 0.0
+var float dImpBody = 0.0
+var float dPullBody = 0.0
+var int dImpN = 0
+var int dPullN = 0
+var bool dSosOk = false
+volSma20 = ta.sma(volume, 20)
+pauseHi = ta.highest(high, 15)
+pauseLo = ta.lowest(low, 15)
+volHi30 = ta.highest(volume, 30)
 lo30 = ta.lowest(low, 30)
 hi30 = ta.highest(high, 30)
 // קליימקס בקצה של מגמה: SC = ווליום קיצוני בשפל 30 נרות אחרי ירידה; BC = בשיא אחרי עלייה. קליימקס באמצע תנועה אינו A
@@ -195,7 +221,7 @@ if phase == 2 or phase == 3 or phase == 4
         swpVol := math.max(swpVol, volume)
         swpRank := math.max(swpRank, volRank)
         if close > rLo
-            if (phase == 3 and not cDirOpen and cIsBull) or swpVol >= aVol * cVolK or swpRank >= climaxP
+            if ((phase == 3 and not cDirOpen and cIsBull) or swpVol >= aVol * cVolK or swpRank >= climaxP) and (not useCtx or ctxMs >= 0 or swpRank >= climaxP)
                 spring := true
             swpDir := 0
         else if close < rLo - rngH * 0.25 or bar_index - swpBar > 20
@@ -213,7 +239,7 @@ if phase == 2 or phase == 3 or phase == 4
         swpVol := math.max(swpVol, volume)
         swpRank := math.max(swpRank, volRank)
         if close < rHi
-            if (phase == 3 and not cDirOpen and not cIsBull) or swpVol >= aVol * cVolK or swpRank >= climaxP
+            if ((phase == 3 and not cDirOpen and not cIsBull) or swpVol >= aVol * cVolK or swpRank >= climaxP) and (not useCtx or ctxMs <= 0 or swpRank >= climaxP)
                 utSig := true
             swpDir := 0
         else if close > rHi + rngH * 0.25 or bar_index - swpBar > 20
@@ -228,10 +254,14 @@ if phase == 2 or phase == 3 or phase == 4
         phase := 0
 // ניעור נוסף באותו כיוון בזמן C = הרחבה של אותו ניעור (הקצה והנר הנגדי מתעדכנים, הקופסה לא זזה). ניעור מתוך D = C חדשה
 cExtNow = false
+tsoNow = false
 if spring or utSig
     sameC = phase == 3 and not cDirOpen and cIsBull == spring
     cExtNow := sameC
     keepOld = sameC and not na(cExt) and (spring ? swpExt >= cExt : swpExt <= cExt)
+    // ניעור סופי (TSO/TUT): ניעור נוסף באותו כיוון, עמוק יותר מקודמו ובווליום לא נמוך ממנו
+    tsoNow := sameC and not na(cExt) and not keepOld and swpVol >= nz(cVolC, 0)
+    cTso := sameC ? (cTso or tsoNow) : false
     phase := 3
     cIsBull := spring
     cBar := bar_index
@@ -364,6 +394,69 @@ if (scBar or bcBar) and (phase == 0 or ((phase == 5 and bar_index - eBar > 20 or
     swpDir := 0
     testOK := false
     noC := false
+// איסוף/פיזור חוזר (המצגת, מודלים 3-4): תחנת התרעננות בתוך מגמת המסגרת הגבוהה, בלי קליימקס — נפתחת ישר ב-B (רק עם חוק הקונטקסט)
+pauseRng = pauseHi - pauseLo
+impUp = close - close[30] >= atr * 3
+impDn = close[30] - close >= atr * 3
+if useCtx and phase == 0 and pauseRng > 0 and pauseRng < atr * 3 and ((ctxMs > 0 and impUp) or (ctxMs < 0 and impDn))
+    phase := 2
+    procDir := ctxMs > 0 ? 1 : -1
+    aVol := volHi30
+    aBar := bar_index - 15
+    bBar := bar_index
+    aExtBar := bar_index - 15
+    rHi := pauseHi
+    rLo := pauseLo
+    cIsBull := ctxMs > 0
+    swpDir := 0
+    testOK := false
+    noC := false
+    reacc := true
+if phase == 0 or phase == 1
+    reacc := false
+// ─── JAC / BUTTC (איסוף) · FTI / RBTI (פיזור) — המצגת: הקפיצה מעבר לקריק וחזרה אליו בווליום נמוך = האישור לפני הזינוק ───
+jacUp = false
+jacDn = false
+if (phase == 4 or phase == 5) and cIsBull and not na(rHi) and close > rHi and close[1] <= rHi and jacDir != 1
+    jacUp := true
+    jacDir := 1
+    jacBar := bar_index
+    jacLvl := rHi
+    jacVol := volume
+if (phase == 4 or phase == 5) and not cIsBull and not na(rLo) and close < rLo and close[1] >= rLo and jacDir != -1
+    jacDn := true
+    jacDir := -1
+    jacBar := bar_index
+    jacLvl := rLo
+    jacVol := volume
+buttcL = jacDir == 1 and not jacUp and bar_index - jacBar <= rtBars and low <= jacLvl + tol and close > jacLvl and close > open and volume <= jacVol * rtVolK and barstate.isconfirmed
+rbtiS = jacDir == -1 and not jacDn and bar_index - jacBar <= rtBars and high >= jacLvl - tol and close < jacLvl and close < open and volume <= jacVol * rtVolK and barstate.isconfirmed
+if buttcL or rbtiS or (jacDir != 0 and bar_index - jacBar > rtBars) or (jacDir == 1 and close < jacLvl) or (jacDir == -1 and close > jacLvl) or phase <= 3
+    jacDir := 0
+// ─── חוקי הברזל של פאזה D (המצגת, שקף 19): מאמץ מול תוצאה · זוויות התקפה · SOS אמיתי · מגנט לקריק/אייס ───
+if phase == 4 and phase[1] != 4
+    dImpVol := 0.0
+    dPullVol := 0.0
+    dImpBody := 0.0
+    dPullBody := 0.0
+    dImpN := 0
+    dPullN := 0
+    dSosOk := volume > volSma20
+if phase == 4
+    if cIsBull ? close > open : close < open
+        dImpVol += volume
+        dImpBody += math.abs(close - open)
+        dImpN += 1
+    else
+        dPullVol += volume
+        dPullBody += math.abs(close - open)
+        dPullN += 1
+dqEffort = dImpN >= 2 and dPullN >= 2 and dPullVol / math.max(dPullN, 1) < dImpVol / math.max(dImpN, 1) * 0.85
+dqAngle = dImpN >= 2 and dPullN >= 2 and dImpBody / math.max(dImpN, 1) > dPullBody / math.max(dPullN, 1) * 1.2
+dqSos = dSosOk
+rng4 = ta.highest(high, 4) - ta.lowest(low, 4)
+dqMagnet = phase == 4 and rng4 < atr * 1.5 and (cIsBull ? (rHi - close <= tol * 2 and close <= rHi + tol) : (close - rLo <= tol * 2 and close >= rLo - tol))
+dQ = phase == 4 ? (dqEffort ? 1 : 0) + (dqAngle ? 1 : 0) + (dqSos ? 1 : 0) + (dqMagnet ? 1 : 0) : 0
 inMid = phase > 0 and not na(rHi) and close < rHi - (rHi - rLo) * 0.2 and close > rLo + (rHi - rLo) * 0.2
 var float flipPx = na
 var int flipBar = na
@@ -813,6 +906,7 @@ sArm    = input.bool(true, "⏳ — סטאפ נפתח + קו BOS ממתין", gr
 sSpring = input.bool(true, "S — ספרינג", group=gV2)
 sUT     = input.bool(true, "U — אפ-טראסט", group=gV2)
 sTest   = input.bool(true, "T — טסט", group=gV2)
+sAdv    = input.bool(true, "JAC / BUTTC / TSO — מונחי המצגת", group=gV2)
 sFlyS   = input.bool(true, "✈ — טיסה", group=gV2)
 sWingS  = input.bool(true, "כנף — שבירת כנף", group=gV2)
 sOBs    = input.bool(true, "OB — אורדר בלוק", group=gV2)
@@ -1185,6 +1279,15 @@ f_mark(mWyk and (sSpring or sUT) and volC, "V", tipVolC, color.new(color.purple,
 f_mark(mWyk and sSpring and (volDirUp or lpsMark), "LPS", tipLPS, color.new(color.green, 0), false, size.small)
 f_mark(mWyk and sUT and (volDirDn or lpsyMark), "LPSY", tipLPSY, color.new(color.red, 0), true, size.small)
 f_mark(mWyk and sTest and testOK and not testOK[1], "T", tipTest, color.new(color.green, 35), false, size.tiny)
+tipJac = "JAC / FTI: הקפיצה מעבר לקריק (איסוף) או שבירת הקרח (פיזור) — הסגירה הראשונה מחוץ לטווח בפאזה D. המצגת: מכאן מחכים לחזרה לקו (BUTTC/RBTI) כאישור לפני הזינוק"
+tipRt = "BUTTC / RBTI: חזרה לקריק/אייס אחרי הקפיצה, בווליום נמוך מנר הקפיצה, וסגירה בכיוון — הכניסה לפי המצגת. סטופ מעבר לקו"
+tipTso = "TSO / TUT — ניעור סופי: ניעור נוסף באותו כיוון, עמוק יותר מקודמו ובווליום לא נמוך ממנו. המצגת: הניעור שנועד ללכוד את הצד השני לפני ההכרעה"
+f_mark(mWyk and sAdv and jacUp, "JAC", tipJac, color.new(color.green, 20), false, size.tiny)
+f_mark(mWyk and sAdv and jacDn, "FTI", tipJac, color.new(color.red, 20), true, size.tiny)
+f_mark(mWyk and sAdv and buttcL, "BUTTC", tipRt, color.new(color.lime, 0), false, size.small)
+f_mark(mWyk and sAdv and rbtiS, "RBTI", tipRt, color.new(color.red, 0), true, size.small)
+f_mark(mWyk and sAdv and tsoNow and spring, "TSO", tipTso, color.new(color.green, 0), false, size.small)
+f_mark(mWyk and sAdv and tsoNow and utSig, "TUT", tipTso, color.new(color.orange, 0), true, size.small)
 f_mark(sFlyS and flyLong, "✈", tipFlyL, color.new(color.green, 0), false, size.normal)
 f_mark(sFlyS and flyShort, "✈", tipFlyS, color.new(color.red, 0), true, size.normal)
 f_mark(sWingS and wingShort, "כנף", tipWingS, color.new(color.orange, 0), true, size.small)
@@ -1427,6 +1530,14 @@ atPoolS = f_qnear(high, poolHi)
 orBrkUp = not inOR and not na(orH) and close > orH and close[1] <= orH
 orBrkDn = not inOR and not na(orL) and close < orL and close[1] >= orL
 recN = 10
+[vixC, vixMA, vixChg, vixLo5, vixHi5] = request.security("TVC:VIX", "D", [close, ta.sma(close, 20), (close / close[1] - 1) * 100, ta.lowest(low, 5), ta.highest(high, 5)], lookahead=barmerge.lookahead_off)
+[dHi5, dLo5, dHiNow, dLoNow] = request.security(syminfo.tickerid, "D", [ta.highest(high, 5)[1], ta.lowest(low, 5)[1], high, low], lookahead=barmerge.lookahead_off)
+vixHigh = not na(vixC) and vixC >= 20
+vixSpike = not na(vixChg) and vixChg >= 10
+vixOkL = not na(vixC) and not na(vixMA) and vixC < vixMA
+vixOkS = not na(vixC) and not na(vixMA) and vixC > vixMA
+vixDivBear = not na(dHi5) and dHiNow > dHi5 and not na(vixLo5) and vixC > vixLo5
+vixDivBull = not na(dLo5) and dLoNow < dLo5 and not na(vixHi5) and vixC < vixHi5
 qL_bos = ta.barssince(bosUp) <= recN
 qS_bos = ta.barssince(bosDn) <= recN
 qL_choch = ta.barssince(chochUp) <= recN
@@ -1475,6 +1586,12 @@ qL_atPool = ta.barssince(atPoolL) <= recN
 qS_atPool = ta.barssince(atPoolS) <= recN
 qL_orBrk = ta.barssince(orBrkUp) <= recN
 qS_orBrk = ta.barssince(orBrkDn) <= recN
+qL_jac = ta.barssince(jacUp) <= recN
+qS_jac = ta.barssince(jacDn) <= recN
+qL_crkRt = ta.barssince(buttcL) <= recN
+qS_crkRt = ta.barssince(rbtiS) <= recN
+qL_tso = ta.barssince(tsoNow and spring) <= recN
+qS_tso = ta.barssince(tsoNow and utSig) <= recN
 qL_test = testOK
 qS_test = testOK
 qL_pd = not inPrem
@@ -1519,6 +1636,24 @@ qL_atSesLvl = atSesL
 qS_atSesLvl = atSesS
 qL_bbSq = bbSq
 qS_bbSq = bbSq
+qL_vixOk = vixOkL
+qS_vixOk = vixOkS
+qL_vixHigh = vixHigh
+qS_vixHigh = vixHigh
+qL_vixSpike = vixSpike
+qS_vixSpike = vixSpike
+qL_vixDiv = vixDivBull
+qS_vixDiv = vixDivBear
+qL_dq2 = dQ >= 2
+qS_dq2 = dQ >= 2
+qL_dq3 = dQ >= 3
+qS_dq3 = dQ >= 3
+qL_dqMag = dqMagnet
+qS_dqMag = dqMagnet
+qL_cTso = cTso and cIsBull
+qS_cTso = cTso and not cIsBull
+qL_reacc = reacc and cIsBull
+qS_reacc = reacc and not cIsBull
 qLvlL = (qL_judas ? 1 : 0) + (qL_ob ? 1 : 0) + (qL_phC ? 1 : 0) + (qL_fvgAt ? 1 : 0) + (qL_sweep ? 1 : 0) + (qL_kz ? 1 : 0) + (qL_sesLon ? 1 : 0) + (qL_htfMs ? 1 : 0) + (qL_fvg ? 1 : 0) + (qL_ddt ? 1 : 0) - ((qL_phD ? 1 : 0) + (qL_conf4 ? 1 : 0) + (qL_volLow ? 1 : 0) + (qL_amdD ? 1 : 0) + (qL_cDir ? 1 : 0) + (qL_htfCD ? 1 : 0) + (qL_rrOk ? 1 : 0) + (qL_ifvg ? 1 : 0) + (qL_lps ? 1 : 0) + (qL_shake ? 1 : 0))
 qLvlS = (qS_judas ? 1 : 0) + (qS_ob ? 1 : 0) + (qS_phC ? 1 : 0) + (qS_fvgAt ? 1 : 0) + (qS_sweep ? 1 : 0) + (qS_kz ? 1 : 0) + (qS_sesLon ? 1 : 0) + (qS_htfMs ? 1 : 0) + (qS_fvg ? 1 : 0) + (qS_ddt ? 1 : 0) - ((qS_phD ? 1 : 0) + (qS_conf4 ? 1 : 0) + (qS_volLow ? 1 : 0) + (qS_amdD ? 1 : 0) + (qS_cDir ? 1 : 0) + (qS_htfCD ? 1 : 0) + (qS_rrOk ? 1 : 0) + (qS_ifvg ? 1 : 0) + (qS_lps ? 1 : 0) + (qS_shake ? 1 : 0))
 f_qlist(bool isL, bool wantPos) =>
@@ -1571,6 +1706,12 @@ f_qlist(bool isL, bool wantPos) =>
         s += (s == "" ? "" : ",") + "\"atPool\""
     if wantPos and (isL ? qL_orBrk : qS_orBrk)
         s += (s == "" ? "" : ",") + "\"orBrk\""
+    if wantPos and (isL ? qL_jac : qS_jac)
+        s += (s == "" ? "" : ",") + "\"jac\""
+    if wantPos and (isL ? qL_crkRt : qS_crkRt)
+        s += (s == "" ? "" : ",") + "\"crkRt\""
+    if wantPos and (isL ? qL_tso : qS_tso)
+        s += (s == "" ? "" : ",") + "\"tso\""
     if wantPos and (isL ? qL_test : qS_test)
         s += (s == "" ? "" : ",") + "\"test\""
     if wantPos and (isL ? qL_pd : qS_pd)
@@ -1615,6 +1756,24 @@ f_qlist(bool isL, bool wantPos) =>
         s += (s == "" ? "" : ",") + "\"atSesLvl\""
     if wantPos and (isL ? qL_bbSq : qS_bbSq)
         s += (s == "" ? "" : ",") + "\"bbSq\""
+    if wantPos and (isL ? qL_vixOk : qS_vixOk)
+        s += (s == "" ? "" : ",") + "\"vixOk\""
+    if wantPos and (isL ? qL_vixHigh : qS_vixHigh)
+        s += (s == "" ? "" : ",") + "\"vixHigh\""
+    if wantPos and (isL ? qL_vixSpike : qS_vixSpike)
+        s += (s == "" ? "" : ",") + "\"vixSpike\""
+    if wantPos and (isL ? qL_vixDiv : qS_vixDiv)
+        s += (s == "" ? "" : ",") + "\"vixDiv\""
+    if wantPos and (isL ? qL_dq2 : qS_dq2)
+        s += (s == "" ? "" : ",") + "\"dq2\""
+    if wantPos and (isL ? qL_dq3 : qS_dq3)
+        s += (s == "" ? "" : ",") + "\"dq3\""
+    if wantPos and (isL ? qL_dqMag : qS_dqMag)
+        s += (s == "" ? "" : ",") + "\"dqMag\""
+    if wantPos and (isL ? qL_cTso : qS_cTso)
+        s += (s == "" ? "" : ",") + "\"cTso\""
+    if wantPos and (isL ? qL_reacc : qS_reacc)
+        s += (s == "" ? "" : ",") + "\"reacc\""
     s
 f_qhe(bool isL) =>
     string s = ""
@@ -1660,6 +1819,12 @@ f_qhe(bool isL) =>
         s += (s == "" ? "" : " · ") + "בריכה"
     if (isL ? qL_orBrk : qS_orBrk)
         s += (s == "" ? "" : " · ") + "פריצת OR"
+    if (isL ? qL_jac : qS_jac)
+        s += (s == "" ? "" : " · ") + "JAC/FTI — קפיצה מעבר לקריק/אייס"
+    if (isL ? qL_crkRt : qS_crkRt)
+        s += (s == "" ? "" : " · ") + "BUTTC/RBTI — ריטסט הקריק/אייס"
+    if (isL ? qL_tso : qS_tso)
+        s += (s == "" ? "" : " · ") + "ניעור סופי (TSO/TUT)"
     if (isL ? qL_test : qS_test)
         s += (s == "" ? "" : " · ") + "טסט"
     if (isL ? qL_pd : qS_pd)
@@ -1690,6 +1855,24 @@ f_qhe(bool isL) =>
         s += (s == "" ? "" : " · ") + "רמת סשן"
     if (isL ? qL_bbSq : qS_bbSq)
         s += (s == "" ? "" : " · ") + "סקוויז"
+    if (isL ? qL_vixOk : qS_vixOk)
+        s += (s == "" ? "" : " · ") + "VIX תומך"
+    if (isL ? qL_vixHigh : qS_vixHigh)
+        s += (s == "" ? "" : " · ") + "VIX מעל 20"
+    if (isL ? qL_vixSpike : qS_vixSpike)
+        s += (s == "" ? "" : " · ") + "זינוק VIX"
+    if (isL ? qL_vixDiv : qS_vixDiv)
+        s += (s == "" ? "" : " · ") + "דיברגנס VIX"
+    if (isL ? qL_dq2 : qS_dq2)
+        s += (s == "" ? "" : " · ") + "איכות D ≥ 2"
+    if (isL ? qL_dq3 : qS_dq3)
+        s += (s == "" ? "" : " · ") + "איכות D ≥ 3"
+    if (isL ? qL_dqMag : qS_dqMag)
+        s += (s == "" ? "" : " · ") + "מגנט לקריק/אייס"
+    if (isL ? qL_cTso : qS_cTso)
+        s += (s == "" ? "" : " · ") + "C עם ניעור סופי"
+    if (isL ? qL_reacc : qS_reacc)
+        s += (s == "" ? "" : " · ") + "איסוף/פיזור חוזר"
     s
 f_qsr(bool isL) =>
     string s = ""
@@ -1712,10 +1895,10 @@ f_qsr(bool isL) =>
 qBufQ = stopBuf / 100.0
 qBrkL = qBrk and (bosUp or chochUp) and (phase == 3 or phase == 5) and barstate.isconfirmed
 qBrkS = qBrk and (bosDn or chochDn) and (phase == 3 or phase == 5) and barstate.isconfirmed
-qTrigL = flyLong ? "F" : wingLong ? "W" : obLong ? "O" : wSig ? "M" : qBrkL ? "B" : ""
-qTrigS = flyShort ? "F" : wingShort ? "W" : obShort ? "O" : mSig ? "M" : qBrkS ? "B" : ""
-qStopL = flyLong ? math.min(nz(cExt, low), nz(lastPL, low)) * (1 - qBufQ) : wingLong ? nz(lastPL, low) * (1 - qBufQ) : obLong ? obLBot * (1 - qBufQ) : wSig ? nz(wLow2, low) * (1 - qBufQ) : nz(lastPL, low) * (1 - qBufQ)
-qStopS = flyShort ? math.max(nz(cExt, high), nz(lastPH, high)) * (1 + qBufQ) : wingShort ? nz(lastPH, high) * (1 + qBufQ) : obShort ? obSTop * (1 + qBufQ) : mSig ? nz(mHigh2, high) * (1 + qBufQ) : nz(lastPH, high) * (1 + qBufQ)
+qTrigL = flyLong ? "F" : wingLong ? "W" : obLong ? "O" : wSig ? "M" : buttcL ? "K" : qBrkL ? "B" : ""
+qTrigS = flyShort ? "F" : wingShort ? "W" : obShort ? "O" : mSig ? "M" : rbtiS ? "K" : qBrkS ? "B" : ""
+qStopL = flyLong ? math.min(nz(cExt, low), nz(lastPL, low)) * (1 - qBufQ) : wingLong ? nz(lastPL, low) * (1 - qBufQ) : obLong ? obLBot * (1 - qBufQ) : wSig ? nz(wLow2, low) * (1 - qBufQ) : buttcL ? math.min(low, jacLvl) * (1 - qBufQ) : nz(lastPL, low) * (1 - qBufQ)
+qStopS = flyShort ? math.max(nz(cExt, high), nz(lastPH, high)) * (1 + qBufQ) : wingShort ? nz(lastPH, high) * (1 + qBufQ) : obShort ? obSTop * (1 + qBufQ) : mSig ? nz(mHigh2, high) * (1 + qBufQ) : rbtiS ? math.max(high, jacLvl) * (1 + qBufQ) : nz(lastPH, high) * (1 + qBufQ)
 qSigL = qOn and qTrigL != "" and close > qStopL
 qSigS = qOn and qTrigS != "" and close < qStopS
 qLvl = qSigL ? qLvlL : qSigS ? qLvlS : 0

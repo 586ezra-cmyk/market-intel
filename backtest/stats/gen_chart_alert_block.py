@@ -10,7 +10,10 @@ exec(re.search(r"EVENTS = \[.*?\]\nSTATES = \[.*?\]\n", gen_bt, re.S).group(0), 
 EVENTS, STATES = ns['EVENTS'], ns['STATES']
 lv = json.loads((ROOT / 'apps/web/public/htt-backtest/levels.json').read_text(encoding='utf-8'))
 POS, NEG = lv['pos'], lv['neg']
-HE = {'bos': 'BOS', 'choch': 'CHoCH', 'sweep': 'חטיפת נזילות', 'smt': 'SMT', 'ismt': 'iSMT', 'ifvg': 'iFVG', 'fvg': 'FVG חדש', 'judas': "ג'ודאס", 'tweezer': 'צבת', 'shake': 'ספרינג/UT', 'volC': 'C ווליום', 'lps': 'LPS', 'gap': 'גאפ', 'ob': 'אורדר בלוק', 'wm': 'W/M', 'ddt': 'DD/DT', 'engulf': 'בולען', 'bb': 'בולינגר', 'rsi': 'RSI', 'climax': 'קליימקס', 'fvgAt': 'מ-FVG', 'ifvgAt': 'מ-iFVG', 'atPool': 'בריכה', 'orBrk': 'פריצת OR', 'test': 'טסט', 'pd': 'פרימיום/דיסקאונט', 'kz': 'קיל-זון', 'sesLon': 'לונדון', 'sesNY': 'ניו-יורק', 'sesAsia': 'אסיה', 'phC': 'פאזה C', 'phD': 'פאזה D', 'phE': 'פאזה E', 'phAB': 'פאזה A/B', 'cDir': 'כיוון C', 'clues3': '3 רמזים', 'volLow': 'ווליום נמוך', 'htfMs': 'מבנה HTF', 'htfCD': 'HTF C/D', 'amdD': 'AMD D', 'conf4': '4+ אישורים', 'rrOk': '1:3', 'atEdge': 'אייס/קריק', 'atHtfLvl': 'רמת HTF', 'atSesLvl': 'רמת סשן', 'bbSq': 'סקוויז'}
+HE = {
+    'vixOk': 'VIX תומך', 'vixHigh': 'VIX מעל 20', 'vixSpike': 'זינוק VIX', 'vixDiv': 'דיברגנס VIX',
+    'jac': 'JAC/FTI — קפיצה מעבר לקריק/אייס', 'crkRt': 'BUTTC/RBTI — ריטסט הקריק/אייס', 'tso': 'ניעור סופי (TSO/TUT)',
+    'dq2': 'איכות D ≥ 2', 'dq3': 'איכות D ≥ 3', 'dqMag': 'מגנט לקריק/אייס', 'cTso': 'C עם ניעור סופי', 'reacc': 'איסוף/פיזור חוזר','bos': 'BOS', 'choch': 'CHoCH', 'sweep': 'חטיפת נזילות', 'smt': 'SMT', 'ismt': 'iSMT', 'ifvg': 'iFVG', 'fvg': 'FVG חדש', 'judas': "ג'ודאס", 'tweezer': 'צבת', 'shake': 'ספרינג/UT', 'volC': 'C ווליום', 'lps': 'LPS', 'gap': 'גאפ', 'ob': 'אורדר בלוק', 'wm': 'W/M', 'ddt': 'DD/DT', 'engulf': 'בולען', 'bb': 'בולינגר', 'rsi': 'RSI', 'climax': 'קליימקס', 'fvgAt': 'מ-FVG', 'ifvgAt': 'מ-iFVG', 'atPool': 'בריכה', 'orBrk': 'פריצת OR', 'test': 'טסט', 'pd': 'פרימיום/דיסקאונט', 'kz': 'קיל-זון', 'sesLon': 'לונדון', 'sesNY': 'ניו-יורק', 'sesAsia': 'אסיה', 'phC': 'פאזה C', 'phD': 'פאזה D', 'phE': 'פאזה E', 'phAB': 'פאזה A/B', 'cDir': 'כיוון C', 'clues3': '3 רמזים', 'volLow': 'ווליום נמוך', 'htfMs': 'מבנה HTF', 'htfCD': 'HTF C/D', 'amdD': 'AMD D', 'conf4': '4+ אישורים', 'rrOk': '1:3', 'atEdge': 'אייס/קריק', 'atHtfLvl': 'רמת HTF', 'atSesLvl': 'רמת סשן', 'bbSq': 'סקוויז'}
 src = (ROOT / 'pine/htt_chart.pine').read_text(encoding='utf-8')
 HDR = '// ═══ HTT ALERT BLOCK — סטאפ איכותי: 46 אישורים, רמה, webhook אחד (נוצר על ידי gen_chart_alert_block.py) ═══'
 if HDR in src:
@@ -61,6 +64,11 @@ atPoolS = f_qnear(high, poolHi)
 orBrkUp = not inOR and not na(orH) and close > orH and close[1] <= orH
 orBrkDn = not inOR and not na(orL) and close < orL and close[1] >= orL
 recN = 10''')
+# בלוק ה-VIX (מוגדר ב-gen_backtest_pine.py) — הדגלים vixOk/vixHigh/vixSpike/vixDiv צריכים אותו גם בגרף
+vix_m = re.search(r"\[vixC, vixMA.*?vixDivBull = [^\n]*\n", gen_bt, re.S)
+assert vix_m, 'VIX block not found in gen_backtest_pine.py'
+for _l in vix_m.group(0).rstrip('\n').split('\n'):
+    A(_l)
 for name, lexp, sexp in EVENTS:
     A(f'qL_{name} = ta.barssince({lexp}) <= recN')
     A(f'qS_{name} = ta.barssince({sexp}) <= recN')
@@ -111,10 +119,10 @@ A('''f_qsr(bool isL) =>
 qBufQ = stopBuf / 100.0
 qBrkL = qBrk and (bosUp or chochUp) and (phase == 3 or phase == 5) and barstate.isconfirmed
 qBrkS = qBrk and (bosDn or chochDn) and (phase == 3 or phase == 5) and barstate.isconfirmed
-qTrigL = flyLong ? "F" : wingLong ? "W" : obLong ? "O" : wSig ? "M" : qBrkL ? "B" : ""
-qTrigS = flyShort ? "F" : wingShort ? "W" : obShort ? "O" : mSig ? "M" : qBrkS ? "B" : ""
-qStopL = flyLong ? math.min(nz(cExt, low), nz(lastPL, low)) * (1 - qBufQ) : wingLong ? nz(lastPL, low) * (1 - qBufQ) : obLong ? obLBot * (1 - qBufQ) : wSig ? nz(wLow2, low) * (1 - qBufQ) : nz(lastPL, low) * (1 - qBufQ)
-qStopS = flyShort ? math.max(nz(cExt, high), nz(lastPH, high)) * (1 + qBufQ) : wingShort ? nz(lastPH, high) * (1 + qBufQ) : obShort ? obSTop * (1 + qBufQ) : mSig ? nz(mHigh2, high) * (1 + qBufQ) : nz(lastPH, high) * (1 + qBufQ)
+qTrigL = flyLong ? "F" : wingLong ? "W" : obLong ? "O" : wSig ? "M" : buttcL ? "K" : qBrkL ? "B" : ""
+qTrigS = flyShort ? "F" : wingShort ? "W" : obShort ? "O" : mSig ? "M" : rbtiS ? "K" : qBrkS ? "B" : ""
+qStopL = flyLong ? math.min(nz(cExt, low), nz(lastPL, low)) * (1 - qBufQ) : wingLong ? nz(lastPL, low) * (1 - qBufQ) : obLong ? obLBot * (1 - qBufQ) : wSig ? nz(wLow2, low) * (1 - qBufQ) : buttcL ? math.min(low, jacLvl) * (1 - qBufQ) : nz(lastPL, low) * (1 - qBufQ)
+qStopS = flyShort ? math.max(nz(cExt, high), nz(lastPH, high)) * (1 + qBufQ) : wingShort ? nz(lastPH, high) * (1 + qBufQ) : obShort ? obSTop * (1 + qBufQ) : mSig ? nz(mHigh2, high) * (1 + qBufQ) : rbtiS ? math.max(high, jacLvl) * (1 + qBufQ) : nz(lastPH, high) * (1 + qBufQ)
 qSigL = qOn and qTrigL != "" and close > qStopL
 qSigS = qOn and qTrigS != "" and close < qStopS
 qLvl = qSigL ? qLvlL : qSigS ? qLvlS : 0

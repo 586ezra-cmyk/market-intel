@@ -38,6 +38,9 @@ EVENTS = [
     ('ifvgAt',  'ifvgAtL',    'ifvgAtS'),
     ('atPool',  'atPoolL',    'atPoolS'),
     ('orBrk',   'orBrkUp',    'orBrkDn'),
+    ('jac',     'jacUp',      'jacDn'),
+    ('crkRt',   'buttcL',     'rbtiS'),
+    ('tso',     'tsoNow and spring', 'tsoNow and utSig'),
 ]
 STATES = [
     ('test',    'testOK',                       'testOK'),
@@ -66,6 +69,11 @@ STATES = [
     ('vixHigh', 'vixHigh',                      'vixHigh'),
     ('vixSpike', 'vixSpike',                    'vixSpike'),
     ('vixDiv',  'vixDivBull',                   'vixDivBear'),
+    ('dq2',     'dQ >= 2',                      'dQ >= 2'),
+    ('dq3',     'dQ >= 3',                      'dQ >= 3'),
+    ('dqMag',   'dqMagnet',                     'dqMagnet'),
+    ('cTso',    'cTso and cIsBull',             'cTso and not cIsBull'),
+    ('reacc',   'reacc and cIsBull',            'reacc and not cIsBull'),
 ]
 FLAGS = [e[0] for e in EVENTS] + [s[0] for s in STATES]
 

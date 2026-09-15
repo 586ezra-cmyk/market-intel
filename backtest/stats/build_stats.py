@@ -6,6 +6,8 @@ import json, glob, pathlib, itertools, math, datetime
 ROOT = pathlib.Path(__file__).resolve().parent
 FLAGS = [l.strip() for l in (ROOT / 'flags.txt').read_text(encoding='utf-8').splitlines() if l.strip()]
 FLAG_HE = {
+    'jac': 'JAC/FTI — קפיצה מעבר לקריק/אייס', 'crkRt': 'BUTTC/RBTI — ריטסט הקריק/אייס', 'tso': 'ניעור סופי (TSO/TUT)',
+    'dq2': 'איכות D ≥ 2 (חוקי הברזל)', 'dq3': 'איכות D ≥ 3 (חוקי הברזל)', 'dqMag': 'מגנט לקריק/אייס (התכווצות על הקו)', 'cTso': 'C עם ניעור סופי', 'reacc': 'איסוף/פיזור חוזר (עם המגמה)',
     'bos': 'BOS', 'choch': 'CHoCH', 'sweep': 'חטיפת נזילות', 'smt': 'SMT', 'ismt': 'iSMT', 'ifvg': 'iFVG', 'fvg': 'FVG נוצר עכשיו (10 נרות)',
     'judas': 'ג\'ודאס', 'tweezer': 'צבת', 'shake': 'ספרינג/UT', 'volC': 'C ווליום (V)', 'lps': 'LPS/LPSY', 'gap': 'גאפ',
     'ob': 'אורדר בלוק', 'wm': 'W/M', 'ddt': 'DD/DT', 'engulf': 'נר בולען', 'bb': 'פריצת בולינגר', 'rsi': 'RSI בקצה',
@@ -17,7 +19,7 @@ FLAG_HE = {
     'atEdge': 'הגיע לאייס/קריק', 'atHtfLvl': 'רמת 4H/יומי/שבועי', 'atSesLvl': 'רמת סשן/אסיה', 'bbSq': 'התכווצות בולינגר',
     'vixOk': 'VIX תומך (מתחת/מעל ממוצע 20 לפי הכיוון)', 'vixHigh': 'VIX מעל 20', 'vixSpike': 'זינוק VIX (10%+ ביום)', 'vixDiv': 'דיברגנס VIX מול הנכס',
 }
-STRAT_HE = {'F': 'טיסה', 'W': 'שבירת כנף', 'O': 'אורדר בלוק', 'M': 'W/M', 'B': 'פריצה (BOS/CHoCH)', 'G': 'טיסה — סטופ מתחת ל-BOS', 'R': 'אורדר בלוק בריטסט (21%)', 'X': '3 אישורים = טריגר'}
+STRAT_HE = {'F': 'טיסה', 'W': 'שבירת כנף', 'O': 'אורדר בלוק', 'M': 'W/M', 'B': 'פריצה (BOS/CHoCH)', 'K': 'ריטסט הקריק/אייס (BUTTC/RBTI)', 'G': 'טיסה — סטופ מתחת ל-BOS', 'R': 'אורדר בלוק בריטסט (21%)', 'X': '3 אישורים = טריגר'}
 SES_HE = {0: 'אסיה', 1: 'לונדון', 2: 'ניו-יורק', 3: 'מחוץ לסשן'}
 PH_HE = {0: '—', 1: 'A', 2: 'B', 3: 'C', 4: 'D', 5: 'E'}
 TARGET_R = 3.0

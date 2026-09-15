@@ -18,8 +18,13 @@ PHASE_SETS = {
     'CD_CD_C': ({3, 4}, {3, 4}, {3}),
     'CDx3':   ({3, 4}, {3, 4}, {3, 4}),
     'DDD':    ({4}, {4}, {4}),
+    'DDD_q2': ({4}, {4}, {4}),   # D איכותית (חוקי הברזל ≥ 2) בכל מסגרת — לפי שדה dQ בשורות H (Path Lab v16+)
+    'DDD_q3': ({4}, {4}, {4}),
 }
+MIN_DQ = {'DDD_q2': 2, 'DDD_q3': 3}
 PHASE_HE = {
+    'DDD_q2': 'D איכותית (חוקי הברזל 2+) בשלוש המסגרות',
+    'DDD_q3': 'D איכותית (חוקי הברזל 3+) בשלוש המסגרות',
     'CCC': 'C בשלוש המסגרות (הטענה המילולית)',
     'CD_C_C': '4H ב-C או D, 15m ב-C, 5m ב-C (ניעור בתוך ניעור אחרי הכרעת 4H)',
     'CD_CD_C': '4H ב-C או D, 15m ב-C או D, 5m ב-C',
@@ -42,8 +47,10 @@ def state_at(tl, sym, res, tc, mode):
         return None
     return vals[i]
 
-def dir_of(st, phset):
+def dir_of(st, phset, minq=0):
     if st is None or st[0] not in phset:
+        return 0
+    if minq and (len(st) < 3 or st[2] < minq):
         return 0
     return 1 if st[1] == 1 else -1
 
@@ -69,7 +76,7 @@ def intervals(tl, sym, res):
     i = 0
     while i < len(ts):
         j = i
-        while j + 1 < len(ts) and vals[j + 1] == vals[i] and ts[j + 1] - ts[j] <= MAX_GAP_BARS * tfms:
+        while j + 1 < len(ts) and vals[j + 1][:2] == vals[i][:2] and ts[j + 1] - ts[j] <= MAX_GAP_BARS * tfms:
             j += 1
         t1 = ts[j + 1] if (j + 1 < len(ts) and ts[j + 1] - ts[j] <= MAX_GAP_BARS * tfms) else ts[j] + tfms
         out.append((ts[i], t1, vals[i][0], vals[i][1]))
@@ -133,7 +140,7 @@ def main():
                 if any(s is None for s in sts):
                     continue
                 side = 1 if t['side'] == 'L' else -1
-                dirs = [dir_of(s, sets[k]) for k, s in enumerate(sts)]
+                dirs = [dir_of(s, sets[k], MIN_DQ.get(pk, 0)) for k, s in enumerate(sts)]
                 t2 = dict(t); t2['state'] = state_key(dirs, side); t2['phs'] = [s[0] for s in sts]
                 T.append(t2)
             pools = {}
@@ -158,7 +165,7 @@ def main():
                 s3 = [t for t in P if t['state'] == 'S3']
                 levels = {str(k): brief([t for t in s3 if t['level'] >= k]) for k in range(0, 6)}
                 pools[key] = {'he': pdef['he'], 'nSignals': len(P), 'base': base, 'rows': rows, 's3Levels': levels}
-                if pk in ('CCC', 'CD_C_C', 'CD_CD_C', 'CDx3', 'DDD'):
+                if pk in ('CCC', 'CD_C_C', 'CD_CD_C', 'CDx3', 'DDD', 'DDD_q2', 'DDD_q3'):
                     trades = []
                     for t in sorted(s3, key=lambda x: x['entryTime'], reverse=True)[:400]:
                         on = [FLAG_HE.get(k, k) for i, k in enumerate(FLAGS) if t['flags'][i] == '1']
