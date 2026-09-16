@@ -78,7 +78,10 @@ def main():
     months = collections.defaultdict(list)
     for t in T:
         months[datetime.datetime.utcfromtimestamp(t['entryTime'] / 1000).strftime('%Y-%m')].append(t)
-    out['byMonth'] = {m: {'n': len(v), 'sumR4': round(sum(t['s4'] for t in v if t['s4'] is not None), 1), 'sumR13': round(sum(t['s1'] for t in v if t['s1'] is not None), 1)} for m, v in sorted(months.items())}
+    def mval(t, k):
+        return t[k] if t[k] is not None else t['horizonR']
+    out['byMonth'] = {m: {'n': len(v), 'sumR4': round(sum(mval(t, 's4') for t in v if mval(t, 's4') is not None), 1), 'sumR13': round(sum(mval(t, 's1') for t in v if mval(t, 's1') is not None), 1),
+                          'avgR4': round(sum(mval(t, 's4') for t in v if mval(t, 's4') is not None) / max(1, sum(1 for t in v if mval(t, 's4') is not None)), 3)} for m, v in sorted(months.items())}
     # הזרם המומלץ: 4H רמה 3+, 15m רמה 4+, 5m רק OB בריטסט/K/W-M ברמה 2+ (הצעה) — כמה עסקאות ומה נותן
     rec = [t for t in T if (t['res'] == '240' and t['level'] >= 3) or (t['res'] == '15' and t['level'] >= 4) or (t['res'] == '5' and t['strat'] in ('O', 'K', 'M') and t['level'] >= 2)]
     out['recommended'] = dict(metrics(rec), perWeekAll=round(len(rec) / weeks, 1))
@@ -120,9 +123,9 @@ def main():
     for tf in ('240', '15', '5'):
         L.append(row(TF_HE[tf], out['recommendedByTf'][tf]))
     L.append("\n## 6. לפי חודש (סכום R בגרירה / ב-1:3, כל העסקאות)")
-    L.append("| חודש | עסקאות | סכום R גרירה | סכום R 1:3 |\n|---|---|---|---|")
+    L.append("| חודש | עסקאות | סכום R גרירה | ממוצע R גרירה | סכום R 1:3 |\n|---|---|---|---|---|")
     for m, v in out['byMonth'].items():
-        L.append(f"| {m} | {v['n']:,} | {v['sumR4']:+.1f} | {v['sumR13']:+.1f} |")
+        L.append(f"| {m} | {v['n']:,} | {v['sumR4']:+.1f} | {v['avgR4']:+.2f} | {v['sumR13']:+.1f} |")
     (ROOT.parents[1] / 'backtest' / '15_בקטסט_מלא.md').write_text('\n'.join(L) + '\n', encoding='utf-8')
     print('\n'.join(L))
 
