@@ -888,7 +888,7 @@ ckRRok = not na(ckRR) and ckRR >= 3
 
 
 // ═══ HTT Path Lab — הקשר HTF, DD/DT, דגלים, מעקב מסלול ═══
-horizon = input.int(120, "אופק מדידה (נרות אחרי הסיגנל)", minval=20, maxval=500)
+horizon = input.int(1000, "אופק מקסימלי (נרות): העסקה נרשמת כשכל שיטות הניהול הוכרעו — סטופ/יעד/סטופ מתקדם; האופק רק כמגן", minval=20, maxval=2000)
 htfTF = tfMin < 60 ? "240" : tfMin < 240 ? "D" : "W"
 [htfMs, htfPh, htfBull] = request.security(syminfo.tickerid, htfTF, [msDir, phase, cIsBull ? 1 : 0], lookahead=barmerge.lookahead_off)
 [h4H, h4L] = request.security(syminfo.tickerid, "240", [high[1], low[1]], lookahead=barmerge.lookahead_off)
@@ -1239,7 +1239,7 @@ f_add(string typ, bool isL, float stopPx, float entryPx, string fl) =>
         float posW = wkH > wkL ? (entryPx - wkL) / (wkH - wkL) : na
         array.push(kFS, fs), array.push(kF0, t0), array.push(kF1, t1), array.push(kF2, t2), array.push(kRet, ret), array.push(kPosR, posR), array.push(kPosD, posD), array.push(kPosW, posW), array.push(kPh240, -1), array.push(kBu240, -1), array.push(kPh15, -1), array.push(kBu15, -1), array.push(kPh5, -1), array.push(kBu5, -1)
         array.push(kFSBar, -1), array.push(kF0Bar, -1), array.push(kF1Bar, -1), array.push(kF2Bar, -1)
-        if array.size(kT) > 80
+        if array.size(kT) > 400
             f_rm(0)
     ok
 f_s(float v) => na(v) ? "n" : str.tostring(v, "#.##")
@@ -1344,7 +1344,9 @@ if array.size(kT) > 0
             else if array.get(kTgBar, i) == bars
                 array.set(s5, i, (isL ? tg - e : e - tg) / rk)
         // סוף האופק: רישום
-        if bars >= horizon
+        // רישום: כשכל שיטות הניהול הוכרעו (1:3 · חצאים · גרירה · שנדלייר · יעד מבני אם יש), או באופק המקסימלי כמגן
+        allDone = not na(array.get(s1, i)) and not na(array.get(s2, i)) and not na(array.get(s3, i)) and not na(array.get(s4, i)) and not na(array.get(s6, i)) and (na(tg) or not na(array.get(s5, i)))
+        if allDone or bars >= horizon
             curR = (isL ? close - e : e - close) / rk
             tgR = na(tg) ? float(na) : (isL ? tg - e : e - tg) / rk
             txt = "P|" + array.get(kT, i) + "|" + (isL ? "L" : "S") + "|" + str.tostring(array.get(kT0, i)) + "|" + str.tostring(e, "#.####") + "|" + str.tostring(array.get(kS, i), "#.####") + "|" + f_s(tgR) + "|" + array.get(kFl, i) + "|" + str.tostring(array.get(kSes, i)) + "|" + str.tostring(array.get(kPh, i)) + "|" + str.tostring(array.get(kCf, i)) + "|" + f_s(array.get(kMFE, i)) + "|" + f_s(array.get(kMAE, i)) + "|" + f_s(array.get(kMFEs, i)) + "|" + str.tostring(array.get(kStopBar, i)) + "|" + str.tostring(array.get(kB1, i)) + "|" + str.tostring(array.get(kB2, i)) + "|" + str.tostring(array.get(kB3, i)) + "|" + f_s(array.get(kMAEb1, i)) + "|" + f_s(array.get(kMAEb2, i)) + "|" + str.tostring(array.get(kTgBar, i)) + "|" + f_s(array.get(s1, i)) + "|" + f_s(array.get(s2, i)) + "|" + f_s(array.get(s3, i)) + "|" + f_s(array.get(s4, i)) + "|" + f_s(array.get(s5, i)) + "|" + f_s(array.get(s6, i)) + "|" + f_s(curR) + "|" + f_s(array.get(kRet, i)) + "|" + f_s(na(array.get(kFS, i)) ? float(na) : (isL ? e - array.get(kFS, i) : array.get(kFS, i) - e) / rk) + "|" + f_s(na(array.get(kF0, i)) ? float(na) : (isL ? array.get(kF0, i) - e : e - array.get(kF0, i)) / rk) + "|" + f_s(na(array.get(kF1, i)) ? float(na) : (isL ? array.get(kF1, i) - e : e - array.get(kF1, i)) / rk) + "|" + f_s(na(array.get(kF2, i)) ? float(na) : (isL ? array.get(kF2, i) - e : e - array.get(kF2, i)) / rk) + "|" + str.tostring(array.get(kFSBar, i)) + "|" + str.tostring(array.get(kF0Bar, i)) + "|" + str.tostring(array.get(kF1Bar, i)) + "|" + str.tostring(array.get(kF2Bar, i)) + "|" + f_s(array.get(kPosR, i)) + "|" + f_s(array.get(kPosD, i)) + "|" + f_s(array.get(kPosW, i)) + "|" + str.tostring(array.get(kPh240, i)) + "|" + str.tostring(array.get(kBu240, i)) + "|" + str.tostring(array.get(kPh15, i)) + "|" + str.tostring(array.get(kBu15, i)) + "|" + str.tostring(array.get(kPh5, i)) + "|" + str.tostring(array.get(kBu5, i))

@@ -26,18 +26,18 @@ def load():
             if t:
                 t['res'] = v['res']; t['sym'] = v['sym'].split(':')[1].replace('USDT', ''); t['level'] = level_of(t['flags']); T.append(t)
     T.sort(key=lambda t: t['entryTime'])
+    global NWIN
+    NWIN = sum(int(v.get('windows', 0) or 0) for v in d['combos'].values())
     return T, d['exportedAt']
 
 def metrics(ts):
     n = len(ts)
     if n == 0:
         return {'n': 0}
-    # כמו ב-build_path_stats.analyze: עסקה שלא הוכרעה עד סוף האופק (120 נרות) נרשמת לפי שווי השוק בסוף האופק (horizonR)
+    # מעקב עד הכרעה: כל עסקה נרשמת רק כשהגיעה לסטופ (גם מתקדם) או ליעד. עסקה שלא הוכרעה עד תקרת 1000 נרות
+    # נשארת None — לא נספרת ב-R (לא מסמנים אותה לפי שווי שוק), רק בשיעור 'openCap'.
     def val(t, k):
-        v = t[k]
-        if v is not None:
-            return v
-        return t['horizonR']
+        return t[k]
     s1 = [val(t, 's1') for t in ts if val(t, 's1') is not None]
     s4 = [val(t, 's4') for t in ts if val(t, 's4') is not None]
     wins = sum(1 for t in ts if t['s1'] is not None and t['s1'] >= 2.9); losses = sum(1 for t in ts if t['s1'] is not None and t['s1'] <= -0.9); other = len(s1) - wins - losses
@@ -49,7 +49,8 @@ def metrics(ts):
             cum += v; peak = max(peak, cum); dd = max(dd, peak - cum)
         return round(dd, 1)
     right = sum(1 for t in ts if t['b1'] >= 0)
-    return {'n': n, 'win13': round(wins / max(len(s1), 1), 3), 'loss13': round(losses / max(len(s1), 1), 3), 'open13': round(other / max(len(s1), 1), 3),
+    open_cap = sum(1 for t in ts if t['s1'] is None)
+    return {'n': n, 'openCap': round(open_cap / n, 3), 'win13': round(wins / max(len(s1), 1), 3), 'loss13': round(losses / max(len(s1), 1), 3), 'open13': round(other / max(len(s1), 1), 3),
             'avgR13': round(sum(s1) / max(len(s1), 1), 3), 'sumR13': round(sum(s1), 1), 'pf13': round(pos1 / neg1, 2) if neg1 else None, 'dd13': maxdd(s1),
             'avgR4': round(sum(s4) / max(len(s4), 1), 3), 'sumR4': round(sum(s4), 1), 'pf4': round(pos4 / neg4, 2) if neg4 else None, 'dd4': maxdd(s4),
             'win4': round(sum(1 for v in s4 if v > 0) / max(len(s4), 1), 3), 'rightDir': round(right / n, 3)}
@@ -79,7 +80,7 @@ def main():
     for t in T:
         months[datetime.datetime.utcfromtimestamp(t['entryTime'] / 1000).strftime('%Y-%m')].append(t)
     def mval(t, k):
-        return t[k] if t[k] is not None else t['horizonR']
+        return t[k]
     out['byMonth'] = {m: {'n': len(v), 'sumR4': round(sum(mval(t, 's4') for t in v if mval(t, 's4') is not None), 1), 'sumR13': round(sum(mval(t, 's1') for t in v if mval(t, 's1') is not None), 1),
                           'avgR4': round(sum(mval(t, 's4') for t in v if mval(t, 's4') is not None) / max(1, sum(1 for t in v if mval(t, 's4') is not None)), 3)} for m, v in sorted(months.items())}
     # הזרם המומלץ: 4H רמה 3+, 15m רמה 4+, 5m רק OB בריטסט/K/W-M ברמה 2+ (הצעה) — כמה עסקאות ומה נותן
@@ -90,8 +91,9 @@ def main():
     # markdown
     L = []
     L.append(f"# בקטסט מלא — HTT Master v54 (המנוע המותקן) · שנה אחרונה · 4 נכסים × 3 מסגרות\n")
-    L.append(f"> נוצר {datetime.datetime.now().strftime('%d/%m/%Y %H:%M')} מנתוני Path Lab (60 חלונות Replay). {len(T):,} עסקאות של טריגרי הקורס (טיסה, כנף, אורדר בלוק, W/M, פריצה, ריטסט קריק).")
-    L.append("> **הגדרות:** כניסה בסגירת נר הטריגר · סטופ לפי הקורס · 1:3 = יעד קבוע 3R (\"הצלחה\" = היעד נפגע, \"סטופ\" = הסטופ נפגע, \"פתוח\" = לא הוכרע ב-120 נרות ונרשם לפי שווי שוק) · גרירה = איזון אחרי 1R ואז גרירה מתחת/מעל הפיבוט האחרון · R = יחידת סיכון · PF = פרופיט פקטור · DD = דרודאון מקסימלי ב-R (רצף כרונולוגי) · הלכו נכון = הגיעו ל-1R לפני הסטופ.\n")
+    L.append(f"> נוצר {datetime.datetime.now().strftime('%d/%m/%Y %H:%M')} מנתוני Path Lab ({NWIN} חלונות Replay). {len(T):,} עסקאות של טריגרי הקורס (טיסה, כנף, אורדר בלוק, W/M, פריצה, ריטסט קריק).")
+    L.append("> **הגדרות:** כניסה בסגירת נר הטריגר · סטופ לפי הקורס · 1:3 = יעד קבוע 3R (\"הצלחה\" = היעד נפגע, \"סטופ\" = הסטופ נפגע, אין \"פתוח\" — כל עסקה נעקבה עד סטופ או יעד) · גרירה = איזון אחרי 1R ואז גרירה מתחת/מעל הפיבוט האחרון · R = יחידת סיכון · PF = פרופיט פקטור · DD = דרודאון מקסימלי ב-R (רצף כרונולוגי) · הלכו נכון = הגיעו ל-1R לפני הסטופ.\n")
+    L.append("> **מעקב:** כל עסקה נעקבת עד שהיא מגיעה לסטופ (כולל סטופ מתקדם) או ליעד — לא נחתכת אחרי מספר נרות. תקרה טכנית 1000 נרות; עסקה שלא הוכרעה עד אז לא נספרת ב-R ומופיעה רק כאחוז 'פתוח'.")
     def row(name, m):
         if not m or not m.get('n'):
             return f"| {name} | 0 | | | | | | | | |"

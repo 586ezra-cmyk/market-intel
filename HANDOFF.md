@@ -566,3 +566,9 @@
 - שרת: `apps/server/src/middleware/security.ts` (adminAuth, rateLimit, headers, errorHandler, SETTING_RULES) + `validate.ts` (zod לכל כתיבה). בלי `ADMIN_TOKEN` השרת עובד פתוח ומזהיר בלוג — כדי לא לשבור את הייצור לפני שהמשתמש מגדיר משתנים.
 - **מחכה למשתמש:** `ADMIN_TOKEN` ב-Railway + Vercel, `BACKEND_URL` ב-Vercel, `TV_WEBHOOK_SECRET` ב-Railway; דחיפה ל-GitHub אחרי אימות מייל. לא לפרוס בלי אישור.
 - אזהרה: `npm audit fix --omit=dev` מוחק את כלי הפיתוח (tsc/vitest/tsx) — להריץ `npm install` בשורש אחרי.
+
+## 📏 מדד ההכרעה (16.9.2026 לילה) — במקום 120 נרות
+- המשתמש: "זה לא מדד נכון — עד שמגיע לסטופ (גם מתקדם) או לטייק". Path Lab v19 (`pine/htt_pathlab.pine`, מחולל `gen_pathlab_pine.py`) רושם עסקה רק כשכל הסכמות הוכרעו (תקרה טכנית 1000 נרות; `open at cap` ≈ 2%, לא נספר ב-R).
+- איסוף מחדש: 67 חלונות Replay (NQ 3/9/1, BTC/ETH/SOL 4/13/1), 129,966 שורות P → `trades/htt_path_store_res_raw.json` (לא במעקב git, 30MB) = `htt_path_store_year_raw.json` = `htt_path_store_syn_raw.json`. הנתונים הישנים (אופק 120): `*_raw_h120.json`.
+- `build_backtest_report.py`: עסקה לא-מוכרעת = None (לא horizonR), שדה `openCap`; `build_year_stats.merge` מעדיף את הגרסה המוכרעת של עסקה כפולה. הדוח: `backtest/15_בקטסט_מלא.md` (נשלח למשתמש 16.9 לילה).
+- השוואה לאופק 120: הצלחה 1:3 14%→24%, סטופ 58%→76% (ה"פתוחות" נסגרו רובן בסטופ); R ממוצע 1:3 0.00→−0.02; גרירה 4H +0.33→+0.26, 15m +0.07, 5m +0.02→+0.03; רמות 4H 3+ +0.68 / 4+ +1.01 (PF 3.3) נשארו חזקות; 15m 5+ +0.54; 5m 5+ שלילי.

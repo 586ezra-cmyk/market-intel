@@ -33,8 +33,12 @@ def merge(store):
                 key = (p[1], p[2], t)
                 if key in rows:
                     dup += 1
-                    if rows[key].split('|')[11:14] == p[11:14]:
+                    q = rows[key].split('|')
+                    if q[11:14] == p[11:14]:
                         agree += 1
+                    # אותה עסקה בשני חלונות: מעדיפים את הגרסה שהוכרעה (יותר שדות s1..s6 מלאים)
+                    if sum(1 for x in p[21:27] if x != '') > sum(1 for x in q[21:27] if x != ''):
+                        rows[key] = r
                     continue
                 rows[key] = r
         cutoff = now - DAYS * 86400000

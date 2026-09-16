@@ -354,7 +354,7 @@ function PathSection({ path }: { path: PathStats }) {
         </div>
         <div className="card p-3 overflow-x-auto">
           <h3 className="font-semibold mb-1">שש שיטות ניהול, כל הסיגנלים</h3>
-          <p className="text-[11px] text-slate-500 mb-2">ממוצע R לעסקה. עסקה שלא הוכרעה עד סוף האופק נספרת בשווי השוק שלה.</p>
+          <p className="text-[11px] text-slate-500 mb-2">ממוצע R לעסקה. כל עסקה נעקבת עד שהיא מגיעה לסטופ (כולל מתקדם) או ליעד; עסקה שלא הוכרעה עד תקרת 1000 הנרות נספרת בשווי השוק שלה.</p>
           <table className="w-full text-sm">
             <thead className="text-xs text-slate-400"><tr><th className="text-right pb-1">שיטה</th><th className="pb-1">הצלחה</th><th className="pb-1">ממוצע R</th></tr></thead>
             <tbody>
@@ -457,7 +457,7 @@ function FibSection({ fib }: { fib: FibStats }) {
       <div className="grid md:grid-cols-2 gap-4">
         <div className="card p-3 overflow-x-auto">
           <h3 className="font-semibold mb-1">שש שיטות פיבונאצ'י לסטופ וליעד, כל הסיגנלים</h3>
-          <p className="text-[11px] text-slate-500 mb-2">ממוצע R ביחידות של הסטופ שבשימוש. עסקה שלא הוכרעה עד סוף האופק נספרת בשווי השוק.</p>
+          <p className="text-[11px] text-slate-500 mb-2">ממוצע R ביחידות של הסטופ שבשימוש. מעקב עד סטופ/יעד; עסקה שלא הוכרעה עד תקרת 1000 הנרות נספרת בשווי השוק.</p>
           <table className="w-full text-sm">
             <thead className="text-xs text-slate-400"><tr><th className="text-right pb-1">שיטה</th><th className="pb-1">סיגנלים</th><th className="pb-1">הצלחה</th><th className="pb-1">ממוצע R</th></tr></thead>
             <tbody>
