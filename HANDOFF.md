@@ -559,3 +559,10 @@
 דובר עברית (לקרוא לעצמי "עוזר"), רוצה הסברים צעד-אחר-צעד ובדיקה עצמית שלי לפני שמגיש.
 מעדיף שאעבוד בעצמי בכרום שלו (מחובר ל-TradingView כ-`ezra4cyzv` ול-darkcrypto.io).
 עובד על מק עם 4 מסכים. **חשוב לו:** לא להבטיח שמשהו עובד בלי לוודא; לומר בכנות מה לא עובד.
+
+## 🔒 אבטחה (16.9.2026) — OWASP Top 10 2025
+- דוח מלא: `backtest/16_דוח_אבטחה_OWASP.md`; ראיות curl: `backtest/security/evidence_curl_2026-09-16.txt`; בדיקות: `apps/server/src/__tests__/security.test.ts`.
+- ארכיטקטורה: הדפדפן → `/api/proxy/[...path]` (Next, מוסיף `x-admin-token` מ-`ADMIN_TOKEN` בצד השרת) → Railway `/api` (`adminAuth`). `API_BASE='/api/proxy'` ב-`apps/web/src/lib/api.ts` — כל הקריאות עוברות דרכו. WebSocket עדיין ישיר ופתוח (קריאה בלבד).
+- שרת: `apps/server/src/middleware/security.ts` (adminAuth, rateLimit, headers, errorHandler, SETTING_RULES) + `validate.ts` (zod לכל כתיבה). בלי `ADMIN_TOKEN` השרת עובד פתוח ומזהיר בלוג — כדי לא לשבור את הייצור לפני שהמשתמש מגדיר משתנים.
+- **מחכה למשתמש:** `ADMIN_TOKEN` ב-Railway + Vercel, `BACKEND_URL` ב-Vercel, `TV_WEBHOOK_SECRET` ב-Railway; דחיפה ל-GitHub אחרי אימות מייל. לא לפרוס בלי אישור.
+- אזהרה: `npm audit fix --omit=dev` מוחק את כלי הפיתוח (tsc/vitest/tsx) — להריץ `npm install` בשורש אחרי.

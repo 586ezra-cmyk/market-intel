@@ -1,0 +1,125 @@
+### 1 GET /api/alerts no token
+401
+
+### 2 wrong token
+401
+
+### 3 right token
+{"alerts":[],"total":0}
+200
+
+### 4 webhook no secret
+{"error":"Not found"}
+404
+
+### 5 webhook wrong secret
+{"error":"Not found"}
+404
+
+### 6 webhook right secret in body
+{"error":"Not found"}
+404
+
+### 7 webhook logs redacted (needs token)
+401 no-token
+{"error":"Not found"}
+### 8 connections/secret with token
+{"secret":"hook-local-456","envOverride":true}
+200
+
+### 9 settings unknown key
+{"ok":false,"error":"Unknown setting: telegram_token"}
+400
+
+### 10 settings bad type
+{"ok":false,"error":"Invalid value for min_score"}
+400
+
+### 11 settings good
+{"ok":true}
+200
+
+### 12 journal invalid direction
+{"error":"Invalid request body","field":"direction"}
+400
+
+### 13 journal valid (string price like the form)
+{"ok":true,"id":"54afcd62-f3ff-48dd-ab24-e9aa5f50fea4","pnl":94.53}
+200
+
+### 14 journal read back
+{"entries":[{"id":"54afcd62-f3ff-48dd-ab24-e9aa5f50fea4","tradeNum":1,"symbol":"BTCUSDT","direction":"LONG","openedAt":1789588680370,"closedAt":null,"entryPrice":100.5,"stopPrice":null,"exitPrice":110,"sizeUsd":1000,"commissionUsd":0,"pnlUsd":94.53,"notes":"ok","screenshotUrl":null,"alertId":null,"createdAt":1789588680370}],"stats":{"total":1,"totalPnl":94.53,"avgPnl":94.53,"wins":1,"losses":0,"winRate":100}}
+### 15 watchlist injection symbol
+{"error":"Invalid request body","field":"symbol"}
+400
+
+### 16 watchlist good
+{"ok":true,"id":"8613deaa-7bf0-4704-a888-2304e06398b9"}
+200
+
+### 17 malformed JSON
+{"error":"Invalid request body"}
+400
+
+### 18 oversized body 300kb
+413
+
+### 19 CORS evil origin vs allowed
+no ACAO for evil (good)
+Access-Control-Allow-Origin: https://market-intel-web-henna.vercel.app
+
+### 20 404 JSON + no x-powered-by
+{"error":"Not found"}
+404
+0
+
+### 21 500 message generic (bad id param)
+{"error":"Invalid id"}
+400
+
+### 22 rate limit webhook (245 hits)
+ 237 404
+   8 429
+
+### 4b webhook/tradingview no secret
+{"error":"Unauthorized"}
+401
+
+### 5b wrong secret
+{"error":"Unauthorized"}
+401
+
+### 6b right secret (body), minimal payload
+{"error":"Invalid payload","details":{"formErrors":[],"fieldErrors":{"event":["Invalid discriminator value. Expected 'htt_setup' | 'range_update' | 'structure' | 'fvg_created' | 'fvg_filled' | 'ifvg' | 'liquidity' | 'liquidity_sweep' | 'smt' | 'confl
+400
+
+### 7b logs: no token / with token (secret must be redacted)
+401 no-token
+[{"id":"204fb685-f3cd-412c-ae31-69a0d7250667","payload":"{\"secret\":\"••••\",\"symbol\":\"BTCUSDT\",\"timeframe\":\"15\",\"type\":\"test\",\"price\":1}","received_at":1789588823694}]
+### W1 page loads + security headers
+HTTP/1.1 200 OK
+X-Content-Type-Options: nosniff
+X-Frame-Options: DENY
+Referrer-Policy: strict-origin-when-cross-origin
+Permissions-Policy: camera=(), microphone=(), geolocation=()
+Strict-Transport-Security: max-age=31536000; includeSubDomains
+
+### W2 proxy → backend journal (token added server-side)
+{"entries":[{"id":"54afcd62-f3ff-48dd-ab24-e9aa5f50fea4","tradeNum":1,"symbol":"BTCUSDT","direction":"LONG","openedAt":1789588680370,"closedAt":null,"entryPrice":100.5,"stopPrice":null,"exitPrice":110
+200
+
+### W3 proxy blocks non-API paths
+{"error":"Not found"} 404
+<!DOCTYPE html><!--BNr6hk5AheylMNb1wN2lv--><html lang="he" dir="rtl" class="dark"><head><meta charSet="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><link rel="preload" href="/_next/static/media/d2e3c073bbb3955e-s.p.woff2" as="font" crossorigin="" type="font/woff2"/><link rel="preload" href="/_next/static/media/ec516af01d950ed6-s.p.woff2" as="font" crossorigin="" type="font/woff2"/><link rel="stylesheet" href="/_next/static/css/541a61d4e7b2854a.css" data-precedence="next"/><link rel="preload" as="script" fetchPriority="low" href="/_next/static/chunks/webpack-7fde93463984d6e4.js"/><script src="/_next/static/chunks/87c73c54-09e1ba5c70e60a51.js" async=""></script><script src="/_next/static/chunks/18-12ff71d60356055b.js" async=""></script><script src="/_next/static/chunks/main-app-dbd218ecbf249272.js" async=""></script><script src="/_next/static/chunks/app/layout-ba79675bf38e0256.js" async=""></script><meta name="robots" content="noindex"/><meta name="next-size-adjust" content=""/><link rel="apple-touch-icon" sizes="192x192" href="/icons/icon-192x192.png"/><link rel="apple-touch-icon" sizes="512x512" href="/icons/icon-512x512.png"/><meta name="mobile-web-app-capable" content="yes"/><meta name="apple-mobile-web-app-capable" content="yes"/><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/><title>404: This page could not be found.</title><meta name="theme-color" content="#0f1117"/><title>מערכת מסחר חכמה | ICT + Wyckoff</title><meta name="description" content="מערכת מודיעין שוק חכמה — ICT, Wyckoff, Smart Money"/><link rel="manifest" href="/manifest.json"/><meta name="mobile-web-app-capable" content="yes"/><meta name="apple-mobile-web-app-title" content="מסחר"/><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/><script src="/_next/static/chunks/polyfills-42372ed130431b0a.js" noModule=""></script></head><body class="__variable_152d43 font-sans bg-surface text-white antialiased"><div hidden=""><!--$--><!--/$--></div><div style="font-family:system-ui,&quot;Segoe UI&quot;,Roboto,Helvetica,Arial,sans-serif,&quot;Apple Color Emoji&quot;,&quot;Segoe UI Emoji&quot;;height:100vh;text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:center"><div><style>body{color:#000;background:#fff;margin:0}.next-error-h1{border-right:1px solid rgba(0,0,0,.3)}@media (prefers-color-scheme:dark){body{color:#fff;background:#000}.next-error-h1{border-right:1px solid rgba(255,255,255,.3)}}</style><h1 class="next-error-h1" style="display:inline-block;margin:0 20px 0 0;padding:0 23px 0 0;font-size:24px;font-weight:500;vertical-align:top;line-height:49px">404</h1><div style="display:inline-block"><h2 style="font-size:14px;font-weight:400;line-height:49px;margin:0">This page could not be found.</h2></div></div></div><!--$--><!--/$--><script src="/_next/static/chunks/webpack-7fde93463984d6e4.js" id="_R_" async=""></script><script>(self.__next_f=self.__next_f||[]).push([0])</script><script>self.__next_f.push([1,"1:\"$Sreact.fragment\"\n2:I[85341,[],\"\"]\n3:I[90025,[],\"\"]\n4:I[45165,[\"177\",\"static/chunks/app/layout-ba79675bf38e0256.js\"],\"\"]\n5:I[15104,[],\"OutletBoundary\"]\n7:I[94777,[],\"AsyncMetadataOutlet\"]\n9:I[15104,[],\"ViewportBoundary\"]\nb:I[15104,[],\"MetadataBoundary\"]\nc:\"$Sreact.suspense\"\ne:I[34431,[],\"\"]\n:HL[\"/_next/static/media/d2e3c073bbb3955e-s.p.woff2\",\"font\",{\"crossOrigin\":\"\",\"type\":\"font/woff2\"}]\n:HL[\"/_next/static/media/ec516af01d950ed6-s.p.woff2\",\"font\",{\"crossOrigin\":\"\",\"type\":\"font/woff2\"}]\n:HL[\"/_next/static/css/541a61d4e7b2854a.css\",\"style\"]\n"])</script><script>self.__next_f.push([1,"0:{\"P\":null,\"b\":\"BNr6hk5AheylMNb1wN2lv\",\"p\":\"\",\"c\":[\"\",\"_not-found\"],\"i\":false,\"f\":[[[\"\",{\"children\":[\"/_not-found\",{\"children\":[\"__PAGE__\",{}]}]},\"$undefined\",\"$undefined\",true],[\"\",[\"$\",\"$1\",\"c\",{\"children\":[[[\"$\",\"link\",\"0\",{\"rel\":\"stylesheet\",\"href\":\"/_next/static/css/541a61d4e7b2854a.css\",\"precedence\":\"next\",\"crossOrigin\":\"$undefined\",\"nonce\":\"$undefined\"}]],[\"$\",\"html\",null,{\"lang\":\"he\",\"dir\":\"rtl\",\"className\":\"dark\",\"children\":[[\"$\",\"head\",null,{\"children\":[[\"$\",\"link\",null,{\"rel\":\"apple-touch-icon\",\"sizes\":\"192x192\",\"href\":\"/icons/icon-192x192.png\"}],[\"$\",\"link\",null,{\"rel\":\"apple-touch-icon\",\"sizes\":\"512x512\",\"href\":\"/icons/icon-512x512.png\"}],[\"$\",\"meta\",null,{\"name\":\"mobile-web-app-capable\",\"content\":\"yes\"}],[\"$\",\"meta\",null,{\"name\":\"apple-mobile-web-app-capable\",\"content\":\"yes\"}],[\"$\",\"meta\",null,{\"name\":\"apple-mobile-web-app-status-bar-style\",\"content\":\"black-translucent\"}]]}],[\"$\",\"body\",null,{\"className\":\"__variable_152d43 font-sans bg-surface text-white antialiased\",\"children\":[[\"$\",\"$L2\",null,{\"parallelRouterKey\":\"children\",\"error\":\"$undefined\",\"errorStyles\":\"$undefined\",\"errorScripts\":\"$undefined\",\"template\":[\"$\",\"$L3\",null,{}],\"templateStyles\":\"$undefined\",\"templateScripts\":\"$undefined\",\"notFound\":\"$undefined\",\"forbidden\":\"$undefined\",\"unauthorized\":\"$undefined\"}],[\"$\",\"$L4\",null,{\"id\":\"register-sw\",\"strategy\":\"afterInteractive\",\"children\":\"\\n            if ('serviceWorker' in navigator) {\\n              window.addEventListener('load', function() {\\n                navigator.serviceWorker.register('/sw.js', { scope: '/' })\\n                  .then(function(reg) { console.log('SW registered:', reg.scope); })\\n                  .catch(function(err) { console.warn('SW registration failed:', err); });\\n              });\\n            }\\n          \"}]]}]]}]]}],{\"children\":[\"/_not-found\",[\"$\",\"$1\",\"c\",{\"children\":[null,[\"$\",\"$L2\",null,{\"parallelRouterKey\":\"children\",\"error\":\"$undefined\",\"errorStyles\":\"$undefined\",\"errorScripts\":\"$undefined\",\"template\":[\"$\",\"$L3\",null,{}],\"templateStyles\":\"$undefined\",\"templateScripts\":\"$undefined\",\"notFound\":\"$undefined\",\"forbidden\":\"$undefined\",\"unauthorized\":\"$undefined\"}]]}],{\"children\":[\"__PAGE__\",[\"$\",\"$1\",\"c\",{\"children\":[[[\"$\",\"title\",null,{\"children\":\"404: This page could not be found.\"}],[\"$\",\"div\",null,{\"style\":{\"fontFamily\":\"system-ui,\\\"Segoe UI\\\",Roboto,Helvetica,Arial,sans-serif,\\\"Apple Color Emoji\\\",\\\"Segoe UI Emoji\\\"\",\"height\":\"100vh\",\"textAlign\":\"center\",\"display\":\"flex\",\"flexDirection\":\"column\",\"alignItems\":\"center\",\"justifyContent\":\"center\"},\"children\":[\"$\",\"div\",null,{\"children\":[[\"$\",\"style\",null,{\"dangerouslySetInnerHTML\":{\"__html\":\"body{color:#000;background:#fff;margin:0}.next-error-h1{border-right:1px solid rgba(0,0,0,.3)}@media (prefers-color-scheme:dark){body{color:#fff;background:#000}.next-error-h1{border-right:1px solid rgba(255,255,255,.3)}}\"}}],[\"$\",\"h1\",null,{\"className\":\"next-error-h1\",\"style\":{\"display\":\"inline-block\",\"margin\":\"0 20px 0 0\",\"padding\":\"0 23px 0 0\",\"fontSize\":24,\"fontWeight\":500,\"verticalAlign\":\"top\",\"lineHeight\":\"49px\"},\"children\":404}],[\"$\",\"div\",null,{\"style\":{\"display\":\"inline-block\"},\"children\":[\"$\",\"h2\",null,{\"style\":{\"fontSize\":14,\"fontWeight\":400,\"lineHeight\":\"49px\",\"margin\":0},\"children\":\"This page could not be found.\"}]}]]}]}]],null,[\"$\",\"$L5\",null,{\"children\":[\"$L6\",[\"$\",\"$L7\",null,{\"promise\":\"$@8\"}]]}]]}],{},null,false]},null,false]},null,false],[\"$\",\"$1\",\"h\",{\"children\":[[\"$\",\"meta\",null,{\"name\":\"robots\",\"content\":\"noindex\"}],[[\"$\",\"$L9\",null,{\"children\":\"$La\"}],[\"$\",\"meta\",null,{\"name\":\"next-size-adjust\",\"content\":\"\"}]],[\"$\",\"$Lb\",null,{\"children\":[\"$\",\"div\",null,{\"hidden\":true,\"children\":[\"$\",\"$c\",null,{\"fallback\":null,\"children\":\"$Ld\"}]}]}]]}],false]],\"m\":\"$undefined\",\"G\":[\"$e\",[]],\"s\":false,\"S\":true}\n"])</script><script>self.__next_f.push([1,"a:[[\"$\",\"meta\",\"0\",{\"charSet\":\"utf-8\"}],[\"$\",\"meta\",\"1\",{\"name\":\"viewport\",\"content\":\"width=device-width, initial-scale=1\"}],[\"$\",\"meta\",\"2\",{\"name\":\"theme-color\",\"content\":\"#0f1117\"}]]\n6:null\n"])</script><script>self.__next_f.push([1,"8:{\"metadata\":[[\"$\",\"title\",\"0\",{\"children\":\"מערכת מסחר חכמה | ICT + Wyckoff\"}],[\"$\",\"meta\",\"1\",{\"name\":\"description\",\"content\":\"מערכת מודיעין שוק חכמה — ICT, Wyckoff, Smart Money\"}],[\"$\",\"link\",\"2\",{\"rel\":\"manifest\",\"href\":\"/manifest.json\",\"crossOrigin\":\"$undefined\"}],[\"$\",\"meta\",\"3\",{\"name\":\"mobile-web-app-capable\",\"content\":\"yes\"}],[\"$\",\"meta\",\"4\",{\"name\":\"apple-mobile-web-app-title\",\"content\":\"מסחר\"}],[\"$\",\"meta\",\"5\",{\"name\":\"apple-mobile-web-app-status-bar-style\",\"content\":\"black-translucent\"}]],\"error\":null,\"digest\":\"$undefined\"}\n"])</script><script>self.__next_f.push([1,"d:\"$8:metadata\"\n"])</script></body></html> 404
+
+### W4 proxy POST passes validation errors through
+{"error":"Invalid request body","field":"symbol"}
+400
+
+### W5 candles route input validation
+{"error":"Invalid symbol"} 400
+{"error":"Invalid timeframe"} 400
+
+### W6 no NEXT_PUBLIC_API_URL left in the client bundle
+       0
+
