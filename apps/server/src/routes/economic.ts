@@ -10,7 +10,7 @@ router.get('/', async (_req: Request, res: Response) => {
     const events = await getCachedCalendar()
     res.json(events)
   } catch (err: any) {
-    res.status(500).json({ error: err.message })
+    { console.error('[Error]', err?.message ?? err); res.status(500).json({ error: 'Internal error' }) }
   }
 })
 
@@ -44,7 +44,7 @@ router.post('/backup', async (_req: Request, res: Response) => {
     const dest = await runBackup()
     res.json({ ok: true, file: dest })
   } catch (err: any) {
-    res.status(500).json({ error: err.message })
+    { console.error('[Error]', err?.message ?? err); res.status(500).json({ error: 'Internal error' }) }
   }
 })
 

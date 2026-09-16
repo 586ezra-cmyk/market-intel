@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express'
+import { parseBody, idParam, WatchlistAdd, WatchlistUpdate, PricesBody } from '../middleware/validate'
 import { v4 as uuid } from 'uuid'
 import { getDb } from '../db/client'
 import { sendTelegram } from '../services/alertDispatcher'
@@ -15,8 +16,8 @@ router.get('/', (_req: Request, res: Response) => {
 // ─── POST /api/watchlist ──────────────────────────────────────────────────────
 router.post('/', (req: Request, res: Response) => {
   const db = getDb()
-  const { symbol, priceAlert } = req.body as { symbol: string; priceAlert?: number }
-  if (!symbol) { res.status(400).json({ error: 'symbol required' }); return }
+  const body = parseBody(WatchlistAdd, req, res); if (!body) return
+  const { symbol, priceAlert } = body
 
   const id = uuid()
   const now = Date.now()
@@ -35,8 +36,10 @@ router.post('/', (req: Request, res: Response) => {
 // ─── PUT /api/watchlist/:symbol ───────────────────────────────────────────────
 router.put('/:symbol', (req: Request, res: Response) => {
   const db = getDb()
-  const symbol = String(req.params['symbol']).toUpperCase()
-  const { priceAlert } = req.body as { priceAlert: number | null }
+  const sym = idParam(req, res, 'symbol'); if (!sym) return
+  const symbol = sym.toUpperCase()
+  const body = parseBody(WatchlistUpdate, req, res); if (!body) return
+  const { priceAlert } = body
 
   db.prepare(`
     UPDATE watchlist SET price_alert = ?, alert_fired = 0 WHERE symbol = ?
@@ -60,7 +63,7 @@ router.post('/check-prices', async (req: Request, res: Response) => {
     SELECT * FROM watchlist WHERE price_alert IS NOT NULL AND alert_fired = 0
   `).all() as any[]
 
-  const prices = req.body as Record<string, number> // { BTCUSDT: 95000, ... }
+  const prices = parseBody(PricesBody, req, res); if (!prices) return
   const fired: string[] = []
 
   for (const item of items) {

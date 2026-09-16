@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express'
+import { parseBody, idParam, AlertRate, AlertArchive } from '../middleware/validate'
 import { getDb } from '../db/client'
 import { getRecentAlerts, getAlertById } from '../services/alertDispatcher'
 
@@ -67,14 +68,16 @@ router.get('/:id', (req: Request, res: Response) => {
 // POST /api/alerts/:id/rate — user feedback (rating, outcome, notes — all optional)
 router.post('/:id/rate', (req: Request, res: Response) => {
   const db = getDb()
-  const { rating, outcome, notes } = req.body
+  const id = idParam(req, res); if (!id) return
+  const body = parseBody(AlertRate, req, res); if (!body) return
+  const { rating, outcome, notes } = body
 
-  if (rating !== undefined && (rating < 1 || rating > 5)) {
+  if (rating != null && (rating < 1 || rating > 5)) {
     res.status(400).json({ error: 'Rating must be 1-5' })
     return
   }
 
-  const existing = db.prepare(`SELECT id, user_rating, user_outcome, user_notes FROM alerts WHERE id = ?`).get(req.params.id) as any
+  const existing = db.prepare(`SELECT id, user_rating, user_outcome, user_notes FROM alerts WHERE id = ?`).get(id) as any
   if (!existing) {
     res.status(404).json({ error: 'Alert not found' })
     return
@@ -101,7 +104,7 @@ router.post('/:id/rate', (req: Request, res: Response) => {
       newOutcome ? tp1Hit : existing.tp1_hit ?? 0,
       newOutcome ? sl_hit  : existing.sl_hit  ?? 0,
       newOutcome, systemOutcome,
-      req.params.id,
+      id,
     )
 
   res.json({ ok: true })
@@ -110,9 +113,11 @@ router.post('/:id/rate', (req: Request, res: Response) => {
 // POST /api/alerts/:id/archive — move to archive
 router.post('/:id/archive', (req: Request, res: Response) => {
   const db = getDb()
-  const { archived = true } = req.body
+  const id = idParam(req, res); if (!id) return
+  const body = parseBody(AlertArchive, req, res); if (!body) return
+  const archived = body.archived ?? true
   const result = db.prepare(`UPDATE alerts SET archived = ? WHERE id = ?`)
-    .run(archived ? 1 : 0, req.params.id)
+    .run(archived ? 1 : 0, id)
   if (result.changes === 0) { res.status(404).json({ error: 'Alert not found' }); return }
   res.json({ ok: true, archived })
 })

@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express'
+import { parseBody, TelegramBody, ServerUrlBody } from '../middleware/validate'
 import { randomBytes } from 'crypto'
 import { getDb } from '../db/client'
 import { getFeedStatus } from '../services/binanceWebSocket'
@@ -561,7 +562,12 @@ router.get('/', (_req: Request, res: Response) => {
 // ─── GET /api/connections/secret ─────────────────────────────────────────────
 // Returns the FULL secret (for copy button)
 
-router.get('/secret', (_req: Request, res: Response) => {
+router.get('/secret', (req: Request, res: Response) => {
+  // Defense in depth: the full secret is only ever returned on an authenticated deployment
+  if (!process.env.ADMIN_TOKEN) {
+    return res.status(403).json({ error: 'Set ADMIN_TOKEN on the server to enable reading the full secret' })
+  }
+  console.warn(`[Security] full webhook secret read by admin from ${req.ip}`)
   if (process.env.TV_WEBHOOK_SECRET) {
     return res.json({ secret: process.env.TV_WEBHOOK_SECRET, envOverride: true })
   }
@@ -585,8 +591,8 @@ router.post('/regenerate-secret', (_req: Request, res: Response) => {
 // ─── POST /api/connections/server-url ────────────────────────────────────────
 
 router.post('/server-url', (req: Request, res: Response) => {
-  const { url } = req.body as { url?: string }
-  if (!url) return res.status(400).json({ ok: false, error: 'url required' })
+  const body = parseBody(ServerUrlBody, req, res); if (!body) return
+  const { url } = body
   setSetting('server_url', url.replace(/\/$/, ''))
   res.json({ ok: true })
 })
@@ -594,7 +600,8 @@ router.post('/server-url', (req: Request, res: Response) => {
 // ─── POST /api/connections/telegram ──────────────────────────────────────────
 
 router.post('/telegram', (req: Request, res: Response) => {
-  const { token, chatId, topicDaily, topicWeekly, topicHigh, topicNews } = req.body as Record<string, string>
+  const body = parseBody(TelegramBody, req, res); if (!body) return
+  const { token, chatId, topicDaily, topicWeekly, topicHigh, topicNews } = body
   if (token    !== undefined) setSetting('telegram_token',        token)
   if (chatId   !== undefined) setSetting('telegram_chat_id',      chatId)
   if (topicDaily  !== undefined) setSetting('telegram_topic_daily',   topicDaily)

@@ -1,5 +1,6 @@
 'use client'
 import { useState } from 'react'
+import { API_BASE } from '@/lib/api'
 
 export interface WyckoffDetail {
   phase: string
@@ -136,7 +137,7 @@ export interface FullAnalysis {
   drawingLayers: DrawingLayer[]
 }
 
-const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001'
+const API = API_BASE
 
 export function useAnalysis() {
   const [data, setData] = useState<FullAnalysis | null>(null)

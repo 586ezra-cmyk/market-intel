@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useApi, apiPost } from '@/hooks/useApi'
+import { API_BASE } from '@/lib/api'
 
 // ─── Timeframes ───────────────────────────────────────────────────────────────
 
@@ -135,7 +136,7 @@ export default function TabAlertSettings() {
   async function sendTest() {
     setTestResult(null)
     try {
-      const base = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001'
+      const base = API_BASE
       const r = await fetch(`${base}/api/telegram/test`, { method: 'POST' })
       const d = await r.json()
       setTestResult(d.results ? d.results.join(' · ') : (d.ok ? '✅ נשלח' : '❌ שגיאה'))

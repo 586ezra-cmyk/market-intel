@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useApi, apiPost } from '@/hooks/useApi'
+import { API_BASE } from '@/lib/api'
 
 const SYMBOLS = ['BTCUSDT','ETHUSDT','SOLUSDT','BNBUSDT','XAUUSD','NQ1!','ES1!','EURUSD','GBPUSD']
 
@@ -28,13 +29,13 @@ export default function TabWatchlist() {
   }
 
   async function removeSymbol(symbol: string) {
-    const base = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001'
+    const base = API_BASE
     await fetch(`${base}/api/watchlist/${symbol}`, { method: 'DELETE' })
     refetch()
   }
 
   async function updateAlert(symbol: string, priceAlert: number | null) {
-    const base = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001'
+    const base = API_BASE
     await fetch(`${base}/api/watchlist/${symbol}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },

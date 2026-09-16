@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express'
+import { parseBody, idParam, NoteBody } from '../middleware/validate'
 import { getDb } from '../db/client'
 
 const router = Router()
@@ -10,7 +11,7 @@ router.get('/', (_req: Request, res: Response) => {
     const notes = db.prepare('SELECT * FROM notes ORDER BY created_at DESC').all()
     res.json(notes)
   } catch (err: any) {
-    res.status(500).json({ error: err.message })
+    { console.error('[Error]', err?.message ?? err); res.status(500).json({ error: 'Internal error' }) }
   }
 })
 
@@ -18,7 +19,8 @@ router.get('/', (_req: Request, res: Response) => {
 router.post('/', (req: Request, res: Response) => {
   try {
     const db = getDb()
-    const { id, content } = req.body as { id: string; content: string }
+    const body = parseBody(NoteBody, req, res); if (!body) return
+    const { id, content } = body
     const now = Date.now()
     db.prepare(`
       INSERT INTO notes (id, content, created_at, updated_at)
@@ -27,7 +29,7 @@ router.post('/', (req: Request, res: Response) => {
     `).run(id, content ?? '', now, now)
     res.json({ ok: true, id })
   } catch (err: any) {
-    res.status(500).json({ error: err.message })
+    { console.error('[Error]', err?.message ?? err); res.status(500).json({ error: 'Internal error' }) }
   }
 })
 
@@ -38,7 +40,7 @@ router.delete('/:id', (req: Request, res: Response) => {
     db.prepare('DELETE FROM notes WHERE id = ?').run(req.params['id'])
     res.json({ ok: true })
   } catch (err: any) {
-    res.status(500).json({ error: err.message })
+    { console.error('[Error]', err?.message ?? err); res.status(500).json({ error: 'Internal error' }) }
   }
 })
 

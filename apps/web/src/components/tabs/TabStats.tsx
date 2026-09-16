@@ -6,6 +6,7 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, LineChart, Line, CartesianGrid, Legend,
 } from 'recharts'
+import { API_BASE } from '@/lib/api'
 
 interface FactorStat {
   factors: string[]
@@ -29,7 +30,7 @@ interface WinRateSummary {
 function useFactorStats() {
   const [combinations, setCombinations] = useState<FactorStat[]>([])
   const [summary, setSummary] = useState<WinRateSummary | null>(null)
-  const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001'
+  const API = API_BASE
 
   const fetchAll = async () => {
     try {

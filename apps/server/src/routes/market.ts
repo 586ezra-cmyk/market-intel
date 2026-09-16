@@ -30,7 +30,7 @@ router.get('/:symbol/:timeframe/candles', async (req: Request, res: Response) =>
     candlesCache.set(cacheKey, { data: candles, ts: Date.now() })
     res.json(candles)
   } catch (err: any) {
-    res.status(500).json({ error: err.message })
+    { console.error('[Error]', err?.message ?? err); res.status(500).json({ error: 'Internal error' }) }
   }
 })
 
@@ -49,7 +49,7 @@ router.get('/:symbol/:timeframe/state', (req: Request, res: Response) => {
 
     res.json({ range, structures, fvgs, liquidity, smtSignals })
   } catch (err: any) {
-    res.status(400).json({ error: err.message })
+    { console.error('[Market] upstream error:', err?.message ?? err); res.status(502).json({ error: 'Market data unavailable' }) }
   }
 })
 
@@ -63,7 +63,7 @@ router.get('/:symbol/:timeframe/ranges', (req: Request, res: Response) => {
     const history = getRangeHistory(symbol, tf, limit)
     res.json(history)
   } catch (err: any) {
-    res.status(400).json({ error: err.message })
+    { console.error('[Market] upstream error:', err?.message ?? err); res.status(502).json({ error: 'Market data unavailable' }) }
   }
 })
 
@@ -77,7 +77,7 @@ router.get('/:symbol/:timeframe/cascade', (req: Request, res: Response) => {
     const scan = cascadeScan(symbol, tf, direction)
     res.json(scan)
   } catch (err: any) {
-    res.status(400).json({ error: err.message })
+    { console.error('[Market] upstream error:', err?.message ?? err); res.status(502).json({ error: 'Market data unavailable' }) }
   }
 })
 
@@ -89,7 +89,7 @@ router.get('/:symbol/:timeframe/computed-layers', async (req: Request, res: Resp
     const data = await getComputedLayers(symbol, timeframe)
     res.json(data)
   } catch (err: any) {
-    res.status(500).json({ error: err.message })
+    { console.error('[Error]', err?.message ?? err); res.status(500).json({ error: 'Internal error' }) }
   }
 })
 
@@ -106,7 +106,7 @@ router.get('/:symbol/analyze', async (req: Request, res: Response) => {
     analysisCache.set(symbol, result)
     res.json(result)
   } catch (err: any) {
-    res.status(500).json({ error: err.message })
+    { console.error('[Error]', err?.message ?? err); res.status(500).json({ error: 'Internal error' }) }
   }
 })
 

@@ -1,8 +1,9 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { API_BASE } from '@/lib/api'
 
-const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001'
+const API = API_BASE
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

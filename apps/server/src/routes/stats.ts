@@ -11,7 +11,7 @@ router.get('/factors', (_req: Request, res: Response) => {
     const combinations = getTopCombinations(db, 20)
     res.json({ combinations })
   } catch (err: any) {
-    res.status(500).json({ error: err.message })
+    { console.error('[Error]', err?.message ?? err); res.status(500).json({ error: 'Internal error' }) }
   }
 })
 
@@ -22,7 +22,7 @@ router.get('/summary', (_req: Request, res: Response) => {
     const summary = getWinRateSummary(db)
     res.json(summary)
   } catch (err: any) {
-    res.status(500).json({ error: err.message })
+    { console.error('[Error]', err?.message ?? err); res.status(500).json({ error: 'Internal error' }) }
   }
 })
 

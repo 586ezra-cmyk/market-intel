@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { formatTime, formatPrice } from '@/lib/utils'
 import { useApi, apiPost } from '@/hooks/useApi'
 import * as XLSX from 'xlsx'
+import { API_BASE } from '@/lib/api'
 
 interface JournalEntry {
   id: string
@@ -81,7 +82,7 @@ export default function TabJournal() {
   }
 
   async function deleteTrade(id: string) {
-    const base = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001'
+    const base = API_BASE
     await fetch(`${base}/api/journal/${id}`, { method: 'DELETE' })
     refetch()
   }

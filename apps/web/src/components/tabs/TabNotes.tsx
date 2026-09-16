@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { formatTime } from '@/lib/utils'
+import { API_BASE } from '@/lib/api'
 
 interface Note {
   id: string
@@ -10,7 +11,7 @@ interface Note {
   updated_at: number
 }
 
-const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001'
+const API = API_BASE
 
 export default function TabNotes() {
   const [notes, setNotes] = useState<Note[]>([])

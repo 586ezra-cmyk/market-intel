@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express'
+import { parseBody, idParam, BacktestBody, BacktestUpdate } from '../middleware/validate'
 import { v4 as uuid } from 'uuid'
 import { getDb } from '../db/client'
 
@@ -27,7 +28,7 @@ router.get('/', (req: Request, res: Response) => {
 // ─── POST /api/backtest — create entry ────────────────────────────────────────
 router.post('/', (req: Request, res: Response) => {
   const db = getDb()
-  const b = req.body as any
+  const b = parseBody(BacktestBody, req, res); if (!b) return
   const id = uuid()
   const now = Date.now()
 
@@ -63,8 +64,8 @@ router.post('/', (req: Request, res: Response) => {
 // ─── PUT /api/backtest/:id — update ──────────────────────────────────────────
 router.put('/:id', (req: Request, res: Response) => {
   const db = getDb()
-  const id = req.params['id']
-  const b = req.body as any
+  const id = idParam(req, res); if (!id) return
+  const b = parseBody(BacktestUpdate, req, res); if (!b) return
 
   const existing = db.prepare(`SELECT id FROM backtest_entries WHERE id = ?`).get(id)
   if (!existing) { res.status(404).json({ error: 'Not found' }); return }
@@ -86,7 +87,8 @@ router.put('/:id', (req: Request, res: Response) => {
 // ─── DELETE /api/backtest/:id ─────────────────────────────────────────────────
 router.delete('/:id', (req: Request, res: Response) => {
   const db = getDb()
-  db.prepare(`DELETE FROM backtest_entries WHERE id = ?`).run(req.params['id'])
+  const id = idParam(req, res); if (!id) return
+  db.prepare(`DELETE FROM backtest_entries WHERE id = ?`).run(id)
   res.json({ ok: true })
 })
 

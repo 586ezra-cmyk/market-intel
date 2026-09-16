@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express'
+import { adminAuth, clientIp, safeEqual } from '../middleware/security'
 import { z } from 'zod'
 import { config } from '../config'
 import { getDb } from '../db/client'
@@ -199,7 +200,13 @@ function verifySecret(req: Request, res: Response): boolean {
   const bodySecret = (req.body as any)?.secret   as string | undefined
   const expected   = getWebhookSecret()           // DB first, then ENV, then 'dev-secret'
 
-  if (header !== expected && bodySecret !== expected) {
+  if (process.env.NODE_ENV === 'production' && (!expected || expected === 'dev-secret')) {
+    console.error('[Security] webhook secret is not configured (default in production) — rejecting')
+    res.status(503).json({ error: 'Webhook secret not configured' })
+    return false
+  }
+  if (!safeEqual(header, expected) && !safeEqual(bodySecret, expected)) {
+    console.warn(`[Security] webhook rejected (bad secret) from ${clientIp(req)}`)
     res.status(401).json({ error: 'Unauthorized' })
     return false
   }
@@ -436,11 +443,23 @@ router.post('/tradingview', async (req: Request, res: Response) => {
 
 // ─── GET /webhook/logs ────────────────────────────────────────────────────────
 
-router.get('/logs', (req: Request, res: Response) => {
+// Admin only (same token as /api) and the secret is stripped from every stored payload before it leaves the server
+router.get('/logs', adminAuth, (req: Request, res: Response) => {
   const db = getDb()
-  const limit = parseInt(String(req.query.limit ?? '50'), 10)
-  const rows = db.prepare(`SELECT * FROM webhook_log ORDER BY received_at DESC LIMIT ?`).all(limit)
-  res.json(rows)
+  const limit = Math.min(Math.max(parseInt(String(req.query.limit ?? '50'), 10) || 50, 1), 500)
+  const rows = db.prepare(`SELECT * FROM webhook_log ORDER BY received_at DESC LIMIT ?`).all(limit) as any[]
+  res.json(rows.map(r => ({ ...r, payload: redactSecret(r.payload) })))
 })
+
+function redactSecret(payload: unknown): unknown {
+  if (typeof payload !== 'string') return payload
+  try {
+    const o = JSON.parse(payload)
+    if (o && typeof o === 'object' && 'secret' in o) o.secret = '••••'
+    return JSON.stringify(o)
+  } catch {
+    return payload.replace(/"secret"\s*:\s*"[^"]*"/g, '"secret":"••••"')
+  }
+}
 
 export default router

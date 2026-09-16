@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express'
+import { SETTING_RULES } from '../middleware/security'
 import { getDb } from '../db/client'
 
 const router = Router()
@@ -22,7 +23,7 @@ telegramTestRouter.post('/test', async (_req: Request, res: Response) => {
     const d = await r.json() as any
     res.json({ ok: d.ok, results: [d.ok ? '✅ חיבור תקין' : `❌ ${d.description}`] })
   } catch (err: any) {
-    res.status(500).json({ ok: false, error: err.message })
+    { console.error('[Error]', err?.message ?? err); res.status(500).json({ ok: false, error: 'Internal error' }) }
   }
 })
 
@@ -64,7 +65,18 @@ router.get('/', (_req: Request, res: Response) => {
 router.post('/', (req: Request, res: Response) => {
   const db = getDb()
   const now = Date.now()
-  const body = req.body as Record<string, any>
+  const raw = req.body
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return res.status(400).json({ ok: false, error: 'Invalid body' })
+  }
+  // Allow-list: only known settings with valid values; secrets are set through their dedicated endpoints
+  const body: Record<string, any> = {}
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    const rule = SETTING_RULES[k]
+    if (!rule) return res.status(400).json({ ok: false, error: `Unknown setting: ${k.slice(0, 40)}` })
+    if (!rule(v)) return res.status(400).json({ ok: false, error: `Invalid value for ${k}` })
+    body[k] = v
+  }
 
   const upsert = db.prepare(`
     INSERT INTO settings (key, value, updated_at)

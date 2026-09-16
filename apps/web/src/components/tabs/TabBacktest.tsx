@@ -4,6 +4,7 @@ import { useState } from 'react'
 import * as XLSX from 'xlsx'
 import { useApi, apiPost } from '@/hooks/useApi'
 import { formatTime } from '@/lib/utils'
+import { API_BASE } from '@/lib/api'
 
 interface BtTrade {
   id: string
@@ -71,7 +72,7 @@ export default function TabBacktest() {
   }
 
   async function deleteTrade(id: string) {
-    await fetch(`${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001'}/api/backtest/${id}`, {
+    await fetch(`${API_BASE}/api/backtest/${id}`, {
       method: 'DELETE',
     })
     refetch()

@@ -2,6 +2,7 @@ import http from 'http'
 import express from 'express'
 import cors from 'cors'
 import { config } from './config'
+import { adminAuth, rateLimit, securityHeaders, notFound, errorHandler } from './middleware/security'
 // Pine Script version: v2 (Volume Climax + BB + iFVG + semicolon fixes)
 import { getDb } from './db/client'
 import { initWebSocket } from './websocket'
@@ -24,18 +25,34 @@ import { startYahooFeed } from './services/yahooFeed'
 const app = express()
 
 // ─── Middleware ───────────────────────────────────────────────────────────────
+// Railway/Vercel sit behind a proxy — needed for the real client IP (rate limit, logs)
+app.set('trust proxy', 1)
+app.disable('x-powered-by')
+app.use(securityHeaders)
+
+// CORS: exact origin allow-list. Production origin + anything listed in CORS_ORIGINS (comma separated);
+// localhost only outside production. No more "any vercel.app" wildcard.
+const ALLOWED_ORIGINS = new Set<string>([
+  'https://market-intel-web-henna.vercel.app',
+  ...(process.env.CORS_ORIGINS ?? process.env.CORS_ORIGIN ?? '').split(',').map(s => s.trim()).filter(Boolean),
+])
 app.use(cors({
   origin: (origin, callback) => {
-    // Allow: no origin (curl/Postman), localhost, our Vercel app, any vercel.app preview
-    if (!origin || origin.includes('localhost') || origin.includes('vercel.app') || origin === process.env.CORS_ORIGIN) {
-      callback(null, true)
-    } else {
-      callback(null, false)
-    }
+    if (!origin) return callback(null, true)                       // curl / server-to-server / same-origin
+    if (ALLOWED_ORIGINS.has(origin)) return callback(null, true)
+    if (config.nodeEnv !== 'production' && /^https?:\/\/localhost(:\d+)?$/.test(origin)) return callback(null, true)
+    callback(null, false)
   },
   credentials: true,
+  allowedHeaders: ['Content-Type', 'x-admin-token', 'Authorization', 'x-tv-secret'],
 }))
-app.use(express.json({ limit: '1mb' }))
+app.use(express.json({ limit: '256kb' }))
+
+// Rate limits: the webhook is public (TradingView), the API is admin-only
+app.use('/webhook', rateLimit(60_000, 240, 'webhook'))
+app.use('/api', rateLimit(60_000, 900, 'api'))
+// Authentication for everything under /api (ADMIN_TOKEN); /webhook/tradingview keeps its own secret
+app.use('/api', adminAuth)
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
 app.use('/webhook', webhookRouter)
@@ -52,10 +69,13 @@ app.use('/api/watchlist', watchlistRouter)
 app.use('/api/stats', statsRouter)
 app.use('/api/notes', notesRouter)
 
-// Health check
+// Health check (public, no details)
 app.get('/health', (_req, res) => {
   res.json({ ok: true, time: Date.now(), env: config.nodeEnv })
 })
+
+app.use(notFound)
+app.use(errorHandler)
 
 // ─── Bootstrap ────────────────────────────────────────────────────────────────
 const server = http.createServer(app)

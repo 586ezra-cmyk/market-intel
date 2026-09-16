@@ -28,9 +28,13 @@ export async function GET(
   { params }: { params: Promise<{ symbol: string; timeframe: string }> },
 ) {
   const { symbol, timeframe } = await params
-  const limit = Math.min(parseInt(req.nextUrl.searchParams.get('limit') ?? '250'), 500)
-  const interval = TF_MAP[timeframe] ?? '15m'
-  const sym = symbol.toUpperCase()
+  const sym = String(symbol).toUpperCase()
+  // Input validation: symbol and timeframe are interpolated into upstream URLs.
+  if (!/^[A-Z0-9]{3,20}$/.test(sym)) return NextResponse.json({ error: 'Invalid symbol' }, { status: 400 })
+  const interval = TF_MAP[timeframe]
+  if (!interval) return NextResponse.json({ error: 'Invalid timeframe' }, { status: 400 })
+  const rawLimit = parseInt(req.nextUrl.searchParams.get('limit') ?? '250', 10)
+  const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(rawLimit, 1), 500) : 250
 
   // 1. Binance Spot — real market price (what you see on TradingView)
   const spotUrl = `https://api.binance.com/api/v3/klines?symbol=${sym}&interval=${interval}&limit=${limit}`

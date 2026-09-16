@@ -1,8 +1,8 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { API_BASE } from '@/lib/api'
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001'
 
 export function useApi<T>(path: string, deps: unknown[] = []) {
   const [data, setData] = useState<T | null>(null)
