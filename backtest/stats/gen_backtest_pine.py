@@ -74,6 +74,10 @@ STATES = [
     ('dqMag',   'dqMagnet',                     'dqMagnet'),
     ('cTso',    'cTso and cIsBull',             'cTso and not cIsBull'),
     ('reacc',   'reacc and cIsBull',            'reacc and not cIsBull'),
+    ('avwapD',  'close > avwapD',               'close < avwapD'),
+    ('avwapRt', 'avwapRtL',                     'avwapRtS'),
+    ('cvdOk',   'cvdSlope > 0',                 'cvdSlope < 0'),
+    ('cvdDiv',  'cvdDivBull',                   'cvdDivBear'),
 ]
 FLAGS = [e[0] for e in EVENTS] + [s[0] for s in STATES]
 
@@ -205,6 +209,31 @@ vixOkL = not na(vixC) and not na(vixMA) and vixC < vixMA
 vixOkS = not na(vixC) and not na(vixMA) and vixC > vixMA
 vixDivBear = not na(dHi5) and dHiNow > dHi5 and not na(vixLo5) and vixC > vixLo5
 vixDivBull = not na(dLo5) and dLoNow < dLo5 and not na(vixHi5) and vixC < vixHi5
+// ─── AVWAP (VWAP מעוגן לתחילת יום המסחר) + CVD (דלתא מצטברת מנרות נמוכים) — למדידה לפני שילוב (1.15) ───
+var float avPV = 0.0
+var float avVV = 0.0
+if ta.change(time("D")) != 0
+    avPV := 0.0
+    avVV := 0.0
+avPV += hlc3 * volume
+avVV += volume
+avwapD = avVV > 0 ? avPV / avVV : na
+avwapRtL = ta.barssince(low <= avwapD and close > avwapD) <= 2
+avwapRtS = ta.barssince(high >= avwapD and close < avwapD) <= 2
+cvdLtf = tfMin <= 5 ? "1" : tfMin <= 15 ? "5" : tfMin <= 60 ? "15" : "30"
+cvdArr = request.security_lower_tf(syminfo.tickerid, cvdLtf, close >= open ? volume : -volume)
+cvdLast = array.size(cvdArr) > 0 ? array.sum(cvdArr) : (close >= open ? volume : -volume)
+var float cvd = 0.0
+if ta.change(time("D")) != 0
+    cvd := 0.0
+cvd += nz(cvdLast)
+cvdSlope = cvd - cvd[5]
+cvLo20 = ta.lowest(low, 20)
+cvHi20 = ta.highest(high, 20)
+cvdLo20 = ta.lowest(cvd, 20)
+cvdHi20 = ta.highest(cvd, 20)
+cvdDivBull = low <= cvLo20[1] and cvd > cvdLo20[1]
+cvdDivBear = high >= cvHi20[1] and cvd < cvdHi20[1]
 recN = 10''')
 A('// אירועים: קרו ב-recN הנרות האחרונים (ta.barssince ברמה העליונה)')
 for name, lexp, sexp in EVENTS:

@@ -14,8 +14,15 @@ POS, NEG = LV['pos'], LV['neg']
 TF_HE = {'5': '5 דקות', '15': '15 דקות', '240': '4 שעות'}
 COURSE = ['F', 'W', 'O', 'M', 'B', 'K']
 
-def level_of(fl):
-    return sum(1 for k in POS if fl[IDX[k]] == '1') - sum(1 for k in NEG if fl[IDX[k]] == '1')
+def level_of(flags, res=None):
+    """רמה = אישורים בעד − אישורים נגד. 5m: רשימת perTf.5 (B); שאר המסגרות: הרשימה הראשית"""
+    per = LEVELS.get('perTf', {}).get(str(res) if res is not None else '', None)
+    pos = per['pos'] if per else POS
+    neg = per['neg'] if per else NEG
+    def on(k):
+        i = IDX.get(k)
+        return i is not None and i < len(flags) and flags[i] == '1'
+    return sum(1 for k in pos if on(k)) - sum(1 for k in neg if on(k))
 
 def load():
     d = json.loads((ROOT / 'trades' / 'htt_path_store_year_course.json').read_text(encoding='utf-8'))
@@ -24,7 +31,7 @@ def load():
         for r in v['rows']:
             t = parse(r, name)
             if t:
-                t['res'] = v['res']; t['sym'] = v['sym'].split(':')[1].replace('USDT', ''); t['level'] = level_of(t['flags']); T.append(t)
+                t['res'] = v['res']; t['sym'] = v['sym'].split(':')[1].replace('USDT', ''); t['level'] = level_of(t['flags'], v['res']); T.append(t)
     T.sort(key=lambda t: t['entryTime'])
     global NWIN
     NWIN = sum(int(v.get('windows', 0) or 0) for v in d['combos'].values())

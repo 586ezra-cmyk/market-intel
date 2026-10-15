@@ -51,8 +51,15 @@ def merge(store):
                           'errors': sum(1 for w in cb.get('windows', []) if w.get('error'))}
     return combos, coverage
 
-def level_of(flags):
-    return sum(1 for k in POS if flags[IDX[k]] == '1') - sum(1 for k in NEG if flags[IDX[k]] == '1')
+def level_of(flags, res=None):
+    """רמה = אישורים בעד − אישורים נגד. 5m: רשימת perTf.5 (B); שאר המסגרות: הרשימה הראשית"""
+    per = LEVELS.get('perTf', {}).get(str(res) if res is not None else '', None)
+    pos = per['pos'] if per else POS
+    neg = per['neg'] if per else NEG
+    def on(k):
+        i = IDX.get(k)
+        return i is not None and i < len(flags) and flags[i] == '1'
+    return sum(1 for k in pos if on(k)) - sum(1 for k in neg if on(k))
 
 def s4(a):
     return a.get('schemes', {}).get('s4', {}).get('avgR') if a.get('n') else None
@@ -116,7 +123,7 @@ def main():
         for r in v['rows']:
             t = parse(r, name)
             if t:
-                t['res'] = v['res']; t['sym'] = v['sym']; t['level'] = level_of(t['flags']); t['month'] = datetime.datetime.utcfromtimestamp(t['entryTime'] / 1000).strftime('%Y-%m')
+                t['res'] = v['res']; t['sym'] = v['sym']; t['level'] = level_of(t['flags'], v['res']); t['month'] = datetime.datetime.utcfromtimestamp(t['entryTime'] / 1000).strftime('%Y-%m')
                 T.append(t)
     TFS = ['5', '15', '240']
     syms = sorted(set(t['sym'] for t in T))

@@ -570,8 +570,13 @@ dispOK = high[1] - low[1] >= atr * fvgDispAtr
 bullGap = dispOK and low - pBodyTop >= atr * fvgMinAtr and low > pBodyTop
 bearGap = dispOK and pBodyBot - high >= atr * fvgMinAtr and high < pBodyBot
 // ─── גאפ: פער בין הסגירה של הנר הקודם לפתיחה של הנר הזה (חוזים/מניות). מגנט: המחיר נוטה לחזור לסגירה של הנר שלפני הגאפ ───
-gapUp = mGap and open - close[1] >= close[1] * gapMinPct / 100
-gapDn = mGap and close[1] - open >= close[1] * gapMinPct / 100
+// חוזה רציף (NQ1!): החלפת חוזה יוצרת קפיצה שאינה גאפ של שוק — מזהים גאפ על נתונים מותאמי-חוזה (backadjustment)
+[gAdjO, gAdjC1] = request.security(ticker.modify(syminfo.tickerid, backadjustment = backadjustment.on), timeframe.period, [open, close[1]], lookahead=barmerge.lookahead_off)
+gO = syminfo.type == "futures" and not na(gAdjO) ? gAdjO : open
+gC1 = syminfo.type == "futures" and not na(gAdjC1) ? gAdjC1 : close[1]
+gapSz = math.abs(gO - gC1)
+gapUp = mGap and gO - gC1 >= gC1 * gapMinPct / 100
+gapDn = mGap and gC1 - gO >= gC1 * gapMinPct / 100
 var bool gapFilledNow = false
 var float bgTop = na
 var float bgBot = na
@@ -1178,7 +1183,7 @@ var float[] gapFar = array.new<float>()
 var int[] gapDir = array.new<int>()
 gapFilledNow := false
 if sGapBox and (gapUp or gapDn) and not cleanMode
-    gb = box.new(bar_index - 1, math.max(open, close[1]), bar_index + 1, math.min(open, close[1]), border_color=color.new(color.white, 50), bgcolor=color.new(color.white, 94), text="GAP " + str.tostring(math.abs(open - close[1]), format.mintick), text_size=size.tiny, text_color=color.new(color.white, 40), text_halign=text.align_right)
+    gb = box.new(bar_index - 1, math.max(open, close[1]), bar_index + 1, math.min(open, close[1]), border_color=color.new(color.white, 50), bgcolor=color.new(color.white, 94), text="GAP " + str.tostring(gapSz, format.mintick), text_size=size.tiny, text_color=color.new(color.white, 40), text_halign=text.align_right)
     gFar = gapUp ? low[1] : high[1]
     gl = line.new(bar_index - 1, gFar, bar_index + 1, gFar, color=color.new(color.white, 45), style=line.style_dotted, width=1)
     array.push(gapBx, gb)
@@ -1546,6 +1551,31 @@ vixOkL = not na(vixC) and not na(vixMA) and vixC < vixMA
 vixOkS = not na(vixC) and not na(vixMA) and vixC > vixMA
 vixDivBear = not na(dHi5) and dHiNow > dHi5 and not na(vixLo5) and vixC > vixLo5
 vixDivBull = not na(dLo5) and dLoNow < dLo5 and not na(vixHi5) and vixC < vixHi5
+// ─── AVWAP (VWAP מעוגן לתחילת יום המסחר) + CVD (דלתא מצטברת מנרות נמוכים) — למדידה לפני שילוב (1.15) ───
+var float avPV = 0.0
+var float avVV = 0.0
+if ta.change(time("D")) != 0
+    avPV := 0.0
+    avVV := 0.0
+avPV += hlc3 * volume
+avVV += volume
+avwapD = avVV > 0 ? avPV / avVV : na
+avwapRtL = ta.barssince(low <= avwapD and close > avwapD) <= 2
+avwapRtS = ta.barssince(high >= avwapD and close < avwapD) <= 2
+cvdLtf = tfMin <= 5 ? "1" : tfMin <= 15 ? "5" : tfMin <= 60 ? "15" : "30"
+cvdArr = request.security_lower_tf(syminfo.tickerid, cvdLtf, close >= open ? volume : -volume)
+cvdLast = array.size(cvdArr) > 0 ? array.sum(cvdArr) : (close >= open ? volume : -volume)
+var float cvd = 0.0
+if ta.change(time("D")) != 0
+    cvd := 0.0
+cvd += nz(cvdLast)
+cvdSlope = cvd - cvd[5]
+cvLo20 = ta.lowest(low, 20)
+cvHi20 = ta.highest(high, 20)
+cvdLo20 = ta.lowest(cvd, 20)
+cvdHi20 = ta.highest(cvd, 20)
+cvdDivBull = low <= cvLo20[1] and cvd > cvdLo20[1]
+cvdDivBear = high >= cvHi20[1] and cvd < cvdHi20[1]
 qL_bos = ta.barssince(bosUp) <= recN
 qS_bos = ta.barssince(bosDn) <= recN
 qL_choch = ta.barssince(chochUp) <= recN
@@ -1662,8 +1692,16 @@ qL_cTso = cTso and cIsBull
 qS_cTso = cTso and not cIsBull
 qL_reacc = reacc and cIsBull
 qS_reacc = reacc and not cIsBull
-qLvlL = (qL_judas ? 1 : 0) + (qL_ob ? 1 : 0) + (qL_phC ? 1 : 0) + (qL_fvgAt ? 1 : 0) + (qL_sweep ? 1 : 0) + (qL_kz ? 1 : 0) + (qL_sesLon ? 1 : 0) + (qL_htfMs ? 1 : 0) + (qL_fvg ? 1 : 0) + (qL_ddt ? 1 : 0) - ((qL_phD ? 1 : 0) + (qL_conf4 ? 1 : 0) + (qL_volLow ? 1 : 0) + (qL_amdD ? 1 : 0) + (qL_cDir ? 1 : 0) + (qL_htfCD ? 1 : 0) + (qL_rrOk ? 1 : 0) + (qL_ifvg ? 1 : 0) + (qL_lps ? 1 : 0) + (qL_shake ? 1 : 0))
-qLvlS = (qS_judas ? 1 : 0) + (qS_ob ? 1 : 0) + (qS_phC ? 1 : 0) + (qS_fvgAt ? 1 : 0) + (qS_sweep ? 1 : 0) + (qS_kz ? 1 : 0) + (qS_sesLon ? 1 : 0) + (qS_htfMs ? 1 : 0) + (qS_fvg ? 1 : 0) + (qS_ddt ? 1 : 0) - ((qS_phD ? 1 : 0) + (qS_conf4 ? 1 : 0) + (qS_volLow ? 1 : 0) + (qS_amdD ? 1 : 0) + (qS_cDir ? 1 : 0) + (qS_htfCD ? 1 : 0) + (qS_rrOk ? 1 : 0) + (qS_ifvg ? 1 : 0) + (qS_lps ? 1 : 0) + (qS_shake ? 1 : 0))
+qL_avwapD = close > avwapD
+qS_avwapD = close < avwapD
+qL_avwapRt = avwapRtL
+qS_avwapRt = avwapRtS
+qL_cvdOk = cvdSlope > 0
+qS_cvdOk = cvdSlope < 0
+qL_cvdDiv = cvdDivBull
+qS_cvdDiv = cvdDivBear
+qLvlL = tfMin < 15 ? ((qL_vixOk ? 1 : 0) + (qL_ddt ? 1 : 0) + (qL_phC ? 1 : 0) + (qL_reacc ? 1 : 0) + (qL_atSesLvl ? 1 : 0) + (qL_fvgAt ? 1 : 0) + (qL_htfMs ? 1 : 0) + (qL_ob ? 1 : 0) + (qL_sweep ? 1 : 0) + (qL_fvg ? 1 : 0) + (qL_judas ? 1 : 0) - ((qL_htfCD ? 1 : 0) + (qL_amdD ? 1 : 0) + (qL_vixHigh ? 1 : 0) + (qL_vixDiv ? 1 : 0) + (qL_shake ? 1 : 0) + (qL_conf4 ? 1 : 0) + (qL_smt ? 1 : 0) + (qL_bb ? 1 : 0) + (qL_bbSq ? 1 : 0) + (qL_phAB ? 1 : 0) + (qL_cTso ? 1 : 0) + (qL_rsi ? 1 : 0))) : ((qL_judas ? 1 : 0) + (qL_ob ? 1 : 0) + (qL_phC ? 1 : 0) + (qL_fvgAt ? 1 : 0) + (qL_sweep ? 1 : 0) + (qL_kz ? 1 : 0) + (qL_sesLon ? 1 : 0) + (qL_htfMs ? 1 : 0) + (qL_fvg ? 1 : 0) + (qL_ddt ? 1 : 0) - ((qL_phD ? 1 : 0) + (qL_conf4 ? 1 : 0) + (qL_volLow ? 1 : 0) + (qL_amdD ? 1 : 0) + (qL_cDir ? 1 : 0) + (qL_htfCD ? 1 : 0) + (qL_rrOk ? 1 : 0) + (qL_ifvg ? 1 : 0) + (qL_lps ? 1 : 0) + (qL_shake ? 1 : 0)))
+qLvlS = tfMin < 15 ? ((qS_vixOk ? 1 : 0) + (qS_ddt ? 1 : 0) + (qS_phC ? 1 : 0) + (qS_reacc ? 1 : 0) + (qS_atSesLvl ? 1 : 0) + (qS_fvgAt ? 1 : 0) + (qS_htfMs ? 1 : 0) + (qS_ob ? 1 : 0) + (qS_sweep ? 1 : 0) + (qS_fvg ? 1 : 0) + (qS_judas ? 1 : 0) - ((qS_htfCD ? 1 : 0) + (qS_amdD ? 1 : 0) + (qS_vixHigh ? 1 : 0) + (qS_vixDiv ? 1 : 0) + (qS_shake ? 1 : 0) + (qS_conf4 ? 1 : 0) + (qS_smt ? 1 : 0) + (qS_bb ? 1 : 0) + (qS_bbSq ? 1 : 0) + (qS_phAB ? 1 : 0) + (qS_cTso ? 1 : 0) + (qS_rsi ? 1 : 0))) : ((qS_judas ? 1 : 0) + (qS_ob ? 1 : 0) + (qS_phC ? 1 : 0) + (qS_fvgAt ? 1 : 0) + (qS_sweep ? 1 : 0) + (qS_kz ? 1 : 0) + (qS_sesLon ? 1 : 0) + (qS_htfMs ? 1 : 0) + (qS_fvg ? 1 : 0) + (qS_ddt ? 1 : 0) - ((qS_phD ? 1 : 0) + (qS_conf4 ? 1 : 0) + (qS_volLow ? 1 : 0) + (qS_amdD ? 1 : 0) + (qS_cDir ? 1 : 0) + (qS_htfCD ? 1 : 0) + (qS_rrOk ? 1 : 0) + (qS_ifvg ? 1 : 0) + (qS_lps ? 1 : 0) + (qS_shake ? 1 : 0)))
 f_qlist(bool isL, bool wantPos) =>
     string s = ""
     if wantPos and (isL ? qL_bos : qS_bos)
@@ -1672,11 +1710,11 @@ f_qlist(bool isL, bool wantPos) =>
         s += (s == "" ? "" : ",") + "\"choch\""
     if wantPos and (isL ? qL_sweep : qS_sweep)
         s += (s == "" ? "" : ",") + "\"sweep\""
-    if wantPos and (isL ? qL_smt : qS_smt)
+    if (wantPos ? not (tfMin < 15 ? true : false) : (tfMin < 15 ? true : false)) and (isL ? qL_smt : qS_smt)
         s += (s == "" ? "" : ",") + "\"smt\""
     if wantPos and (isL ? qL_ismt : qS_ismt)
         s += (s == "" ? "" : ",") + "\"ismt\""
-    if not wantPos and (isL ? qL_ifvg : qS_ifvg)
+    if (wantPos ? not (tfMin < 15 ? false : true) : (tfMin < 15 ? false : true)) and (isL ? qL_ifvg : qS_ifvg)
         s += (s == "" ? "" : ",") + "\"ifvg\""
     if wantPos and (isL ? qL_fvg : qS_fvg)
         s += (s == "" ? "" : ",") + "\"fvg\""
@@ -1688,7 +1726,7 @@ f_qlist(bool isL, bool wantPos) =>
         s += (s == "" ? "" : ",") + "\"shake\""
     if wantPos and (isL ? qL_volC : qS_volC)
         s += (s == "" ? "" : ",") + "\"volC\""
-    if not wantPos and (isL ? qL_lps : qS_lps)
+    if (wantPos ? not (tfMin < 15 ? false : true) : (tfMin < 15 ? false : true)) and (isL ? qL_lps : qS_lps)
         s += (s == "" ? "" : ",") + "\"lps\""
     if wantPos and (isL ? qL_gap : qS_gap)
         s += (s == "" ? "" : ",") + "\"gap\""
@@ -1700,9 +1738,9 @@ f_qlist(bool isL, bool wantPos) =>
         s += (s == "" ? "" : ",") + "\"ddt\""
     if wantPos and (isL ? qL_engulf : qS_engulf)
         s += (s == "" ? "" : ",") + "\"engulf\""
-    if wantPos and (isL ? qL_bb : qS_bb)
+    if (wantPos ? not (tfMin < 15 ? true : false) : (tfMin < 15 ? true : false)) and (isL ? qL_bb : qS_bb)
         s += (s == "" ? "" : ",") + "\"bb\""
-    if wantPos and (isL ? qL_rsi : qS_rsi)
+    if (wantPos ? not (tfMin < 15 ? true : false) : (tfMin < 15 ? true : false)) and (isL ? qL_rsi : qS_rsi)
         s += (s == "" ? "" : ",") + "\"rsi\""
     if wantPos and (isL ? qL_climax : qS_climax)
         s += (s == "" ? "" : ",") + "\"climax\""
@@ -1734,17 +1772,17 @@ f_qlist(bool isL, bool wantPos) =>
         s += (s == "" ? "" : ",") + "\"sesAsia\""
     if wantPos and (isL ? qL_phC : qS_phC)
         s += (s == "" ? "" : ",") + "\"phC\""
-    if not wantPos and (isL ? qL_phD : qS_phD)
+    if (wantPos ? not (tfMin < 15 ? false : true) : (tfMin < 15 ? false : true)) and (isL ? qL_phD : qS_phD)
         s += (s == "" ? "" : ",") + "\"phD\""
     if wantPos and (isL ? qL_phE : qS_phE)
         s += (s == "" ? "" : ",") + "\"phE\""
-    if wantPos and (isL ? qL_phAB : qS_phAB)
+    if (wantPos ? not (tfMin < 15 ? true : false) : (tfMin < 15 ? true : false)) and (isL ? qL_phAB : qS_phAB)
         s += (s == "" ? "" : ",") + "\"phAB\""
-    if not wantPos and (isL ? qL_cDir : qS_cDir)
+    if (wantPos ? not (tfMin < 15 ? false : true) : (tfMin < 15 ? false : true)) and (isL ? qL_cDir : qS_cDir)
         s += (s == "" ? "" : ",") + "\"cDir\""
     if wantPos and (isL ? qL_clues3 : qS_clues3)
         s += (s == "" ? "" : ",") + "\"clues3\""
-    if not wantPos and (isL ? qL_volLow : qS_volLow)
+    if (wantPos ? not (tfMin < 15 ? false : true) : (tfMin < 15 ? false : true)) and (isL ? qL_volLow : qS_volLow)
         s += (s == "" ? "" : ",") + "\"volLow\""
     if wantPos and (isL ? qL_htfMs : qS_htfMs)
         s += (s == "" ? "" : ",") + "\"htfMs\""
@@ -1754,7 +1792,7 @@ f_qlist(bool isL, bool wantPos) =>
         s += (s == "" ? "" : ",") + "\"amdD\""
     if not wantPos and (isL ? qL_conf4 : qS_conf4)
         s += (s == "" ? "" : ",") + "\"conf4\""
-    if not wantPos and (isL ? qL_rrOk : qS_rrOk)
+    if (wantPos ? not (tfMin < 15 ? false : true) : (tfMin < 15 ? false : true)) and (isL ? qL_rrOk : qS_rrOk)
         s += (s == "" ? "" : ",") + "\"rrOk\""
     if wantPos and (isL ? qL_atEdge : qS_atEdge)
         s += (s == "" ? "" : ",") + "\"atEdge\""
@@ -1762,15 +1800,15 @@ f_qlist(bool isL, bool wantPos) =>
         s += (s == "" ? "" : ",") + "\"atHtfLvl\""
     if wantPos and (isL ? qL_atSesLvl : qS_atSesLvl)
         s += (s == "" ? "" : ",") + "\"atSesLvl\""
-    if wantPos and (isL ? qL_bbSq : qS_bbSq)
+    if (wantPos ? not (tfMin < 15 ? true : false) : (tfMin < 15 ? true : false)) and (isL ? qL_bbSq : qS_bbSq)
         s += (s == "" ? "" : ",") + "\"bbSq\""
     if wantPos and (isL ? qL_vixOk : qS_vixOk)
         s += (s == "" ? "" : ",") + "\"vixOk\""
-    if wantPos and (isL ? qL_vixHigh : qS_vixHigh)
+    if (wantPos ? not (tfMin < 15 ? true : false) : (tfMin < 15 ? true : false)) and (isL ? qL_vixHigh : qS_vixHigh)
         s += (s == "" ? "" : ",") + "\"vixHigh\""
     if wantPos and (isL ? qL_vixSpike : qS_vixSpike)
         s += (s == "" ? "" : ",") + "\"vixSpike\""
-    if wantPos and (isL ? qL_vixDiv : qS_vixDiv)
+    if (wantPos ? not (tfMin < 15 ? true : false) : (tfMin < 15 ? true : false)) and (isL ? qL_vixDiv : qS_vixDiv)
         s += (s == "" ? "" : ",") + "\"vixDiv\""
     if wantPos and (isL ? qL_dq2 : qS_dq2)
         s += (s == "" ? "" : ",") + "\"dq2\""
@@ -1778,10 +1816,18 @@ f_qlist(bool isL, bool wantPos) =>
         s += (s == "" ? "" : ",") + "\"dq3\""
     if wantPos and (isL ? qL_dqMag : qS_dqMag)
         s += (s == "" ? "" : ",") + "\"dqMag\""
-    if wantPos and (isL ? qL_cTso : qS_cTso)
+    if (wantPos ? not (tfMin < 15 ? true : false) : (tfMin < 15 ? true : false)) and (isL ? qL_cTso : qS_cTso)
         s += (s == "" ? "" : ",") + "\"cTso\""
     if wantPos and (isL ? qL_reacc : qS_reacc)
         s += (s == "" ? "" : ",") + "\"reacc\""
+    if wantPos and (isL ? qL_avwapD : qS_avwapD)
+        s += (s == "" ? "" : ",") + "\"avwapD\""
+    if wantPos and (isL ? qL_avwapRt : qS_avwapRt)
+        s += (s == "" ? "" : ",") + "\"avwapRt\""
+    if wantPos and (isL ? qL_cvdOk : qS_cvdOk)
+        s += (s == "" ? "" : ",") + "\"cvdOk\""
+    if wantPos and (isL ? qL_cvdDiv : qS_cvdDiv)
+        s += (s == "" ? "" : ",") + "\"cvdDiv\""
     s
 f_qhe(bool isL) =>
     string s = ""
@@ -1791,10 +1837,12 @@ f_qhe(bool isL) =>
         s += (s == "" ? "" : " · ") + "CHoCH"
     if (isL ? qL_sweep : qS_sweep)
         s += (s == "" ? "" : " · ") + "חטיפת נזילות"
-    if (isL ? qL_smt : qS_smt)
+    if not (tfMin < 15 ? true : false) and (isL ? qL_smt : qS_smt)
         s += (s == "" ? "" : " · ") + "SMT"
     if (isL ? qL_ismt : qS_ismt)
         s += (s == "" ? "" : " · ") + "iSMT"
+    if not (tfMin < 15 ? false : true) and (isL ? qL_ifvg : qS_ifvg)
+        s += (s == "" ? "" : " · ") + "iFVG"
     if (isL ? qL_fvg : qS_fvg)
         s += (s == "" ? "" : " · ") + "FVG חדש"
     if (isL ? qL_judas : qS_judas)
@@ -1803,6 +1851,8 @@ f_qhe(bool isL) =>
         s += (s == "" ? "" : " · ") + "צבת"
     if (isL ? qL_volC : qS_volC)
         s += (s == "" ? "" : " · ") + "C ווליום"
+    if not (tfMin < 15 ? false : true) and (isL ? qL_lps : qS_lps)
+        s += (s == "" ? "" : " · ") + "LPS"
     if (isL ? qL_gap : qS_gap)
         s += (s == "" ? "" : " · ") + "גאפ"
     if (isL ? qL_ob : qS_ob)
@@ -1813,9 +1863,9 @@ f_qhe(bool isL) =>
         s += (s == "" ? "" : " · ") + "DD/DT"
     if (isL ? qL_engulf : qS_engulf)
         s += (s == "" ? "" : " · ") + "בולען"
-    if (isL ? qL_bb : qS_bb)
+    if not (tfMin < 15 ? true : false) and (isL ? qL_bb : qS_bb)
         s += (s == "" ? "" : " · ") + "בולינגר"
-    if (isL ? qL_rsi : qS_rsi)
+    if not (tfMin < 15 ? true : false) and (isL ? qL_rsi : qS_rsi)
         s += (s == "" ? "" : " · ") + "RSI"
     if (isL ? qL_climax : qS_climax)
         s += (s == "" ? "" : " · ") + "קליימקס"
@@ -1847,29 +1897,37 @@ f_qhe(bool isL) =>
         s += (s == "" ? "" : " · ") + "אסיה"
     if (isL ? qL_phC : qS_phC)
         s += (s == "" ? "" : " · ") + "פאזה C"
+    if not (tfMin < 15 ? false : true) and (isL ? qL_phD : qS_phD)
+        s += (s == "" ? "" : " · ") + "פאזה D"
     if (isL ? qL_phE : qS_phE)
         s += (s == "" ? "" : " · ") + "פאזה E"
-    if (isL ? qL_phAB : qS_phAB)
+    if not (tfMin < 15 ? true : false) and (isL ? qL_phAB : qS_phAB)
         s += (s == "" ? "" : " · ") + "פאזה A/B"
+    if not (tfMin < 15 ? false : true) and (isL ? qL_cDir : qS_cDir)
+        s += (s == "" ? "" : " · ") + "כיוון C"
     if (isL ? qL_clues3 : qS_clues3)
         s += (s == "" ? "" : " · ") + "3 רמזים"
+    if not (tfMin < 15 ? false : true) and (isL ? qL_volLow : qS_volLow)
+        s += (s == "" ? "" : " · ") + "ווליום נמוך"
     if (isL ? qL_htfMs : qS_htfMs)
         s += (s == "" ? "" : " · ") + "מבנה HTF"
+    if not (tfMin < 15 ? false : true) and (isL ? qL_rrOk : qS_rrOk)
+        s += (s == "" ? "" : " · ") + "1:3"
     if (isL ? qL_atEdge : qS_atEdge)
         s += (s == "" ? "" : " · ") + "אייס/קריק"
     if (isL ? qL_atHtfLvl : qS_atHtfLvl)
         s += (s == "" ? "" : " · ") + "רמת HTF"
     if (isL ? qL_atSesLvl : qS_atSesLvl)
         s += (s == "" ? "" : " · ") + "רמת סשן"
-    if (isL ? qL_bbSq : qS_bbSq)
+    if not (tfMin < 15 ? true : false) and (isL ? qL_bbSq : qS_bbSq)
         s += (s == "" ? "" : " · ") + "סקוויז"
     if (isL ? qL_vixOk : qS_vixOk)
         s += (s == "" ? "" : " · ") + "VIX תומך"
-    if (isL ? qL_vixHigh : qS_vixHigh)
+    if not (tfMin < 15 ? true : false) and (isL ? qL_vixHigh : qS_vixHigh)
         s += (s == "" ? "" : " · ") + "VIX מעל 20"
     if (isL ? qL_vixSpike : qS_vixSpike)
         s += (s == "" ? "" : " · ") + "זינוק VIX"
-    if (isL ? qL_vixDiv : qS_vixDiv)
+    if not (tfMin < 15 ? true : false) and (isL ? qL_vixDiv : qS_vixDiv)
         s += (s == "" ? "" : " · ") + "דיברגנס VIX"
     if (isL ? qL_dq2 : qS_dq2)
         s += (s == "" ? "" : " · ") + "איכות D ≥ 2"
@@ -1877,10 +1935,18 @@ f_qhe(bool isL) =>
         s += (s == "" ? "" : " · ") + "איכות D ≥ 3"
     if (isL ? qL_dqMag : qS_dqMag)
         s += (s == "" ? "" : " · ") + "מגנט לקריק/אייס"
-    if (isL ? qL_cTso : qS_cTso)
+    if not (tfMin < 15 ? true : false) and (isL ? qL_cTso : qS_cTso)
         s += (s == "" ? "" : " · ") + "C עם ניעור סופי"
     if (isL ? qL_reacc : qS_reacc)
         s += (s == "" ? "" : " · ") + "איסוף/פיזור חוזר"
+    if (isL ? qL_avwapD : qS_avwapD)
+        s += (s == "" ? "" : " · ") + "בצד הנכון של AVWAP יומי"
+    if (isL ? qL_avwapRt : qS_avwapRt)
+        s += (s == "" ? "" : " · ") + "ריטסט AVWAP יומי"
+    if (isL ? qL_cvdOk : qS_cvdOk)
+        s += (s == "" ? "" : " · ") + "CVD בכיוון (5 נרות)"
+    if (isL ? qL_cvdDiv : qS_cvdDiv)
+        s += (s == "" ? "" : " · ") + "דיברגנס CVD (20 נרות)"
     s
 f_qsr(bool isL) =>
     string s = ""

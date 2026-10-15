@@ -10,7 +10,10 @@ exec(re.search(r"EVENTS = \[.*?\]\nSTATES = \[.*?\]\n", gen_bt, re.S).group(0), 
 EVENTS, STATES = ns['EVENTS'], ns['STATES']
 lv = json.loads((ROOT / 'apps/web/public/htt-backtest/levels.json').read_text(encoding='utf-8'))
 POS, NEG = lv['pos'], lv['neg']
+PER5 = lv.get('perTf', {}).get('5', {})
+POS5, NEG5 = PER5.get('pos', POS), PER5.get('neg', NEG)
 HE = {
+    'avwapD': 'בצד הנכון של AVWAP יומי', 'avwapRt': 'ריטסט AVWAP יומי', 'cvdOk': 'CVD בכיוון (5 נרות)', 'cvdDiv': 'דיברגנס CVD (20 נרות)',
     'vixOk': 'VIX תומך', 'vixHigh': 'VIX מעל 20', 'vixSpike': 'זינוק VIX', 'vixDiv': 'דיברגנס VIX',
     'jac': 'JAC/FTI — קפיצה מעבר לקריק/אייס', 'crkRt': 'BUTTC/RBTI — ריטסט הקריק/אייס', 'tso': 'ניעור סופי (TSO/TUT)',
     'dq2': 'איכות D ≥ 2', 'dq3': 'איכות D ≥ 3', 'dqMag': 'מגנט לקריק/אייס', 'cTso': 'C עם ניעור סופי', 'reacc': 'איסוף/פיזור חוזר','bos': 'BOS', 'choch': 'CHoCH', 'sweep': 'חטיפת נזילות', 'smt': 'SMT', 'ismt': 'iSMT', 'ifvg': 'iFVG', 'fvg': 'FVG חדש', 'judas': "ג'ודאס", 'tweezer': 'צבת', 'shake': 'ספרינג/UT', 'volC': 'C ווליום', 'lps': 'LPS', 'gap': 'גאפ', 'ob': 'אורדר בלוק', 'wm': 'W/M', 'ddt': 'DD/DT', 'engulf': 'בולען', 'bb': 'בולינגר', 'rsi': 'RSI', 'climax': 'קליימקס', 'fvgAt': 'מ-FVG', 'ifvgAt': 'מ-iFVG', 'atPool': 'בריכה', 'orBrk': 'פריצת OR', 'test': 'טסט', 'pd': 'פרימיום/דיסקאונט', 'kz': 'קיל-זון', 'sesLon': 'לונדון', 'sesNY': 'ניו-יורק', 'sesAsia': 'אסיה', 'phC': 'פאזה C', 'phD': 'פאזה D', 'phE': 'פאזה E', 'phAB': 'פאזה A/B', 'cDir': 'כיוון C', 'clues3': '3 רמזים', 'volLow': 'ווליום נמוך', 'htfMs': 'מבנה HTF', 'htfCD': 'HTF C/D', 'amdD': 'AMD D', 'conf4': '4+ אישורים', 'rrOk': '1:3', 'atEdge': 'אייס/קריק', 'atHtfLvl': 'רמת HTF', 'atSesLvl': 'רמת סשן', 'bbSq': 'סקוויז'}
@@ -65,7 +68,7 @@ orBrkUp = not inOR and not na(orH) and close > orH and close[1] <= orH
 orBrkDn = not inOR and not na(orL) and close < orL and close[1] >= orL
 recN = 10''')
 # בלוק ה-VIX (מוגדר ב-gen_backtest_pine.py) — הדגלים vixOk/vixHigh/vixSpike/vixDiv צריכים אותו גם בגרף
-vix_m = re.search(r"\[vixC, vixMA.*?vixDivBull = [^\n]*\n", gen_bt, re.S)
+vix_m = re.search(r"\[vixC, vixMA.*?cvdDivBear = [^\n]*\n", gen_bt, re.S)
 assert vix_m, 'VIX block not found in gen_backtest_pine.py'
 for _l in vix_m.group(0).rstrip('\n').split('\n'):
     A(_l)
@@ -76,26 +79,36 @@ for name, lexp, sexp in STATES:
     A(f'qL_{name} = {lexp}')
     A(f'qS_{name} = {sexp}')
 # רמה
-A('qLvlL = ' + ' + '.join(f'(qL_{k} ? 1 : 0)' for k in POS) + ' - (' + ' + '.join(f'(qL_{k} ? 1 : 0)' for k in NEG) + ')')
-A('qLvlS = ' + ' + '.join(f'(qS_{k} ? 1 : 0)' for k in POS) + ' - (' + ' + '.join(f'(qS_{k} ? 1 : 0)' for k in NEG) + ')')
+def _lvl(pre, pos, neg):
+    return ' + '.join(f'({pre}{k} ? 1 : 0)' for k in pos) + ' - (' + ' + '.join(f'({pre}{k} ? 1 : 0)' for k in neg) + ')'
+# רמה לכל מסגרת: 5m = רשימה B (perTf.5), שאר המסגרות = הרשימה הראשית
+A('qLvlL = tfMin < 15 ? (' + _lvl('qL_', POS5, NEG5) + ') : (' + _lvl('qL_', POS, NEG) + ')')
+A('qLvlS = tfMin < 15 ? (' + _lvl('qS_', POS5, NEG5) + ') : (' + _lvl('qS_', POS, NEG) + ')')
 # רשימות מפתחות (JSON) ושמות (עברית) לכל כיוון
 allkeys = [e[0] for e in EVENTS] + [s[0] for s in STATES]
 A('f_qlist(bool isL, bool wantPos) =>')
 A('    string s = ""')
+def _isNeg(k):
+    a = 'true' if k in NEG else 'false'; b = 'true' if k in NEG5 else 'false'
+    return a if a == b else f'(tfMin < 15 ? {b} : {a})'
 for k in allkeys:
-    group = 'POS' if k in POS else ('NEG' if k in NEG else 'INFO')
     cond = f'(isL ? qL_{k} : qS_{k})'
-    if group == 'NEG':
+    neg = _isNeg(k)
+    if neg == 'true':
         A(f'    if not wantPos and {cond}')
-    else:
+    elif neg == 'false':
         A(f'    if wantPos and {cond}')
+    else:
+        A(f'    if (wantPos ? not {neg} : {neg}) and {cond}')
     A(f'        s += (s == "" ? "" : ",") + "\\"{k}\\""')
 A('    s')
 A('f_qhe(bool isL) =>')
 A('    string s = ""')
 for k in allkeys:
-    if k in NEG: continue
-    A(f'    if (isL ? qL_{k} : qS_{k})')
+    neg = _isNeg(k)
+    if neg == 'true': continue
+    cond = f'(isL ? qL_{k} : qS_{k})' if neg == 'false' else f'not {neg} and (isL ? qL_{k} : qS_{k})'
+    A(f'    if {cond}')
     A(f'        s += (s == "" ? "" : " · ") + "{HE[k]}"')
 A('    s')
 A('''f_qsr(bool isL) =>

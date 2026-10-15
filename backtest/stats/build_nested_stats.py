@@ -126,7 +126,7 @@ def main():
         for r in v['rows']:
             t = parse(r, name)
             if t:
-                t['res'] = v['res']; t['sym'] = v['sym']; t['level'] = level_of(t['flags'])
+                t['res'] = v['res']; t['sym'] = v['sym']; t['level'] = level_of(t['flags'], v['res'])
                 base_T.append(t)
     out = {'generatedAt': datetime.datetime.now(datetime.timezone.utc).isoformat(), 'minN': MIN_N, 'phaseHe': PHASE_HE, 'modeHe': MODE_HE,
            'statesHe': dict(STATES), 'stratHe': STRAT_HE, 'nesting': {}, 'results': {}, 'trades': {}}

@@ -571,8 +571,13 @@ dispOK = high[1] - low[1] >= atr * fvgDispAtr
 bullGap = dispOK and low - pBodyTop >= atr * fvgMinAtr and low > pBodyTop
 bearGap = dispOK and pBodyBot - high >= atr * fvgMinAtr and high < pBodyBot
 // ─── גאפ: פער בין הסגירה של הנר הקודם לפתיחה של הנר הזה (חוזים/מניות). מגנט: המחיר נוטה לחזור לסגירה של הנר שלפני הגאפ ───
-gapUp = mGap and open - close[1] >= close[1] * gapMinPct / 100
-gapDn = mGap and close[1] - open >= close[1] * gapMinPct / 100
+// חוזה רציף (NQ1!): החלפת חוזה יוצרת קפיצה שאינה גאפ של שוק — מזהים גאפ על נתונים מותאמי-חוזה (backadjustment)
+[gAdjO, gAdjC1] = request.security(ticker.modify(syminfo.tickerid, backadjustment = backadjustment.on), timeframe.period, [open, close[1]], lookahead=barmerge.lookahead_off)
+gO = syminfo.type == "futures" and not na(gAdjO) ? gAdjO : open
+gC1 = syminfo.type == "futures" and not na(gAdjC1) ? gAdjC1 : close[1]
+gapSz = math.abs(gO - gC1)
+gapUp = mGap and gO - gC1 >= gC1 * gapMinPct / 100
+gapDn = mGap and gC1 - gO >= gC1 * gapMinPct / 100
 var bool gapFilledNow = false
 var float bgTop = na
 var float bgBot = na
@@ -1012,6 +1017,31 @@ vixOkL = not na(vixC) and not na(vixMA) and vixC < vixMA
 vixOkS = not na(vixC) and not na(vixMA) and vixC > vixMA
 vixDivBear = not na(dHi5) and dHiNow > dHi5 and not na(vixLo5) and vixC > vixLo5
 vixDivBull = not na(dLo5) and dLoNow < dLo5 and not na(vixHi5) and vixC < vixHi5
+// ─── AVWAP (VWAP מעוגן לתחילת יום המסחר) + CVD (דלתא מצטברת מנרות נמוכים) — למדידה לפני שילוב (1.15) ───
+var float avPV = 0.0
+var float avVV = 0.0
+if ta.change(time("D")) != 0
+    avPV := 0.0
+    avVV := 0.0
+avPV += hlc3 * volume
+avVV += volume
+avwapD = avVV > 0 ? avPV / avVV : na
+avwapRtL = ta.barssince(low <= avwapD and close > avwapD) <= 2
+avwapRtS = ta.barssince(high >= avwapD and close < avwapD) <= 2
+cvdLtf = tfMin <= 5 ? "1" : tfMin <= 15 ? "5" : tfMin <= 60 ? "15" : "30"
+cvdArr = request.security_lower_tf(syminfo.tickerid, cvdLtf, close >= open ? volume : -volume)
+cvdLast = array.size(cvdArr) > 0 ? array.sum(cvdArr) : (close >= open ? volume : -volume)
+var float cvd = 0.0
+if ta.change(time("D")) != 0
+    cvd := 0.0
+cvd += nz(cvdLast)
+cvdSlope = cvd - cvd[5]
+cvLo20 = ta.lowest(low, 20)
+cvHi20 = ta.highest(high, 20)
+cvdLo20 = ta.lowest(cvd, 20)
+cvdHi20 = ta.highest(cvd, 20)
+cvdDivBull = low <= cvLo20[1] and cvd > cvdLo20[1]
+cvdDivBear = high >= cvHi20[1] and cvd < cvdHi20[1]
 recN = 10
 // אירועים: קרו ב-recN הנרות האחרונים
 evL_bos = ta.barssince(bosUp) <= recN
@@ -1128,6 +1158,10 @@ f_flags(bool isL) =>
     s += (isL ? (dqMagnet) : (dqMagnet)) ? "1" : "0"
     s += (isL ? (cTso and cIsBull) : (cTso and not cIsBull)) ? "1" : "0"
     s += (isL ? (reacc and cIsBull) : (reacc and not cIsBull)) ? "1" : "0"
+    s += (isL ? (close > avwapD) : (close < avwapD)) ? "1" : "0"
+    s += (isL ? (avwapRtL) : (avwapRtS)) ? "1" : "0"
+    s += (isL ? (cvdSlope > 0) : (cvdSlope < 0)) ? "1" : "0"
+    s += (isL ? (cvdDivBull) : (cvdDivBear)) ? "1" : "0"
     s
 // ── מעקב מסלול: מערכים מקבילים, סיגנל = שורה ──
 var string[] kT = array.new<string>()

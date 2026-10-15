@@ -129,7 +129,7 @@ def main():
                 nUnknown += 1
                 continue
             if t:
-                t['res'] = v['res']; t['sym'] = v['sym']; t['level'] = level_of(t['flags'])
+                t['res'] = v['res']; t['sym'] = v['sym']; t['level'] = level_of(t['flags'], v['res'])
                 t['state'] = state_of(t)
                 T.append(t)
     syms = sorted(set(t['sym'] for t in T))
