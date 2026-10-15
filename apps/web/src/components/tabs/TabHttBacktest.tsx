@@ -202,6 +202,10 @@ const dt = (ms: number | null) =>
 const rColor = (r?: number | null) => (r === null || r === undefined ? 'text-slate-400' : r > 0 ? 'text-emerald-400' : r < 0 ? 'text-red-400' : 'text-slate-300')
 const resHe: Record<string, string> = { '5': '5 דקות', '15': '15 דקות', '240': '4 שעות', 'D': 'יומי' }
 
+// ─── דוח מלא (report.json מ-build_backtest_report.py) ───────────────────────────
+interface RepM { n: number; openCap?: number; win13?: number; loss13?: number; open13?: number; avgR13?: number; sumR13?: number; pf13?: number | null; dd13?: number; avgR4?: number; sumR4?: number; pf4?: number | null; dd4?: number; win4?: number; rightDir?: number; perWeek?: number; perWeekAll?: number }
+interface ReportData { generatedAt: string; days: number; nSignals: number; all: RepM; byTf: Record<string, RepM>; bySym: Record<string, RepM>; bySymTf: Record<string, Record<string, RepM>>; byStratTf: Record<string, Record<string, RepM>>; bySide: Record<string, RepM>; byLevel: Record<string, Record<string, RepM>>; byMonth: Record<string, { n: number; sumR4: number; avgR4: number; sumR13: number }>; recommended: RepM; recommendedByTf: Record<string, RepM> }
+
 function Kpi({ label, value, sub, tone }: { label: string; value: string; sub?: string; tone?: 'good' | 'bad' | 'neutral' }) {
   const color = tone === 'good' ? 'text-emerald-400' : tone === 'bad' ? 'text-red-400' : 'text-slate-100'
   return (
@@ -907,6 +911,71 @@ const CONNECTION_STEPS: Array<[string, string, 'done' | 'pending' | 'blocked']> 
   ['בדיקת קצה-לקצה: webhook מדומה → טלגרם → השוואה לגרף', 'אחרי שלבים 1–3', 'pending'],
 ]
 
+const TF_HE: Record<string, string> = { '240': '4 שעות', '15': '15 דקות', '5': '5 דקות', all: 'הכול' }
+const STRAT_HE2: Record<string, string> = { F: 'טיסה', W: 'שבירת כנף', O: 'אורדר בלוק', M: 'W/M', B: 'פריצה', K: 'ריטסט קריק/אייס' }
+function RepRow({ name, m, perWeek }: { name: string; m?: RepM; perWeek?: boolean }) {
+  if (!m || !m.n) return null
+  const r = (v?: number) => (v === undefined || v === null ? '—' : (v >= 0 ? '+' : '') + v.toFixed(2))
+  const pc = (v?: number) => (v === undefined || v === null ? '—' : Math.round(v * 100) + '%')
+  const good = (m.avgR4 ?? 0) > 0.1
+  return (
+    <tr className="border-b border-surface-border">
+      <td className="py-1 pr-2 text-right whitespace-nowrap">{name}</td>
+      <td className="py-1 text-center">{m.n.toLocaleString()}</td>
+      {perWeek && <td className="py-1 text-center text-slate-400">{m.perWeek ?? m.perWeekAll ?? '—'}</td>}
+      <td className="py-1 text-center">{pc(m.win13)}</td>
+      <td className="py-1 text-center">{pc(m.loss13)}</td>
+      <td className="py-1 text-center">{r(m.avgR13)}</td>
+      <td className="py-1 text-center">{m.pf13 ?? '—'}</td>
+      <td className={`py-1 text-center font-bold ${good ? 'text-emerald-400' : (m.avgR4 ?? 0) < 0 ? 'text-red-400' : ''}`}>{r(m.avgR4)}</td>
+      <td className="py-1 text-center">{pc(m.win4)}</td>
+      <td className="py-1 text-center">{m.pf4 ?? '—'}</td>
+      <td className="py-1 text-center text-slate-400">{m.dd4 ?? '—'}</td>
+      <td className="py-1 text-center">{pc(m.rightDir)}</td>
+      <td className="py-1 text-center text-slate-500">{pc(m.openCap)}</td>
+    </tr>
+  )
+}
+function RepTable({ title, rows, perWeek, hint }: { title: string; rows: Array<[string, RepM | undefined]>; perWeek?: boolean; hint?: string }) {
+  return (
+    <div className="card p-3 overflow-x-auto">
+      <div className="font-bold mb-1">{title}</div>
+      {hint && <p className="text-[11px] text-slate-500 mb-2">{hint}</p>}
+      <table className="w-full text-xs">
+        <thead><tr className="text-slate-400 border-b border-surface-border">
+          <th className="text-right py-1">&nbsp;</th><th>עסקאות</th>{perWeek && <th>לשבוע לנכס</th>}<th>הצלחה 1:3</th><th>סטופ 1:3</th><th>R 1:3</th><th>PF 1:3</th><th>R גרירה</th><th>רווחיות גרירה</th><th>PF גרירה</th><th>DD גרירה</th><th>הלכו נכון</th><th>פתוח</th>
+        </tr></thead>
+        <tbody>{rows.map(([n, m]) => <RepRow key={n} name={n} m={m} perWeek={perWeek} />)}</tbody>
+      </table>
+    </div>
+  )
+}
+function ReportSection({ report }: { report: ReportData }) {
+  const tfs = ['240', '15', '5']
+  const syms = Object.keys(report.bySym)
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-baseline justify-between gap-2 pt-2">
+        <h2 className="text-xl font-bold">📊 הדוח המלא — המנוע המותקן, שנה אחרונה</h2>
+        <div className="text-xs text-slate-500">{report.nSignals.toLocaleString()} עסקאות של טריגרי הקורס · {report.days} ימים · נוצר {report.generatedAt.slice(0, 10)}</div>
+      </div>
+      <div className="card p-3 text-xs text-slate-400 leading-relaxed">
+        <b className="text-slate-200">המדד.</b> כל עסקה נעקבת עד שהיא מגיעה לסטופ (כולל סטופ מתקדם) או ליעד, לא נחתכת אחרי מספר נרות. תקרה טכנית 1000 נרות; "פתוח" = האחוז שלא הוכרע עד התקרה, לא נספר ב-R.
+        <b className="text-slate-200"> 1:3</b> = יעד קבוע 3R מול הסטופ של הקורס. <b className="text-slate-200">גרירה</b> = איזון אחרי 1R ואז גרירה. <b className="text-slate-200">הלכו נכון</b> = הגיעו ל-1R לפני הסטופ.
+      </div>
+      <RepTable title="לפי מסגרת וכיוון" rows={[['הכול', report.all], ...tfs.map(tf => [TF_HE[tf], report.byTf[tf]] as [string, RepM]), ['לונג', report.bySide.L], ['שורט', report.bySide.S]]} />
+      <RepTable title="לפי נכס" rows={syms.flatMap(sy => [[sy, report.bySym[sy]] as [string, RepM], ...tfs.map(tf => [`${sy} · ${TF_HE[tf]}`, report.bySymTf[sy]?.[tf]] as [string, RepM | undefined])])} />
+      <RepTable title="לפי טריגר ומסגרת" rows={Object.keys(report.byStratTf).flatMap(st => tfs.map(tf => [`${STRAT_HE2[st] ?? st} · ${TF_HE[tf]}`, report.byStratTf[st][tf]] as [string, RepM | undefined]))} />
+      {tfs.map(tf => (
+        <RepTable key={tf} title={`לפי רמת ההתראה — ${TF_HE[tf]}`} perWeek hint="רמה = אישורים בעד פחות אישורים נגד (5 דקות: רשימה משלהן). לשבוע לנכס = כמה עסקאות כאלה מגיעות בממוצע"
+          rows={Object.keys(report.byLevel[tf] ?? {}).map(k => [`${k}+`, report.byLevel[tf][k]] as [string, RepM])} />
+      ))}
+      <RepTable title="הזרם המומלץ (4 שעות רמה 3+, 15 דקות רמה 4+, 5 דקות רק אורדר בלוק/ריטסט/W-M ברמה 2+)" perWeek
+        rows={[['הכול', report.recommended], ...tfs.map(tf => [TF_HE[tf], report.recommendedByTf[tf]] as [string, RepM])]} />
+    </div>
+  )
+}
+
 function DecisionsSection() {
   const tone = (s: 'done' | 'pending' | 'blocked') => (s === 'done' ? 'text-emerald-400' : s === 'blocked' ? 'text-red-400' : 'text-amber-400')
   const icon = (s: 'done' | 'pending' | 'blocked') => (s === 'done' ? '✅' : s === 'blocked' ? '⛔' : '⬜')
@@ -955,6 +1024,7 @@ export default function TabHttBacktest() {
   const [levels, setLevels] = useState<LevelsData | null>(null)
   const [year, setYear] = useState<YearData | null>(null)
   const [nest, setNest] = useState<NestedData | null>(null)
+  const [report, setReport] = useState<ReportData | null>(null)
   const [comboGroup, setComboGroup] = useState<string>('all')
   const [comboSort, setComboSort] = useState<'byR' | 'byDir'>('byR')
   const [error, setError] = useState<string | null>(null)
@@ -975,7 +1045,7 @@ export default function TabHttBacktest() {
       .then(r => (r.ok ? r.json() : null))
       .then(d => { if (d) setFib(d) })
       .catch(() => {})
-    for (const [file, setter] of [['rank', setRank], ['combos', setCombos], ['levels', setLevels], ['year', setYear], ['nested', setNest]] as const) {
+    for (const [file, setter] of [['rank', setRank], ['combos', setCombos], ['levels', setLevels], ['year', setYear], ['nested', setNest], ['report', setReport]] as const) {
       fetch(`/htt-backtest/${file}.json`, { cache: 'no-store' })
         .then(r => (r.ok ? r.json() : null))
         .then(d => { if (d) (setter as (v: any) => void)(d) })
@@ -1015,6 +1085,7 @@ export default function TabHttBacktest() {
       </div>
 
       <DecisionsSection />
+      {report && <ReportSection report={report} />}
 
       {year && <YearSection year={year} />}
 
