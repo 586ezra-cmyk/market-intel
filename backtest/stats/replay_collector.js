@@ -10,23 +10,21 @@
 
   // ── קריאת התוויות של הסטאדי ───────────────────────────────────────────────
   window.__plLabels = () => {
+    // התוויות של Pine יושבות ב-study._graphics._primitivesCollection.dwglabels → ... → _primitivesDataById[id].t (נבדק 15.10.2026)
     const c = TradingViewApi.activeChart();
     const model = c._chartWidget.model().model();
     const out = [];
-    for (const src of model.dataSources()) {
-      const md = src.metaInfo && src.metaInfo();
+    const vals = o => (o instanceof Map) ? [...o.values()] : (o && typeof o === 'object') ? Object.values(o) : [];
+    for (const s of model.dataSources()) {
+      const md = s.metaInfo && s.metaInfo();
       const nm = (md && (md.description || md.shortDescription)) || '';
       if (!/Path Lab/.test(nm)) continue;
-      // תוויות: מחפשים בכל המאפיינים של הסטאדי אובייקטים עם text
-      const seen = new Set();
-      const walk = (o, d) => {
-        if (!o || typeof o !== 'object' || d > 6 || seen.has(o)) return;
-        seen.add(o);
-        if (typeof o.text === 'string' && (o.text.startsWith('META|') || o.text.startsWith('P|') || o.text.startsWith('H|'))) out.push(o.text);
-        else if (typeof o.text === 'function') { try { const t = o.text(); if (typeof t === 'string' && (t.startsWith('META|') || t.startsWith('P|') || t.startsWith('H|'))) out.push(t); } catch (e) {} }
-        for (const k of Object.keys(o)) { if (/label|_labels|data|_data|items|_items|views|_views/i.test(k)) walk(o[k], d + 1); }
-      };
-      walk(src, 0);
+      const coll = s._graphics && s._graphics._primitivesCollection;
+      const lab = coll && (coll.dwglabels || (coll.get && coll.get('dwglabels')));
+      for (const grp of vals(lab)) for (const x of vals(grp)) {
+        const byId = x && x._primitivesDataById; if (!byId) continue;
+        for (const it of vals(byId)) { const t = it && it.t; if (typeof t === 'string' && (t.startsWith('META|') || t.startsWith('P|') || t.startsWith('H|'))) out.push(t); }
+      }
     }
     return out;
   };
