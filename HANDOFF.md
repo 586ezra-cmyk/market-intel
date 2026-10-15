@@ -584,3 +584,4 @@
 - "HTT Path Lab" (אותו סקריפט, נשמר במקום) = גרסת 62 דגלים (+avwapD, avwapRt, cvdOk, cvdDiv). שימו לב: סטאדי שכבר על גרף לא מתעדכן לבד — להסיר ולהוסיף מחדש.
 - מה חדש ב-v55: גאפים על נתונים מותאמי-חוזה (`ticker.modify(..., backadjustment=backadjustment.on)` קומפל ב-v6); רמה לכל מסגרת (5m = perTf.5 ב-levels.json); דשבורד "?" למסגרת עם <400 נרות; התראת "מתקרב לרמה" (alert()); דגלי AVWAP/CVD (CVD = request.security_lower_tf; `ta.requestVolumeDelta` לא קיים ב-v6 של TV).
 - האספן: `backtest/stats/replay_collector.js` (להדביק בקונסול של טאב הגרף; התוויות נקראות מ-`study._graphics._primitivesCollection.dwglabels`).
+- **מדידת v55 (15.10 ערב):** `trades/htt_path_store_v55_raw.json` (= year_raw = syn_raw; 62 דגלים). רמות לכל מסגרת: 4H 3+ +0.63 / 4+ +1.04; 15m 5+ +0.56; 5m(B) 3+ +0.17 PF 1.37; זרם מומלץ +0.17R. דגלים חדשים: avwapRt +0.07 (2/2), avwapD +0.01, cvdOk −0.03, cvdDiv −0.22 (n=212). הדוח: `backtest/15_בקטסט_מלא.md`.

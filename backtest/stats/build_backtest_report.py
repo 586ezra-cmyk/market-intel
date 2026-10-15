@@ -16,7 +16,7 @@ COURSE = ['F', 'W', 'O', 'M', 'B', 'K']
 
 def level_of(flags, res=None):
     """רמה = אישורים בעד − אישורים נגד. 5m: רשימת perTf.5 (B); שאר המסגרות: הרשימה הראשית"""
-    per = LEVELS.get('perTf', {}).get(str(res) if res is not None else '', None)
+    per = LV.get('perTf', {}).get(str(res) if res is not None else '', None)
     pos = per['pos'] if per else POS
     neg = per['neg'] if per else NEG
     def on(k):
