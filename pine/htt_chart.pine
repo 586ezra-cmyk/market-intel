@@ -1500,6 +1500,36 @@ alertcondition(gapUp or gapDn, "HTT · גאפ נפתח", "גאפ בין סגיר
 alertcondition(gapFilledNow, "HTT · גאפ נסגר", "הגאפ נסגר: המחיר הגיע לקצה של הנר שלפני הגאפ — RSI {{plot(\"RSI\")}} · {{ticker}} {{interval}}")
 alertcondition(chochUp or chochDn, "HTT · CHoCH", "CHoCH — שינוי אופי נגד הכיוון — RSI {{plot(\"RSI\")}} · {{ticker}} {{interval}}")
 
+// ─── התראת "מתקרב לרמה" (תוכנית 1.7): X% לפני אזור עניין בכיוון התנועה, פעם אחת לכל התקרבות ───
+gN = "מתקרב לרמה"
+nearOn = input.bool(true, "התראה כשהמחיר מתקרב לרמה (alert() — לבחור 'Any alert() function call')", group=gN)
+nearX = input.float(0.25, "מרחק להתראה (% מהמחיר)", minval=0.02, maxval=3, step=0.05, group=gN)
+nearLbl = input.bool(true, "לסמן על הגרף", group=gN)
+f_nearD(float lvl) => na(lvl) ? 1e10 : math.abs(close - lvl) / close * 100
+goUp = close > close[3]
+float nearLvl = na
+string nearKind = ""
+if nearOn
+    nCands = array.from(rHi, rLo, h4H, h4L, dH, dL, wkH, wkL, obLTop, obLBot, obSTop, obSBot, prevSesH, prevSesL, asiaH, asiaL, poolHi, poolLo)
+    nKinds = array.from("קריק", "אייס", "שיא 4H", "שפל 4H", "שיא יומי", "שפל יומי", "שיא שבועי", "שפל שבועי", "OB לונג", "OB לונג", "OB שורט", "OB שורט", "סשן קודם", "סשן קודם", "אסיה", "אסיה", "בריכת נזילות", "בריכת נזילות")
+    nBest = 1e10
+    for ni = 0 to array.size(nCands) - 1
+        nlv = array.get(nCands, ni)
+        if not na(nlv) and (goUp ? nlv >= close : nlv <= close)
+            nd = f_nearD(nlv)
+            if nd < nBest
+                nBest := nd
+                nearLvl := nlv
+                nearKind := array.get(nKinds, ni)
+nearPct = f_nearD(nearLvl)
+nearNow = nearOn and not na(nearLvl) and nearPct <= nearX and nearPct < nearPct[1]
+nearFire = nearNow and not nearNow[1] and barstate.isconfirmed
+if nearFire
+    alert("מתקרב ל" + nearKind + " " + str.tostring(nearLvl, format.mintick) + " (" + str.tostring(nearPct, "#.##") + "% מהמחיר) · " + syminfo.ticker + " " + timeframe.period, alert.freq_once_per_bar_close)
+    if nearLbl and not cleanMode
+        label.new(bar_index, goUp ? high : low, "→ " + nearKind, xloc=xloc.bar_index, yloc=goUp ? yloc.abovebar : yloc.belowbar, style=label.style_label_center, color=color.new(color.teal, 30), textcolor=color.white, size=size.tiny)
+alertcondition(nearFire, "HTT · מתקרב לרמה", "המחיר מתקרב לרמת עניין — {{ticker}} {{interval}} (הפירוט בהתראת alert())")
+
 // ═══ HTT ALERT BLOCK — סטאפ איכותי: 46 אישורים, רמה, webhook אחד (נוצר על ידי gen_chart_alert_block.py) ═══
 gQ = "סטאפ איכותי (התראה אחת עם כל האישורים)"
 qOn = input.bool(true, "לחשב רמה ולסמן ליד הטריגר", group=gQ)
