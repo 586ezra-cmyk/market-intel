@@ -1,0 +1,45 @@
+<!doctype html><html dir="rtl"><head><meta charset="utf-8"><style>
+body{background:#0f1117;color:#e6e6e6;font-family:-apple-system,"Segoe UI",Arial;margin:0;padding:18px;width:1200px}
+h1{font-size:20px;margin:0 0 4px} .sub{color:#8b93a7;font-size:12px;margin-bottom:12px}
+table{border-collapse:collapse;width:100%;font-size:13px} th,td{border:1px solid #1e2433;padding:5px 8px;text-align:center}
+th{background:#171b26;color:#cfd4e3;text-align:right;font-weight:600} thead th{text-align:center;background:#1f2638;color:#fff}
+tr.group td{background:#141827;color:#ffd166;text-align:right;font-weight:700;letter-spacing:.3px}
+.phA,.phB{background:#3a3f55} .phC{background:#5b2a86} .phD{background:#1f6f43} .phE{background:#1d5c8a}
+.ok{background:#1f6f43} .bad{background:#6b2525} .up{color:#5be3a1} .dn{color:#ff6b6b}
+.new{background:#ffd166;color:#111;font-size:10px;border-radius:4px;padding:1px 5px;margin-right:6px}
+.blocks{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+.block{background:#171b26;border:1px solid #1e2433;border-radius:8px;padding:8px 10px;font-size:13px}
+.block h3{margin:0 0 6px;font-size:13px;color:#ffd166} .block div{padding:2px 0;color:#d7dbe7}
+.site{border-color:#5b8def} .site h3{color:#5b8def} .k{color:#8b93a7}
+</style></head><body>
+<h1>HTT Dashboard — הצעה לטבלה המסודרת (v56)</h1>
+<div class="sub">מטריצה: 5 מסגרות × שורות בשלוש קבוצות (ליבה, אישורים, הקשר). למטה: בלוקים של הגרף הנוכחי. צהוב = חדש. כחול = קיים רק באתר (Bookmap).</div>
+<table><thead><tr><th>שורה \ מסגרת</th><th>D</th><th>4H</th><th>1H</th><th>15m</th><th>5m</th></tr></thead><tbody>
+<tr class="group"><td colspan="6">ליבה — איפה אנחנו בתהליך</td></tr>
+<tr><th>פאזה</th><td class="phB">B</td><td class="phD">D</td><td class="phD">D</td><td class="phC">C</td><td class="phD">D</td></tr>
+<tr><th>מרחב (כיוון)</th><td class="up">שורי ▲</td><td class="up">שורי ▲</td><td class="up">שורי ▲</td><td class="dn">דובי ▼</td><td class="up">שורי ▲</td></tr>
+<tr><th>טריגר אחרון</th><td class="">—</td><td class="">✈ 3 נרות</td><td class="">OB 7</td><td class="">W/M</td><td class="">K ריטסט 2</td></tr>
+<tr><th>S/U (הכרעה C)</th><td class="">—</td><td class="">S</td><td class="">S</td><td class="">U</td><td class="">S</td></tr>
+<tr><th>Test</th><td class="">—</td><td class="ok">✓</td><td class="ok">✓</td><td class="bad">✗</td><td class="ok">✓</td></tr>
+<tr><th>בתוך (מסגרת גבוהה)</th><td class="">—</td><td class="">בתוך B</td><td class="">בתוך D</td><td class="">בתוך D</td><td class="">בתוך C</td></tr>
+<tr class="group"><td colspan="6">אישורים — מה תומך בכניסה</td></tr>
+<tr><th>קצה (אייס/קריק)</th><td class="bad">✗</td><td class="ok">✓</td><td class="ok">✓</td><td class="bad">✗</td><td class="ok">✓</td></tr>
+<tr><th>עם מרחב</th><td class="">—</td><td class="ok">✓</td><td class="ok">✓</td><td class="bad">✗</td><td class="ok">✓</td></tr>
+<tr><th>רמזים (4)</th><td class="">1/4</td><td class="">3/4</td><td class="">3/4</td><td class="">2/4</td><td class="">4/4</td></tr>
+<tr><th>W/M</th><td class="">—</td><td class="">—</td><td class="">W נבנה</td><td class="">M ✓</td><td class="">—</td></tr>
+<tr><th>צבת</th><td class="">—</td><td class="">—</td><td class="">✚ שורי</td><td class="">—</td><td class="">✚ שורי</td></tr>
+<tr><th>RSI</th><td class="">58</td><td class="">44 ↑</td><td class="">29 ↑</td><td class="">71 ↓</td><td class="">33 ↑</td></tr>
+<tr><th>SMT / iSMT <span class="new">חדש</span></th><td class="">—</td><td class="">SMT ▲ (ES)</td><td class="">—</td><td class="">iSMT ▼</td><td class="">SMT ▲</td></tr>
+<tr><th>FVG / iFVG <span class="new">חדש</span></th><td class="">FVG ▲ פעיל</td><td class="">—</td><td class="">iFVG ▲ נגע</td><td class="">FVG ▼</td><td class="">FVG ▲ טרי</td></tr>
+<tr><th>ממוצע 12 <span class="new">חדש</span></th><td class="">מעל ▲</td><td class="">מעל ▲</td><td class="">מעל ▲</td><td class="">מתחת ▼</td><td class="">מעל ▲</td></tr>
+<tr><th>POC היום <span class="new">חדש</span></th><td class="">—</td><td class="">מעל +0.4%</td><td class="">מעל +0.4%</td><td class="">מתחת −0.2%</td><td class="">על ה-POC</td></tr>
+<tr><th>אזור ערך <span class="new">חדש</span></th><td class="">—</td><td class="">יקר</td><td class="">יקר</td><td class="">בפנים</td><td class="">בפנים</td></tr>
+</tbody></table>
+<div class="blocks">
+<div class="block"><h3>הגרף הנוכחי (15m)</h3><div><span class="k">סטאפ:</span> ✈ לונג חמוש · RSI 33 ↑ · <span class="k">יחס 1:3:</span> 3.4 ✓</div><div><span class="k">סשן:</span> לונדון ✓ · <span class="k">מיקום:</span> 31% דיסקאונט · <span class="k">AMD:</span> M · סינרגיה 3/4 🔥</div><div><span class="k">BOS ממתין:</span> סגירה מעל 29,480</div></div>
+<div class="block"><h3>רבעים ו-True Open <span class="new">חדש</span></h3><div>שבועי Q3 · יומי Q2 (מניפולציה, לונדון) · 90' Q2 (מניפולציה, AMD)</div><div><span class="k">True Open:</span> יומי מתחת (דיסקאונט) · סשן מתחת · שבועי מעל</div></div>
+<div class="block"><h3>Volume Profile <span class="new">חדש</span></h3><div><span class="k">POC היום:</span> 29,412 (מתחת −0.2%) · <span class="k">ערך:</span> בפנים (VAL 29,350 – VAH 29,520)</div><div><span class="k">אזור עיגון הבא:</span> למעלה 29,700–29,780 · למטה 29,120–29,190 · <span class="k">nPOC אתמול:</span> 29,655</div></div>
+<div class="block"><h3>ממוצע 12 <span class="new">חדש</span></h3><div>15m: המחיר מעל, הממוצע עולה ▲ · 5m: מעל ▲ · 1H: מעל ▲ · 4H: מעל ▲ · D: מתחת ▼</div></div>
+<div class="block site"><h3>Order Flow (באתר בלבד: Binance / Bookmap)</h3><div><span class="k">CVD 15m:</span> עולה עם המחיר ✓ · <span class="k">דלתא נר הטריגר:</span> +1,240 · <span class="k">ספיגה:</span> ✓ ב-29,350 לפני 4 נרות</div></div>
+<div class="block"><h3>בקטסט (קיים)</h3><div>✈ טיסה 41/118 · כנף 22/60 · OB 35/88 · W/M 19/47 · לונ' 48/130 · ניו' 61/150</div></div>
+</div></body></html>
