@@ -22,6 +22,14 @@ export interface EconEvent {
   explanationHe: string
   bullishHe: string
   bearishHe: string
+  /** epoch ms of the event (from the official feed) */
+  ts?: number
+  /** YYYY-MM-DD in Israel time — for grouping by day */
+  dateIL?: string
+  /** true = high-impact USD event: prop-account news window (NEWS_WINDOW_MIN before/after) */
+  noTrade?: boolean
+  noTradeHe?: string
+  allDay?: boolean
 }
 
 // Hebrew explanations for major economic events
@@ -77,6 +85,7 @@ const EVENT_TRANSLATIONS: Record<string, { titleHe: string; explanationHe: strin
 }
 
 function impactFromString(s: string): 'high' | 'medium' | 'low' {
+  if (s === 'Holiday' || s === 'Non-Economic') return 'low'
   if (s?.includes('High') || s === 'red') return 'high'
   if (s?.includes('Medium') || s === 'orange') return 'medium'
   return 'low'
@@ -93,14 +102,21 @@ function utcToIL(timeStr: string, dateStr: string): string {
 }
 
 /**
- * Scrape ForexFactory calendar for the current week.
- * Falls back to FMP if scraping fails.
+ * ForexFactory official weekly JSON feed (this week + next week), no scraping.
+ * Feed: https://nfs.faireconomy.media/ff_calendar_thisweek.json — update at most every 30 min (their rule).
+ * Falls back to FMP only if the feed is unreachable.
  */
+const FEED_URLS = [
+  'https://nfs.faireconomy.media/ff_calendar_thisweek.json',
+  'https://nfs.faireconomy.media/ff_calendar_nextweek.json',
+]
+const NEWS_WINDOW_MIN = Number(process.env.NEWS_WINDOW_MIN ?? '5')
+
 export async function fetchEconomicCalendar(): Promise<EconEvent[]> {
   try {
-    return await scrapeForexFactory()
+    return await fetchForexFactoryFeed()
   } catch (err) {
-    console.warn('[ForexFactory] Scraping failed, trying FMP...', err)
+    console.warn('[ForexFactory] feed failed, trying FMP...', err)
     try {
       return await fetchFMP()
     } catch (err2) {
@@ -110,56 +126,67 @@ export async function fetchEconomicCalendar(): Promise<EconEvent[]> {
   }
 }
 
-async function scrapeForexFactory(): Promise<EconEvent[]> {
-  const res = await fetch('https://www.forexfactory.com/calendar', {
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
-      'Accept': 'text/html',
-      'Accept-Language': 'en-US,en;q=0.9',
-      'Cache-Control': 'no-cache',
-    },
-  })
+function ilDate(ts: number): string {
+  // YYYY-MM-DD in Asia/Jerusalem
+  return new Date(ts).toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' })
+}
 
-  if (!res.ok) throw new Error(`ForexFactory returned ${res.status}`)
-  const html = await res.text()
-
-  // Parse JSON embedded in page (ForexFactory embeds calendar data)
-  const match = html.match(/window\.calendarComponentStates\s*=\s*(\{.+?\});/s)
-  if (!match) throw new Error('Could not find embedded calendar data')
-
-  const data = JSON.parse(match[1])
+async function fetchForexFactoryFeed(): Promise<EconEvent[]> {
+  const { createHash } = await import('crypto')
   const events: EconEvent[] = []
-
-  const allEvents = data?.calendarWidget?.days?.flatMap((d: any) =>
-    d.events?.map((e: any) => ({ ...e, date: d.date })) ?? []
-  ) ?? []
-
-  for (const ev of allEvents) {
-    if (!ev.title) continue
-    const trans = EVENT_TRANSLATIONS[ev.title]
-    const impact = impactFromString(ev.impact)
-    const timeStr = ev.time ?? '00:00'
-
-    events.push({
-      id: `ff-${ev.id ?? crypto.randomUUID()}`,
-      title: ev.title,
-      titleHe: trans?.titleHe ?? ev.title,
-      country: ev.country ?? '',
-      currency: ev.currency ?? '',
-      impact,
-      date: ev.date,
-      time: timeStr,
-      timeIL: utcToIL(timeStr, ev.date),
-      forecast: ev.forecast ?? '',
-      previous: ev.previous ?? '',
-      actual: ev.actual ?? '',
-      explanationHe: trans?.explanationHe ?? '',
-      bullishHe: trans?.bullishHe ?? '',
-      bearishHe: trans?.bearishHe ?? '',
-    })
+  let ok = 0
+  for (const url of FEED_URLS) {
+    try {
+      const res = await fetch(url, { headers: { 'User-Agent': 'MarketIntel/1.0 (+https://market-intel-web-henna.vercel.app)', Accept: 'application/json' } })
+      if (!res.ok) throw new Error(`feed ${res.status}`)
+      const data = (await res.json()) as any[]
+      ok++
+      for (const ev of data) {
+        if (!ev?.title || !ev?.date) continue
+        const ts = Date.parse(ev.date)
+        if (!Number.isFinite(ts)) continue
+        const d = new Date(ts)
+        const impactRaw = String(ev.impact ?? '')
+        const impact = impactFromString(impactRaw)
+        const allDay = impactRaw === 'Holiday' || impactRaw === 'Non-Economic'
+        const currency = String(ev.country ?? '')          // the feed's "country" is the currency code (USD, EUR…)
+        const trans = EVENT_TRANSLATIONS[ev.title]
+        const dateUtc = d.toISOString().slice(0, 10)
+        const timeUtc = d.toISOString().slice(11, 16)
+        const noTrade = impact === 'high' && currency === 'USD' && !allDay
+        events.push({
+          id: 'ff-' + createHash('md5').update(`${ev.title}|${ev.date}|${currency}`).digest('hex').slice(0, 12),
+          title: ev.title,
+          titleHe: trans?.titleHe ?? ev.title,
+          country: currency,
+          currency,
+          impact,
+          date: dateUtc,
+          time: timeUtc,
+          timeIL: utcToIL(timeUtc, dateUtc),
+          forecast: String(ev.forecast ?? ''),
+          previous: String(ev.previous ?? ''),
+          actual: String(ev.actual ?? ''),
+          explanationHe: trans?.explanationHe ?? '',
+          bullishHe: trans?.bullishHe ?? '',
+          bearishHe: trans?.bearishHe ?? '',
+          ts,
+          dateIL: ilDate(ts),
+          noTrade,
+          noTradeHe: noTrade ? `דוח אדום בדולר — חלון זהירות ${NEWS_WINDOW_MIN} דק' לפני ואחרי (חשבון ממומן)` : undefined,
+          allDay,
+        })
+      }
+    } catch (e) {
+      console.warn('[ForexFactory] feed url failed:', url, (e as Error).message)
+    }
   }
-
-  return events.filter(e => e.impact === 'high' || e.impact === 'medium')
+  if (!ok) throw new Error('ForexFactory feed unreachable')
+  // dedupe (the two weeks can overlap) and keep medium/high (+ holidays as info)
+  const seen = new Set<string>()
+  return events
+    .filter(e => (e.impact === 'high' || e.impact === 'medium' || e.allDay) && !seen.has(e.id) && seen.add(e.id))
+    .sort((a, b) => (a.ts ?? 0) - (b.ts ?? 0))
 }
 
 async function fetchFMP(): Promise<EconEvent[]> {
@@ -209,7 +236,7 @@ let _cache: { events: EconEvent[]; fetchedAt: number } | null = null
 
 export async function getCachedCalendar(): Promise<EconEvent[]> {
   const now = Date.now()
-  const TTL = 6 * 3600_000 // 6 hours
+  const TTL = 30 * 60_000 // 30 min — the feed's own refresh rule
 
   if (_cache && now - _cache.fetchedAt < TTL) {
     return _cache.events
@@ -231,7 +258,7 @@ export async function sendEventReminders(): Promise<void> {
   for (const ev of events) {
     if (ev.impact !== 'high') continue
 
-    const eventTime = new Date(`${ev.date}T${ev.time}:00Z`).getTime()
+    const eventTime = ev.ts ?? new Date(`${ev.date}T${ev.time}:00Z`).getTime()
     const diff = eventTime - now
     const diffMin = diff / 60_000
 
