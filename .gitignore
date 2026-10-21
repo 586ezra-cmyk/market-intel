@@ -12,3 +12,6 @@ data/
 backups/
 *.log
 .vercel
+backtest/research/ig_videos/
+backtest/research/ig_saved_meta.json
+backtest/research/ig_video_urls.json
