@@ -591,3 +591,4 @@
 - Vercel: פריסה אוטומטית הצליחה תוך ~2 דק' — האתר החי כולל כניסה עם סיסמה (כבויה עד `SITE_PASSWORD`), פרוקסי `/api/proxy`, כותרות אבטחה, מקטעי HTT.
 - Railway: לא פרס מהדחיפה. צריך להיכנס ל-Railway (המשתמש) ולבדוק: חיבור ל-GitHub repo / deploy ידני; ואז משתנים `ADMIN_TOKEN`, בדיקת `TV_WEBHOOK_SECRET`.
 - Vercel משתנים עדיין חסרים: `SITE_PASSWORD`, `ADMIN_TOKEN`, `BACKEND_URL`.
+- **עצירה 21.10 16:25 לבקשת המשתמש (סוחר).** מצב: GitHub מחובר ונדחף; Vercel פרס (בלי סיסמה/טוקן עדיין); Railway לא פרס בגלל תקלת פלטפורמה (builds paused) — להפעיל Redeploy ידני כשהבאנר נעלם. סודות מוכנים ב-`~/.config/market-intel/secrets.env` (ADMIN_TOKEN, SITE_PASSWORD, TV_WEBHOOK_SECRET_NEW). **סדר חובה:** קודם Vercel env (SITE_PASSWORD, ADMIN_TOKEN, BACKEND_URL) → redeploy → ואז Railway ADMIN_TOKEN. המשתמש עוד לא מחובר ל-Vercel בכרום. ה-CLI: `~/.npm-global/bin/{railway,vercel}`.
