@@ -1053,7 +1053,7 @@ int qtOff360 = qtOff % 360
 int qt90Idx = int(math.floor(qtOff360 / 90))
 qtDayQStart = qtDayStart + qtDayIdx * 360.0 * QT_MS
 qt90Start = qtDayQStart + qt90Idx * 90.0 * QT_MS
-qtTd = time + 6 * 60 * QT_MS
+qtTd = time + 21600000
 qtDow = dayofweek(qtTd, QT_TZ)
 qtDom = dayofmonth(qtTd, QT_TZ)
 qtNewDay = na(qtDom[1]) ? false : qtDom != qtDom[1]
