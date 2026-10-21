@@ -16,7 +16,7 @@ export const HTT_FLAG_HE: Record<string, string> = {
   volLow: 'ווליום נמוך', htfMs: 'מבנה HTF תואם', htfCD: 'HTF ב-C/D תואם', amdD: 'AMD D', conf4: '4+ אישורים',
   rrOk: 'יחס 1:3 אפשרי', atEdge: 'הגיע לאייס/קריק', atHtfLvl: 'רמת 4H/יומי/שבועי', atSesLvl: 'רמת סשן/אסיה', bbSq: 'התכווצות בולינגר',
   vixOk: 'VIX תומך', vixHigh: 'VIX מעל 20', vixSpike: 'זינוק VIX', vixDiv: 'דיברגנס VIX',
-  jac: 'JAC/FTI — קפיצה מעבר לקריק/אייס', crkRt: 'BUTTC/RBTI — ריטסט הקריק/אייס', tso: 'ניעור סופי (TSO/TUT)', dq2: 'איכות D ≥ 2', dq3: 'איכות D ≥ 3', dqMag: 'מגנט לקריק/אייס', cTso: 'C עם ניעור סופי', reacc: 'איסוף/פיזור חוזר', avwapD: 'בצד הנכון של AVWAP יומי', avwapRt: 'ריטסט AVWAP יומי', cvdOk: 'CVD בכיוון (5 נרות)', cvdDiv: 'דיברגנס CVD (20 נרות)',
+  jac: 'JAC/FTI — קפיצה מעבר לקריק/אייס', crkRt: 'BUTTC/RBTI — ריטסט הקריק/אייס', tso: 'ניעור סופי (TSO/TUT)', dq2: 'איכות D ≥ 2', dq3: 'איכות D ≥ 3', dqMag: 'מגנט לקריק/אייס', cTso: 'C עם ניעור סופי', reacc: 'איסוף/פיזור חוזר', avwapD: 'בצד הנכון של AVWAP יומי', qtJudas: "ג'ודאס של הרבע (תורת הרבעים)", qtAccum: "רבע צבירה (90 דק')", qtManip: "רבע מניפולציה (90 דק')", qtDist: "רבע חלוקה (90 דק')", qtDayLon: 'רבע יומי 2 (לונדון, מניפולציה של היום)', tdoDisc: 'בצד הזול של True Day Open', tsoDisc: 'בצד הזול של True Session Open', twoDisc: 'בצד הזול של True Weekly Open', avwTdoSide: 'בצד הנכון של AVWAP מ-True Day Open', avwTdoRt: 'ריטסט AVWAP מ-True Day Open', avwWkSide: 'בצד הנכון של AVWAP שבועי', avwSwRt: 'ריטסט AVWAP מהסווינג האחרון', avwSlope: 'שיפוע AVWAP יומי בכיוון', avwStack: 'מעל/מתחת גם AVWAP יומי וגם שבועי', avwapRt: 'ריטסט AVWAP יומי', cvdOk: 'CVD בכיוון (5 נרות)', cvdDiv: 'דיברגנס CVD (20 נרות)',
 }
 
 /** Map HTT keys onto the site's fixed factor vocabulary (for the alerts tab chips). */

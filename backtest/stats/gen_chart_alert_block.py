@@ -13,6 +13,20 @@ POS, NEG = lv['pos'], lv['neg']
 PER5 = lv.get('perTf', {}).get('5', {})
 POS5, NEG5 = PER5.get('pos', POS), PER5.get('neg', NEG)
 HE = {
+    'qtJudas': "ג'ודאס של הרבע (תורת הרבעים)",
+    'qtAccum': "רבע צבירה (90 דק')",
+    'qtManip': "רבע מניפולציה (90 דק')",
+    'qtDist': "רבע חלוקה (90 דק')",
+    'qtDayLon': 'רבע יומי 2 (לונדון, מניפולציה של היום)',
+    'tdoDisc': 'בצד הזול של True Day Open',
+    'tsoDisc': 'בצד הזול של True Session Open',
+    'twoDisc': 'בצד הזול של True Weekly Open',
+    'avwTdoSide': 'בצד הנכון של AVWAP מ-True Day Open',
+    'avwTdoRt': 'ריטסט AVWAP מ-True Day Open',
+    'avwWkSide': 'בצד הנכון של AVWAP שבועי',
+    'avwSwRt': 'ריטסט AVWAP מהסווינג האחרון',
+    'avwSlope': 'שיפוע AVWAP יומי בכיוון',
+    'avwStack': 'מעל/מתחת גם AVWAP יומי וגם שבועי',
     'avwapD': 'בצד הנכון של AVWAP יומי', 'avwapRt': 'ריטסט AVWAP יומי', 'cvdOk': 'CVD בכיוון (5 נרות)', 'cvdDiv': 'דיברגנס CVD (20 נרות)',
     'vixOk': 'VIX תומך', 'vixHigh': 'VIX מעל 20', 'vixSpike': 'זינוק VIX', 'vixDiv': 'דיברגנס VIX',
     'jac': 'JAC/FTI — קפיצה מעבר לקריק/אייס', 'crkRt': 'BUTTC/RBTI — ריטסט הקריק/אייס', 'tso': 'ניעור סופי (TSO/TUT)',

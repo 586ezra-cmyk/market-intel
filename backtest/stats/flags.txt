@@ -25,6 +25,7 @@ orBrk
 jac
 crkRt
 tso
+qtJudas
 test
 pd
 kz
@@ -60,3 +61,16 @@ avwapD
 avwapRt
 cvdOk
 cvdDiv
+qtAccum
+qtManip
+qtDist
+qtDayLon
+tdoDisc
+tsoDisc
+twoDisc
+avwTdoSide
+avwTdoRt
+avwWkSide
+avwSwRt
+avwSlope
+avwStack

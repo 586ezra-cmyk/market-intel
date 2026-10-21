@@ -1160,6 +1160,53 @@ f_colP(int c, string nm, int p, int d, string trg, int cd2, int ts2, int zn2, in
     f_cell(c, 12, tw2 > 0 ? "✚" : tw2 < 0 ? "✚" : "—", BG, tw2 > 0 ? GRN : tw2 < 0 ? RED : MUT, szS)
     f_cell(c, 13, f_rsiTxt(rs2), f_rsiBG(rs2, BG2), color.white, szS)
     true
+// ─── תורת הרבעים (Daye) לטבלה: רבעים, מודל AMD/XAMD של 90 הדקות, True Opens ───
+QT_TZ = "America/New_York"
+QT_MS = 60000.0
+qtOff = (hour(time, QT_TZ) * 60 + minute(time, QT_TZ) - 1080 + 1440) % 1440
+qtDayStart = time - qtOff * QT_MS - second(time, QT_TZ) * 1000
+int qtDayIdx = int(math.floor(qtOff / 360))
+int qt90Idx = int(math.floor((qtOff % 360) / 90))
+qtDayQStart = qtDayStart + qtDayIdx * 360.0 * QT_MS
+qt90Start = qtDayQStart + qt90Idx * 90.0 * QT_MS
+qtTd = time + 6 * 60 * QT_MS
+qtDow = dayofweek(qtTd, QT_TZ)
+qtDom = dayofmonth(qtTd, QT_TZ)
+qtNewDay = na(qtDom[1]) ? false : qtDom != qtDom[1]
+int qtWkIdx = qtDow == dayofweek.monday ? 0 : qtDow == dayofweek.tuesday ? 1 : qtDow == dayofweek.wednesday ? 2 : qtDow == dayofweek.thursday ? 3 : -1
+qtNew90 = na(qt90Start[1]) ? false : qt90Start != qt90Start[1]
+qtNewDayQ = na(qtDayQStart[1]) ? false : qtDayQStart != qtDayQStart[1]
+var float qtHi = na
+var float qtLo = na
+var float qtAvgR = na
+var string qtModel = "AMD"
+if qtNew90
+    if not na(qtHi)
+        float qr = qtHi - qtLo
+        qtAvgR := na(qtAvgR) ? qr : qtAvgR * 0.9 + qr * 0.1
+        if qt90Idx[1] == 0
+            qtModel := qr > qtAvgR * 1.35 ? "XAMD" : "AMD"
+    qtHi := high
+    qtLo := low
+else
+    qtHi := math.max(nz(qtHi, high), high)
+    qtLo := math.min(nz(qtLo, low), low)
+qtInManip = qt90Idx == (qtModel == "AMD" ? 1 : 2)
+var float qtTSO = na
+var float qtTDO = na
+var float qtTWO = na
+if qtNew90 and qt90Idx == 1
+    qtTSO := open
+if qtNewDayQ and qtDayIdx == 1
+    qtTDO := open
+if qtNewDay and qtDow == dayofweek.tuesday
+    qtTWO := open
+f_qtPhHe(int idx, string md) => md == "AMD" ? (idx == 0 ? "צבירה" : idx == 1 ? "מניפולציה" : idx == 2 ? "חלוקה" : "המשך") : (idx == 0 ? "המשך" : idx == 1 ? "צבירה" : idx == 2 ? "מניפולציה" : "חלוקה")
+f_qtSide(float lvl) => na(lvl) ? "—" : close > lvl ? "מעל" : "מתחת"
+qtRowTxt = (qtWkIdx >= 0 ? "שבועי Q" + str.tostring(qtWkIdx + 1) : "שבועי —") + " · יומי Q" + str.tostring(qtDayIdx + 1) + " (" + f_qtPhHe(qtDayIdx, "AMD") + ") · 90' Q" + str.tostring(qt90Idx + 1) + " (" + f_qtPhHe(qt90Idx, qtModel) + ", " + qtModel + ")"
+qtToTxt = "יומי " + f_qtSide(qtTDO) + " · סשן " + f_qtSide(qtTSO) + " · שבועי " + f_qtSide(qtTWO)
+qtTip = "תורת הרבעים (Daye): שבועי ב'=Q1…ה'=Q4 · יומי 18:00 NY=Q1 אסיה, 00:00=Q2 לונדון, 06:00=Q3 ניו-יורק, 12:00=Q4 · 90 דק' בתוך כל סשן. AMD: Q1 צבירה, Q2 מניפולציה (Judas), Q3 חלוקה; XAMD כש-Q1 מתוח"
+qtToTip = "המחיר מול הפתיחה האמיתית: יומי = 00:00 NY · סשן = תחילת Q2 של 90 הדקות · שבועי = יום ב' 18:00 NY. מתחת = דיסקאונט (טוב ללונג), מעל = פרימיום (טוב לשורט)"
 f_starveW(int r, int nb, string tfn) =>
     if nb >= 0 and nb + 1 < htfMinBars
         f_cellT(1, r, "?", color.new(color.gray, 55), color.white, szL, f_starveTip(nb, tfn))
@@ -1178,7 +1225,7 @@ if barstate.islast
     synCnt = ((ph4 >= 3 ? 1 : 0) + (ph1h >= 3 ? 1 : 0) + (ph15 >= 3 ? 1 : 0) + (ph5m >= 3 ? 1 : 0))
     bosPend = armDir == 1 ? "BOS: סגירה מעל " + str.tostring(lastPH, format.mintick) : armDir == -1 ? "BOS: סגירה מתחת " + str.tostring(lastPL, format.mintick) : "BOS: —"
     if tblLayout == "טלפון"
-        f_spacers(6, 20)
+        f_spacers(6, 21)
         f_cell(0, 0, "TF", HDR, TXT, szN)
         f_cell(0, 1, "פאזה", HDR, TXT, szS)
         f_cell(0, 2, "מרחב", HDR, TXT, szS)
@@ -1227,12 +1274,16 @@ if barstate.islast
         f_cell(4, 18, str.tostring(oW) + "/" + str.tostring(oN) + " · " + str.tostring(wmW) + "/" + str.tostring(wmN), BG2, TXT, szS)
         f_cell(0, 19, "סשנים", BG, MUT, szS)
         f_cell(1, 19, "לונ' " + str.tostring(array.get(sesW, 1)) + "/" + str.tostring(array.get(sesN, 1)) + " · ניו' " + str.tostring(array.get(sesW, 2)) + "/" + str.tostring(array.get(sesN, 2)) + " · אס' " + str.tostring(array.get(sesW, 0)) + "/" + str.tostring(array.get(sesN, 0)), BG, TXT, szS)
+        f_cellT(0, 20, "רבעים", BG2, TXT, szS, qtTip)
+        f_cell(1, 20, qtRowTxt, BG2, qtInManip ? color.yellow : TXT, szS)
+        f_cellT(3, 20, "True Open", BG2, TXT, szS, qtToTip)
+        f_cell(4, 20, qtToTxt, BG2, TXT, szS)
         for pr = 14 to 18
             table.merge_cells(t, cx + 1, cy + pr, cx + 2, cy + pr)
             table.merge_cells(t, cx + 4, cy + pr, cx + 5, cy + pr)
         table.merge_cells(t, cx + 1, cy + 19, cx + 5, cy + 19)
     else
-        f_spacers(14, 10)
+        f_spacers(14, 11)
         f_cell(0, 0, "TF", HDR, TXT, szN)
         f_cell(1, 0, "פאזה", HDR, TXT, szN)
         f_cellT(2, 0, "מרחב", HDR, TXT, szN, "מרחב קונים/מוכרים (12-5): כיוון ה-BOS האחרון. שורי = מרחב קונים, דובי = מרחב מוכרים")
@@ -1272,7 +1323,9 @@ if barstate.islast
             f_cell(7, 9, "OB " + str.tostring(oW) + "/" + str.tostring(oN) + " · " + pct(oW, oN), BG, TXT, szN)
             f_cell(9, 9, "W/M " + str.tostring(wmW) + "/" + str.tostring(wmN) + " · " + pct(wmW, wmN), BG2, TXT, szN)
             f_cell(11, 9, "לונ' " + str.tostring(array.get(sesW, 1)) + "/" + str.tostring(array.get(sesN, 1)) + " · ניו' " + str.tostring(array.get(sesW, 2)) + "/" + str.tostring(array.get(sesN, 2)) + " · אס' " + str.tostring(array.get(sesW, 0)) + "/" + str.tostring(array.get(sesN, 0)), BG, TXT, szS)
-            for pr = 8 to 9
+            f_cellT(0, 10, "רבעים · " + qtRowTxt, BG2, qtInManip ? color.yellow : TXT, szN, qtTip)
+            f_cellT(7, 10, "True Open · " + qtToTxt, BG, TXT, szN, qtToTip)
+            for pr = 8 to 10
                 table.merge_cells(t, cx + 0, cy + pr, cx + 2, cy + pr)
                 table.merge_cells(t, cx + 3, cy + pr, cx + 4, cy + pr)
                 table.merge_cells(t, cx + 5, cy + pr, cx + 6, cy + pr)

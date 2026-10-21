@@ -1500,6 +1500,113 @@ alertcondition(gapUp or gapDn, "HTT · גאפ נפתח", "גאפ בין סגיר
 alertcondition(gapFilledNow, "HTT · גאפ נסגר", "הגאפ נסגר: המחיר הגיע לקצה של הנר שלפני הגאפ — RSI {{plot(\"RSI\")}} · {{ticker}} {{interval}}")
 alertcondition(chochUp or chochDn, "HTT · CHoCH", "CHoCH — שינוי אופי נגד הכיוון — RSI {{plot(\"RSI\")}} · {{ticker}} {{interval}}")
 
+// ─── תורת הרבעים (Daye): רבעים שבועי/יומי/90 דק', מודל AMD/XAMD ל-90 דק', True Opens, Judas — לטבלה ולמדידה (1.11) ───
+QT_TZ = "America/New_York"
+QT_MS = 60000.0
+qtHH = hour(time, QT_TZ)
+qtMM = minute(time, QT_TZ)
+qtOff = (qtHH * 60 + qtMM - 1080 + 1440) % 1440
+qtDayStart = time - qtOff * QT_MS - second(time, QT_TZ) * 1000
+int qtDayIdx = int(math.floor(qtOff / 360))
+int qtOff360 = qtOff % 360
+int qt90Idx = int(math.floor(qtOff360 / 90))
+qtDayQStart = qtDayStart + qtDayIdx * 360.0 * QT_MS
+qt90Start = qtDayQStart + qt90Idx * 90.0 * QT_MS
+qtTd = time + 6 * 60 * QT_MS
+qtDow = dayofweek(qtTd, QT_TZ)
+qtDom = dayofmonth(qtTd, QT_TZ)
+qtNewDay = na(qtDom[1]) ? false : qtDom != qtDom[1]
+int qtWkIdx = qtDow == dayofweek.monday ? 0 : qtDow == dayofweek.tuesday ? 1 : qtDow == dayofweek.wednesday ? 2 : qtDow == dayofweek.thursday ? 3 : -1
+qtNew90 = na(qt90Start[1]) ? false : qt90Start != qt90Start[1]
+qtNewDayQ = na(qtDayQStart[1]) ? false : qtDayQStart != qtDayQStart[1]
+var float qtHi = na
+var float qtLo = na
+var float qtAvgR = na
+var string qtModel = "AMD"
+var float qtQ1Hi = na
+var float qtQ1Lo = na
+var bool qtJudasDone = false
+if qtNew90
+    if not na(qtHi)
+        float qr = qtHi - qtLo
+        qtAvgR := na(qtAvgR) ? qr : qtAvgR * 0.9 + qr * 0.1
+        if qt90Idx[1] == 0
+            qtQ1Hi := qtHi
+            qtQ1Lo := qtLo
+            qtModel := qr > qtAvgR * 1.35 ? "XAMD" : "AMD"
+    qtHi := high
+    qtLo := low
+    qtJudasDone := false
+else
+    qtHi := math.max(nz(qtHi, high), high)
+    qtLo := math.min(nz(qtLo, low), low)
+int qtManipIdx = qtModel == "AMD" ? 1 : 2
+qtInManip = qt90Idx == qtManipIdx
+qtInDist = qt90Idx == qtManipIdx + 1
+qtInAccum = qtModel == "AMD" ? qt90Idx == 0 : qt90Idx == 1
+var float qtTSO = na
+var float qtTDO = na
+var float qtTWO = na
+if qtNew90 and qt90Idx == 1
+    qtTSO := open
+if qtNewDayQ and qtDayIdx == 1
+    qtTDO := open
+if qtNewDay and qtDow == dayofweek.tuesday
+    qtTWO := open
+qtJudasBear = qtInManip and not qtJudasDone and not na(qtQ1Hi) and high > qtQ1Hi and close < qtQ1Hi
+qtJudasBull = qtInManip and not qtJudasDone and not na(qtQ1Lo) and low < qtQ1Lo and close > qtQ1Lo
+if (qtJudasBear or qtJudasBull) and barstate.isconfirmed
+    qtJudasDone := true
+f_qtPhHe(int idx, string md) => md == "AMD" ? (idx == 0 ? "צבירה" : idx == 1 ? "מניפולציה" : idx == 2 ? "חלוקה" : "המשך") : (idx == 0 ? "המשך" : idx == 1 ? "צבירה" : idx == 2 ? "מניפולציה" : "חלוקה")
+f_qtSide(float lvl) => na(lvl) ? "—" : close > lvl ? "מעל" : "מתחת"
+// ─── AVWAP מעוגן: True Day Open, True Session Open, שבועי (ב' 18:00 NY), וסווינג אחרון — כללים למדידה (1.15) ───
+var float avTdoPV = 0.0
+var float avTdoVV = 0.0
+var float avTsoPV = 0.0
+var float avTsoVV = 0.0
+var float avWkPV = 0.0
+var float avWkVV = 0.0
+var float avSwLPV = 0.0
+var float avSwLVV = 0.0
+var float avSwSPV = 0.0
+var float avSwSVV = 0.0
+if qtNewDayQ and qtDayIdx == 1
+    avTdoPV := 0.0
+    avTdoVV := 0.0
+if qtNew90 and qt90Idx == 1
+    avTsoPV := 0.0
+    avTsoVV := 0.0
+if qtNewDay and qtDow == dayofweek.tuesday
+    avWkPV := 0.0
+    avWkVV := 0.0
+if not na(lastPL) and lastPL != lastPL[1]
+    avSwLPV := 0.0
+    avSwLVV := 0.0
+if not na(lastPH) and lastPH != lastPH[1]
+    avSwSPV := 0.0
+    avSwSVV := 0.0
+avTdoPV += hlc3 * volume
+avTdoVV += volume
+avTsoPV += hlc3 * volume
+avTsoVV += volume
+avWkPV += hlc3 * volume
+avWkVV += volume
+avSwLPV += hlc3 * volume
+avSwLVV += volume
+avSwSPV += hlc3 * volume
+avSwSVV += volume
+avwapTDO = avTdoVV > 0 and not na(qtTDO) ? avTdoPV / avTdoVV : na
+avwapTSO = avTsoVV > 0 and not na(qtTSO) ? avTsoPV / avTsoVV : na
+avwapWK = avWkVV > 0 and not na(qtTWO) ? avWkPV / avWkVV : na
+avwapSwL = avSwLVV > 0 ? avSwLPV / avSwLVV : na
+avwapSwS = avSwSVV > 0 ? avSwSPV / avSwSVV : na
+avwTdoRtL = ta.barssince(low <= avwapTDO and close > avwapTDO) <= 2
+avwTdoRtS = ta.barssince(high >= avwapTDO and close < avwapTDO) <= 2
+avwSwRtL = ta.barssince(low <= avwapSwL and close > avwapSwL) <= 2
+avwSwRtS = ta.barssince(high >= avwapSwS and close < avwapSwS) <= 2
+avwSlopeUp = not na(avwapD) and avwapD > avwapD[5]
+avwSlopeDn = not na(avwapD) and avwapD < avwapD[5]
+
 // ─── התראת "מתקרב לרמה" (תוכנית 1.7): X% לפני אזור עניין בכיוון התנועה, פעם אחת לכל התקרבות ───
 gN = "מתקרב לרמה"
 nearOn = input.bool(true, "התראה כשהמחיר מתקרב לרמה (alert() — לבחור 'Any alert() function call')", group=gN)
@@ -1660,6 +1767,8 @@ qL_crkRt = ta.barssince(buttcL) <= recN
 qS_crkRt = ta.barssince(rbtiS) <= recN
 qL_tso = ta.barssince(tsoNow and spring) <= recN
 qS_tso = ta.barssince(tsoNow and utSig) <= recN
+qL_qtJudas = ta.barssince(qtJudasBull) <= recN
+qS_qtJudas = ta.barssince(qtJudasBear) <= recN
 qL_test = testOK
 qS_test = testOK
 qL_pd = not inPrem
@@ -1730,6 +1839,32 @@ qL_cvdOk = cvdSlope > 0
 qS_cvdOk = cvdSlope < 0
 qL_cvdDiv = cvdDivBull
 qS_cvdDiv = cvdDivBear
+qL_qtAccum = qtInAccum
+qS_qtAccum = qtInAccum
+qL_qtManip = qtInManip
+qS_qtManip = qtInManip
+qL_qtDist = qtInDist
+qS_qtDist = qtInDist
+qL_qtDayLon = qtDayIdx == 1
+qS_qtDayLon = qtDayIdx == 1
+qL_tdoDisc = not na(qtTDO) and close < qtTDO
+qS_tdoDisc = not na(qtTDO) and close > qtTDO
+qL_tsoDisc = not na(qtTSO) and close < qtTSO
+qS_tsoDisc = not na(qtTSO) and close > qtTSO
+qL_twoDisc = not na(qtTWO) and close < qtTWO
+qS_twoDisc = not na(qtTWO) and close > qtTWO
+qL_avwTdoSide = not na(avwapTDO) and close > avwapTDO
+qS_avwTdoSide = not na(avwapTDO) and close < avwapTDO
+qL_avwTdoRt = avwTdoRtL
+qS_avwTdoRt = avwTdoRtS
+qL_avwWkSide = not na(avwapWK) and close > avwapWK
+qS_avwWkSide = not na(avwapWK) and close < avwapWK
+qL_avwSwRt = avwSwRtL
+qS_avwSwRt = avwSwRtS
+qL_avwSlope = avwSlopeUp
+qS_avwSlope = avwSlopeDn
+qL_avwStack = not na(avwapD) and not na(avwapWK) and close > avwapD and close > avwapWK
+qS_avwStack = not na(avwapD) and not na(avwapWK) and close < avwapD and close < avwapWK
 qLvlL = tfMin < 15 ? ((qL_vixOk ? 1 : 0) + (qL_ddt ? 1 : 0) + (qL_phC ? 1 : 0) + (qL_reacc ? 1 : 0) + (qL_atSesLvl ? 1 : 0) + (qL_fvgAt ? 1 : 0) + (qL_htfMs ? 1 : 0) + (qL_ob ? 1 : 0) + (qL_sweep ? 1 : 0) + (qL_fvg ? 1 : 0) + (qL_judas ? 1 : 0) - ((qL_htfCD ? 1 : 0) + (qL_amdD ? 1 : 0) + (qL_vixHigh ? 1 : 0) + (qL_vixDiv ? 1 : 0) + (qL_shake ? 1 : 0) + (qL_conf4 ? 1 : 0) + (qL_smt ? 1 : 0) + (qL_bb ? 1 : 0) + (qL_bbSq ? 1 : 0) + (qL_phAB ? 1 : 0) + (qL_cTso ? 1 : 0) + (qL_rsi ? 1 : 0))) : ((qL_judas ? 1 : 0) + (qL_ob ? 1 : 0) + (qL_phC ? 1 : 0) + (qL_fvgAt ? 1 : 0) + (qL_sweep ? 1 : 0) + (qL_kz ? 1 : 0) + (qL_sesLon ? 1 : 0) + (qL_htfMs ? 1 : 0) + (qL_fvg ? 1 : 0) + (qL_ddt ? 1 : 0) - ((qL_phD ? 1 : 0) + (qL_conf4 ? 1 : 0) + (qL_volLow ? 1 : 0) + (qL_amdD ? 1 : 0) + (qL_cDir ? 1 : 0) + (qL_htfCD ? 1 : 0) + (qL_rrOk ? 1 : 0) + (qL_ifvg ? 1 : 0) + (qL_lps ? 1 : 0) + (qL_shake ? 1 : 0)))
 qLvlS = tfMin < 15 ? ((qS_vixOk ? 1 : 0) + (qS_ddt ? 1 : 0) + (qS_phC ? 1 : 0) + (qS_reacc ? 1 : 0) + (qS_atSesLvl ? 1 : 0) + (qS_fvgAt ? 1 : 0) + (qS_htfMs ? 1 : 0) + (qS_ob ? 1 : 0) + (qS_sweep ? 1 : 0) + (qS_fvg ? 1 : 0) + (qS_judas ? 1 : 0) - ((qS_htfCD ? 1 : 0) + (qS_amdD ? 1 : 0) + (qS_vixHigh ? 1 : 0) + (qS_vixDiv ? 1 : 0) + (qS_shake ? 1 : 0) + (qS_conf4 ? 1 : 0) + (qS_smt ? 1 : 0) + (qS_bb ? 1 : 0) + (qS_bbSq ? 1 : 0) + (qS_phAB ? 1 : 0) + (qS_cTso ? 1 : 0) + (qS_rsi ? 1 : 0))) : ((qS_judas ? 1 : 0) + (qS_ob ? 1 : 0) + (qS_phC ? 1 : 0) + (qS_fvgAt ? 1 : 0) + (qS_sweep ? 1 : 0) + (qS_kz ? 1 : 0) + (qS_sesLon ? 1 : 0) + (qS_htfMs ? 1 : 0) + (qS_fvg ? 1 : 0) + (qS_ddt ? 1 : 0) - ((qS_phD ? 1 : 0) + (qS_conf4 ? 1 : 0) + (qS_volLow ? 1 : 0) + (qS_amdD ? 1 : 0) + (qS_cDir ? 1 : 0) + (qS_htfCD ? 1 : 0) + (qS_rrOk ? 1 : 0) + (qS_ifvg ? 1 : 0) + (qS_lps ? 1 : 0) + (qS_shake ? 1 : 0)))
 f_qlist(bool isL, bool wantPos) =>
@@ -1788,6 +1923,8 @@ f_qlist(bool isL, bool wantPos) =>
         s += (s == "" ? "" : ",") + "\"crkRt\""
     if wantPos and (isL ? qL_tso : qS_tso)
         s += (s == "" ? "" : ",") + "\"tso\""
+    if wantPos and (isL ? qL_qtJudas : qS_qtJudas)
+        s += (s == "" ? "" : ",") + "\"qtJudas\""
     if wantPos and (isL ? qL_test : qS_test)
         s += (s == "" ? "" : ",") + "\"test\""
     if wantPos and (isL ? qL_pd : qS_pd)
@@ -1858,6 +1995,32 @@ f_qlist(bool isL, bool wantPos) =>
         s += (s == "" ? "" : ",") + "\"cvdOk\""
     if wantPos and (isL ? qL_cvdDiv : qS_cvdDiv)
         s += (s == "" ? "" : ",") + "\"cvdDiv\""
+    if wantPos and (isL ? qL_qtAccum : qS_qtAccum)
+        s += (s == "" ? "" : ",") + "\"qtAccum\""
+    if wantPos and (isL ? qL_qtManip : qS_qtManip)
+        s += (s == "" ? "" : ",") + "\"qtManip\""
+    if wantPos and (isL ? qL_qtDist : qS_qtDist)
+        s += (s == "" ? "" : ",") + "\"qtDist\""
+    if wantPos and (isL ? qL_qtDayLon : qS_qtDayLon)
+        s += (s == "" ? "" : ",") + "\"qtDayLon\""
+    if wantPos and (isL ? qL_tdoDisc : qS_tdoDisc)
+        s += (s == "" ? "" : ",") + "\"tdoDisc\""
+    if wantPos and (isL ? qL_tsoDisc : qS_tsoDisc)
+        s += (s == "" ? "" : ",") + "\"tsoDisc\""
+    if wantPos and (isL ? qL_twoDisc : qS_twoDisc)
+        s += (s == "" ? "" : ",") + "\"twoDisc\""
+    if wantPos and (isL ? qL_avwTdoSide : qS_avwTdoSide)
+        s += (s == "" ? "" : ",") + "\"avwTdoSide\""
+    if wantPos and (isL ? qL_avwTdoRt : qS_avwTdoRt)
+        s += (s == "" ? "" : ",") + "\"avwTdoRt\""
+    if wantPos and (isL ? qL_avwWkSide : qS_avwWkSide)
+        s += (s == "" ? "" : ",") + "\"avwWkSide\""
+    if wantPos and (isL ? qL_avwSwRt : qS_avwSwRt)
+        s += (s == "" ? "" : ",") + "\"avwSwRt\""
+    if wantPos and (isL ? qL_avwSlope : qS_avwSlope)
+        s += (s == "" ? "" : ",") + "\"avwSlope\""
+    if wantPos and (isL ? qL_avwStack : qS_avwStack)
+        s += (s == "" ? "" : ",") + "\"avwStack\""
     s
 f_qhe(bool isL) =>
     string s = ""
@@ -1913,6 +2076,8 @@ f_qhe(bool isL) =>
         s += (s == "" ? "" : " · ") + "BUTTC/RBTI — ריטסט הקריק/אייס"
     if (isL ? qL_tso : qS_tso)
         s += (s == "" ? "" : " · ") + "ניעור סופי (TSO/TUT)"
+    if (isL ? qL_qtJudas : qS_qtJudas)
+        s += (s == "" ? "" : " · ") + "ג'ודאס של הרבע (תורת הרבעים)"
     if (isL ? qL_test : qS_test)
         s += (s == "" ? "" : " · ") + "טסט"
     if (isL ? qL_pd : qS_pd)
@@ -1977,6 +2142,32 @@ f_qhe(bool isL) =>
         s += (s == "" ? "" : " · ") + "CVD בכיוון (5 נרות)"
     if (isL ? qL_cvdDiv : qS_cvdDiv)
         s += (s == "" ? "" : " · ") + "דיברגנס CVD (20 נרות)"
+    if (isL ? qL_qtAccum : qS_qtAccum)
+        s += (s == "" ? "" : " · ") + "רבע צבירה (90 דק')"
+    if (isL ? qL_qtManip : qS_qtManip)
+        s += (s == "" ? "" : " · ") + "רבע מניפולציה (90 דק')"
+    if (isL ? qL_qtDist : qS_qtDist)
+        s += (s == "" ? "" : " · ") + "רבע חלוקה (90 דק')"
+    if (isL ? qL_qtDayLon : qS_qtDayLon)
+        s += (s == "" ? "" : " · ") + "רבע יומי 2 (לונדון, מניפולציה של היום)"
+    if (isL ? qL_tdoDisc : qS_tdoDisc)
+        s += (s == "" ? "" : " · ") + "בצד הזול של True Day Open"
+    if (isL ? qL_tsoDisc : qS_tsoDisc)
+        s += (s == "" ? "" : " · ") + "בצד הזול של True Session Open"
+    if (isL ? qL_twoDisc : qS_twoDisc)
+        s += (s == "" ? "" : " · ") + "בצד הזול של True Weekly Open"
+    if (isL ? qL_avwTdoSide : qS_avwTdoSide)
+        s += (s == "" ? "" : " · ") + "בצד הנכון של AVWAP מ-True Day Open"
+    if (isL ? qL_avwTdoRt : qS_avwTdoRt)
+        s += (s == "" ? "" : " · ") + "ריטסט AVWAP מ-True Day Open"
+    if (isL ? qL_avwWkSide : qS_avwWkSide)
+        s += (s == "" ? "" : " · ") + "בצד הנכון של AVWAP שבועי"
+    if (isL ? qL_avwSwRt : qS_avwSwRt)
+        s += (s == "" ? "" : " · ") + "ריטסט AVWAP מהסווינג האחרון"
+    if (isL ? qL_avwSlope : qS_avwSlope)
+        s += (s == "" ? "" : " · ") + "שיפוע AVWAP יומי בכיוון"
+    if (isL ? qL_avwStack : qS_avwStack)
+        s += (s == "" ? "" : " · ") + "מעל/מתחת גם AVWAP יומי וגם שבועי"
     s
 f_qsr(bool isL) =>
     string s = ""

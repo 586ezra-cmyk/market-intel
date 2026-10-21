@@ -41,6 +41,7 @@ EVENTS = [
     ('jac',     'jacUp',      'jacDn'),
     ('crkRt',   'buttcL',     'rbtiS'),
     ('tso',     'tsoNow and spring', 'tsoNow and utSig'),
+    ('qtJudas', 'qtJudasBull', 'qtJudasBear'),
 ]
 STATES = [
     ('test',    'testOK',                       'testOK'),
@@ -78,6 +79,19 @@ STATES = [
     ('avwapRt', 'avwapRtL',                     'avwapRtS'),
     ('cvdOk',   'cvdSlope > 0',                 'cvdSlope < 0'),
     ('cvdDiv',  'cvdDivBull',                   'cvdDivBear'),
+    ('qtAccum', 'qtInAccum',                    'qtInAccum'),
+    ('qtManip', 'qtInManip',                    'qtInManip'),
+    ('qtDist',  'qtInDist',                     'qtInDist'),
+    ('qtDayLon', 'qtDayIdx == 1',               'qtDayIdx == 1'),
+    ('tdoDisc', 'not na(qtTDO) and close < qtTDO', 'not na(qtTDO) and close > qtTDO'),
+    ('tsoDisc', 'not na(qtTSO) and close < qtTSO', 'not na(qtTSO) and close > qtTSO'),
+    ('twoDisc', 'not na(qtTWO) and close < qtTWO', 'not na(qtTWO) and close > qtTWO'),
+    ('avwTdoSide', 'not na(avwapTDO) and close > avwapTDO', 'not na(avwapTDO) and close < avwapTDO'),
+    ('avwTdoRt', 'avwTdoRtL',                   'avwTdoRtS'),
+    ('avwWkSide', 'not na(avwapWK) and close > avwapWK', 'not na(avwapWK) and close < avwapWK'),
+    ('avwSwRt', 'avwSwRtL',                     'avwSwRtS'),
+    ('avwSlope', 'avwSlopeUp',                  'avwSlopeDn'),
+    ('avwStack', 'not na(avwapD) and not na(avwapWK) and close > avwapD and close > avwapWK', 'not na(avwapD) and not na(avwapWK) and close < avwapD and close < avwapWK'),
 ]
 FLAGS = [e[0] for e in EVENTS] + [s[0] for s in STATES]
 

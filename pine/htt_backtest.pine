@@ -1097,6 +1097,8 @@ evL_crkRt = ta.barssince(buttcL) <= recN
 evS_crkRt = ta.barssince(rbtiS) <= recN
 evL_tso = ta.barssince(tsoNow and spring) <= recN
 evS_tso = ta.barssince(tsoNow and utSig) <= recN
+evL_qtJudas = ta.barssince(qtJudasBull) <= recN
+evS_qtJudas = ta.barssince(qtJudasBear) <= recN
 f_flags(bool isL) =>
     string s = ""
     s += (isL ? evL_bos : evS_bos) ? "1" : "0"
@@ -1126,6 +1128,7 @@ f_flags(bool isL) =>
     s += (isL ? evL_jac : evS_jac) ? "1" : "0"
     s += (isL ? evL_crkRt : evS_crkRt) ? "1" : "0"
     s += (isL ? evL_tso : evS_tso) ? "1" : "0"
+    s += (isL ? evL_qtJudas : evS_qtJudas) ? "1" : "0"
     s += (isL ? (testOK) : (testOK)) ? "1" : "0"
     s += (isL ? (not inPrem) : (inPrem)) ? "1" : "0"
     s += (isL ? (inKZ) : (inKZ)) ? "1" : "0"
@@ -1161,6 +1164,19 @@ f_flags(bool isL) =>
     s += (isL ? (avwapRtL) : (avwapRtS)) ? "1" : "0"
     s += (isL ? (cvdSlope > 0) : (cvdSlope < 0)) ? "1" : "0"
     s += (isL ? (cvdDivBull) : (cvdDivBear)) ? "1" : "0"
+    s += (isL ? (qtInAccum) : (qtInAccum)) ? "1" : "0"
+    s += (isL ? (qtInManip) : (qtInManip)) ? "1" : "0"
+    s += (isL ? (qtInDist) : (qtInDist)) ? "1" : "0"
+    s += (isL ? (qtDayIdx == 1) : (qtDayIdx == 1)) ? "1" : "0"
+    s += (isL ? (not na(qtTDO) and close < qtTDO) : (not na(qtTDO) and close > qtTDO)) ? "1" : "0"
+    s += (isL ? (not na(qtTSO) and close < qtTSO) : (not na(qtTSO) and close > qtTSO)) ? "1" : "0"
+    s += (isL ? (not na(qtTWO) and close < qtTWO) : (not na(qtTWO) and close > qtTWO)) ? "1" : "0"
+    s += (isL ? (not na(avwapTDO) and close > avwapTDO) : (not na(avwapTDO) and close < avwapTDO)) ? "1" : "0"
+    s += (isL ? (avwTdoRtL) : (avwTdoRtS)) ? "1" : "0"
+    s += (isL ? (not na(avwapWK) and close > avwapWK) : (not na(avwapWK) and close < avwapWK)) ? "1" : "0"
+    s += (isL ? (avwSwRtL) : (avwSwRtS)) ? "1" : "0"
+    s += (isL ? (avwSlopeUp) : (avwSlopeDn)) ? "1" : "0"
+    s += (isL ? (not na(avwapD) and not na(avwapWK) and close > avwapD and close > avwapWK) : (not na(avwapD) and not na(avwapWK) and close < avwapD and close < avwapWK)) ? "1" : "0"
     s
 // ── פקודות strategy: עסקה אחת בכל פעם (TV עובד בפוזיציה נטו — כניסה הפוכה של סוג אחר הייתה סוגרת את הקודמת). ההערה של הכניסה נושאת את וקטור האישורים ──
 // ── טיסה ──
