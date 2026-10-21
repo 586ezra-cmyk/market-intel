@@ -104,22 +104,32 @@ def _isNeg(k):
     a = 'true' if k in NEG else 'false'; b = 'true' if k in NEG5 else 'false'
     return a if a == b else f'(tfMin < 15 ? {b} : {a})'
 def _qlists():
-    """רשימות האישורים כביטויים גלובליים (בלי פונקציה — מגבלת 254 אלמנטים חיצוניים ב-Pine)."""
-    pos, neg, he = [], [], []
-    for k in allkeys:
-        c = f'(qIsL ? qL_{k} : qS_{k})'
-        n = _isNeg(k)
-        if n != 'true':
-            cp = c if n == 'false' else f'({c} and not {n})'
-            pos.append(f'({cp} ? "\\"{k}\\"," : "")')
-            he.append(f'({cp} ? "{HE[k]} · " : "")')
-        if n != 'false':
-            cn = c if n == 'true' else f'({c} and {n})'
-            neg.append(f'({cn} ? "\\"{k}\\"," : "")')
-    L = ['qIsL = qSigL', 'qPosJ0 = ' + ' + '.join(pos), 'qNegJ0 = ' + ' + '.join(neg), 'qHe0 = ' + ' + '.join(he),
-         'qPosJ = str.length(qPosJ0) > 0 ? str.substring(qPosJ0, 0, str.length(qPosJ0) - 1) : ""',
-         'qNegJ = str.length(qNegJ0) > 0 ? str.substring(qNegJ0, 0, str.length(qNegJ0) - 1) : ""',
-         'qHeS = str.length(qHe0) > 3 ? str.substring(qHe0, 0, str.length(qHe0) - 3) : ""']
+    """רשימות האישורים: פונקציות קטנות (16 דגלים כל אחת, מתחת ל-254 אלמנטים חיצוניים) + חיבור גלובלי קצר (גוף הסקריפט מוגבל באורך)."""
+    chunks = [allkeys[i:i + 16] for i in range(0, len(allkeys), 16)]
+    L = []
+    for ci, ch in enumerate(chunks):
+        pos, neg, he = [], [], []
+        for k in ch:
+            c = f'(isL ? qL_{k} : qS_{k})'
+            n = _isNeg(k)
+            if n != 'true':
+                cp = c if n == 'false' else f'({c} and not {n})'
+                pos.append(f'({cp} ? "\\"{k}\\"," : "")')
+                he.append(f'({cp} ? "{HE[k]} · " : "")')
+            if n != 'false':
+                cn = c if n == 'true' else f'({c} and {n})'
+                neg.append(f'({cn} ? "\\"{k}\\"," : "")')
+        L.append(f'f_qp{ci}(bool isL) => ' + (' + '.join(pos) if pos else '""'))
+        L.append(f'f_qn{ci}(bool isL) => ' + (' + '.join(neg) if neg else '""'))
+        L.append(f'f_qh{ci}(bool isL) => ' + (' + '.join(he) if he else '""'))
+    n = len(chunks)
+    L += ['qIsL = qSigL',
+          'qPosJ0 = ' + ' + '.join(f'f_qp{i}(qIsL)' for i in range(n)),
+          'qNegJ0 = ' + ' + '.join(f'f_qn{i}(qIsL)' for i in range(n)),
+          'qHe0 = ' + ' + '.join(f'f_qh{i}(qIsL)' for i in range(n)),
+          'qPosJ = str.length(qPosJ0) > 0 ? str.substring(qPosJ0, 0, str.length(qPosJ0) - 1) : ""',
+          'qNegJ = str.length(qNegJ0) > 0 ? str.substring(qNegJ0, 0, str.length(qNegJ0) - 1) : ""',
+          'qHeS = str.length(qHe0) > 3 ? str.substring(qHe0, 0, str.length(qHe0) - 3) : ""']
     return '\n'.join(L)
 A('''f_qsr(bool isL) =>
     string s = ""
