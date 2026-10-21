@@ -11,3 +11,4 @@ dist/
 data/
 backups/
 *.log
+.vercel
