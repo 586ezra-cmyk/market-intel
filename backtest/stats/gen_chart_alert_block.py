@@ -100,31 +100,27 @@ A('qLvlL = tfMin < 15 ? (' + _lvl('qL_', POS5, NEG5) + ') : (' + _lvl('qL_', POS
 A('qLvlS = tfMin < 15 ? (' + _lvl('qS_', POS5, NEG5) + ') : (' + _lvl('qS_', POS, NEG) + ')')
 # רשימות מפתחות (JSON) ושמות (עברית) לכל כיוון
 allkeys = [e[0] for e in EVENTS] + [s[0] for s in STATES]
-A('f_qlist(bool isL, bool wantPos) =>')
-A('    string s = ""')
 def _isNeg(k):
     a = 'true' if k in NEG else 'false'; b = 'true' if k in NEG5 else 'false'
     return a if a == b else f'(tfMin < 15 ? {b} : {a})'
-for k in allkeys:
-    cond = f'(isL ? qL_{k} : qS_{k})'
-    neg = _isNeg(k)
-    if neg == 'true':
-        A(f'    if not wantPos and {cond}')
-    elif neg == 'false':
-        A(f'    if wantPos and {cond}')
-    else:
-        A(f'    if (wantPos ? not {neg} : {neg}) and {cond}')
-    A(f'        s += (s == "" ? "" : ",") + "\\"{k}\\""')
-A('    s')
-A('f_qhe(bool isL) =>')
-A('    string s = ""')
-for k in allkeys:
-    neg = _isNeg(k)
-    if neg == 'true': continue
-    cond = f'(isL ? qL_{k} : qS_{k})' if neg == 'false' else f'not {neg} and (isL ? qL_{k} : qS_{k})'
-    A(f'    if {cond}')
-    A(f'        s += (s == "" ? "" : " · ") + "{HE[k]}"')
-A('    s')
+def _qlists():
+    """רשימות האישורים כביטויים גלובליים (בלי פונקציה — מגבלת 254 אלמנטים חיצוניים ב-Pine)."""
+    pos, neg, he = [], [], []
+    for k in allkeys:
+        c = f'(qIsL ? qL_{k} : qS_{k})'
+        n = _isNeg(k)
+        if n != 'true':
+            cp = c if n == 'false' else f'({c} and not {n})'
+            pos.append(f'({cp} ? "\\"{k}\\"," : "")')
+            he.append(f'({cp} ? "{HE[k]} · " : "")')
+        if n != 'false':
+            cn = c if n == 'true' else f'({c} and {n})'
+            neg.append(f'({cn} ? "\\"{k}\\"," : "")')
+    L = ['qIsL = qSigL', 'qPosJ0 = ' + ' + '.join(pos), 'qNegJ0 = ' + ' + '.join(neg), 'qHe0 = ' + ' + '.join(he),
+         'qPosJ = str.length(qPosJ0) > 0 ? str.substring(qPosJ0, 0, str.length(qPosJ0) - 1) : ""',
+         'qNegJ = str.length(qNegJ0) > 0 ? str.substring(qNegJ0, 0, str.length(qNegJ0) - 1) : ""',
+         'qHeS = str.length(qHe0) > 3 ? str.substring(qHe0, 0, str.length(qHe0) - 3) : ""']
+    return '\n'.join(L)
 A('''f_qsr(bool isL) =>
     string s = ""
     if isL ? atIceL : atCreekS
@@ -153,18 +149,20 @@ qStopS = flyShort ? math.max(nz(cExt, high), nz(lastPH, high)) * (1 + qBufQ) : w
 qSigL = qOn and qTrigL != "" and close > qStopL
 qSigS = qOn and qTrigS != "" and close < qStopS
 qLvl = qSigL ? qLvlL : qSigS ? qLvlS : 0
-qTgtL = close + (close - qStopL) * targetR
+''')
+A(_qlists())
+A('''qTgtL = close + (close - qStopL) * targetR
 qTgtS = close - (qStopS - close) * targetR
 // תווית רמה ליד הטריגר (מרמה qMinLbl), עם כל האישורים ב-tooltip
 if (qSigL or qSigS) and qLvl >= qMinLbl and not cleanMode
     qTxt = "רמה " + str.tostring(qLvl)
-    qTip = (qSigL ? "לונג · " : "שורט · ") + "טריגר " + (qSigL ? qTrigL : qTrigS) + " · פאזה " + phName + "\\nאישורים: " + f_qhe(qSigL) + "\\nרמה = אישורי דרגה 1 פחות אישורים נגד. סטופ " + str.tostring(qSigL ? qStopL : qStopS, format.mintick) + " · יעד 1:3 " + str.tostring(qSigL ? qTgtL : qTgtS, format.mintick)
+    qTip = (qSigL ? "לונג · " : "שורט · ") + "טריגר " + (qSigL ? qTrigL : qTrigS) + " · פאזה " + phName + "\\nאישורים: " + qHeS + "\\nרמה = אישורי דרגה 1 פחות אישורים נגד. סטופ " + str.tostring(qSigL ? qStopL : qStopS, format.mintick) + " · יעד 1:3 " + str.tostring(qSigL ? qTgtL : qTgtS, format.mintick)
     label.new(bar_index, qSigL ? low : high, qTxt, xloc=xloc.bar_index, yloc=qSigL ? yloc.belowbar : yloc.abovebar, style=qSigL ? label.style_label_up : label.style_label_down, color=color.new(qLvl >= 4 ? color.lime : qLvl >= 2 ? color.teal : color.gray, 20), textcolor=color.white, size=size.small, tooltip=qTip)
 alertcondition((qSigL or qSigS) and qLvl >= 3, "HTT · סטאפ איכותי רמה 3+", "סטאפ איכותי רמה 3+ — RSI {{plot(\\"RSI\\")}} · {{ticker}} {{interval}} — הפירוט ב-webhook/באתר")
 alertcondition((qSigL or qSigS) and qLvl >= 5, "HTT · סטאפ זהב רמה 5+", "סטאפ זהב רמה 5+ — RSI {{plot(\\"RSI\\")}} · {{ticker}} {{interval}}")
 // webhook אחד עם הכל: האתר מסנן לפי htt_min_score ושולח לטלגרם
 if sendWH and (qSigL or qSigS) and qLvl >= qMinWH
-    qJ = "{\\"secret\\":\\"" + secret + "\\",\\"event\\":\\"htt_setup\\",\\"symbol\\":\\"" + syminfo.ticker + "\\",\\"timeframe\\":\\"" + timeframe.period + "\\",\\"time\\":" + str.tostring(time) + ",\\"direction\\":\\"" + (qSigL ? "long" : "short") + "\\",\\"trigger\\":\\"" + (qSigL ? qTrigL : qTrigS) + "\\",\\"price\\":" + str.tostring(close) + ",\\"stop\\":" + str.tostring(qSigL ? qStopL : qStopS) + ",\\"target\\":" + str.tostring(qSigL ? qTgtL : qTgtS) + ",\\"score\\":" + str.tostring(qLvl) + ",\\"confirmations\\":[" + f_qlist(qSigL, true) + "],\\"negatives\\":[" + f_qlist(qSigL, false) + "],\\"phase\\":\\"" + phName + "\\",\\"sr\\":[" + f_qsr(qSigL) + "],\\"session\\":\\"" + sesName + "\\",\\"inKillZone\\":" + (inKZ ? "true" : "false") + ",\\"rsi\\":" + str.tostring(rsiV, "#.#") + "}"
+    qJ = "{\\"secret\\":\\"" + secret + "\\",\\"event\\":\\"htt_setup\\",\\"symbol\\":\\"" + syminfo.ticker + "\\",\\"timeframe\\":\\"" + timeframe.period + "\\",\\"time\\":" + str.tostring(time) + ",\\"direction\\":\\"" + (qSigL ? "long" : "short") + "\\",\\"trigger\\":\\"" + (qSigL ? qTrigL : qTrigS) + "\\",\\"price\\":" + str.tostring(close) + ",\\"stop\\":" + str.tostring(qSigL ? qStopL : qStopS) + ",\\"target\\":" + str.tostring(qSigL ? qTgtL : qTgtS) + ",\\"score\\":" + str.tostring(qLvl) + ",\\"confirmations\\":[" + qPosJ + "],\\"negatives\\":[" + qNegJ + "],\\"phase\\":\\"" + phName + "\\",\\"sr\\":[" + f_qsr(qSigL) + "],\\"session\\":\\"" + sesName + "\\",\\"inKillZone\\":" + (inKZ ? "true" : "false") + ",\\"rsi\\":" + str.tostring(rsiV, "#.#") + "}"
     alert(qJ, alert.freq_once_per_bar_close)''')
 (ROOT / 'pine/htt_chart.pine').write_text(src + '\n'.join(out) + '\n', encoding='utf-8')
 print('chart alert block written;', (src + '\n'.join(out)).count('\n'), 'lines')
