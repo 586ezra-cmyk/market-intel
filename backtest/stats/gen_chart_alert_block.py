@@ -82,7 +82,7 @@ orBrkUp = not inOR and not na(orH) and close > orH and close[1] <= orH
 orBrkDn = not inOR and not na(orL) and close < orL and close[1] >= orL
 recN = 10''')
 # בלוק ה-VIX (מוגדר ב-gen_backtest_pine.py) — הדגלים vixOk/vixHigh/vixSpike/vixDiv צריכים אותו גם בגרף
-vix_m = re.search(r"\[vixC, vixMA.*?cvdDivBear = [^\n]*\n", gen_bt, re.S)
+vix_m = re.search(r"\[vixC, vixMA.*?avwSlopeDn = [^\n]*\n", gen_bt, re.S)
 assert vix_m, 'VIX block not found in gen_backtest_pine.py'
 for _l in vix_m.group(0).rstrip('\n').split('\n'):
     A(_l)

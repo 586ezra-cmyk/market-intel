@@ -1041,6 +1041,112 @@ cvdLo20 = ta.lowest(cvd, 20)
 cvdHi20 = ta.highest(cvd, 20)
 cvdDivBull = low <= cvLo20[1] and cvd > cvdLo20[1]
 cvdDivBear = high >= cvHi20[1] and cvd < cvdHi20[1]
+// ─── תורת הרבעים (Daye): רבעים שבועי/יומי/90 דק', מודל AMD/XAMD ל-90 דק', True Opens, Judas — לטבלה ולמדידה (1.11) ───
+QT_TZ = "America/New_York"
+QT_MS = 60000.0
+qtHH = hour(time, QT_TZ)
+qtMM = minute(time, QT_TZ)
+qtOff = (qtHH * 60 + qtMM - 1080 + 1440) % 1440
+qtDayStart = time - qtOff * QT_MS - second(time, QT_TZ) * 1000
+int qtDayIdx = int(math.floor(qtOff / 360))
+int qtOff360 = qtOff % 360
+int qt90Idx = int(math.floor(qtOff360 / 90))
+qtDayQStart = qtDayStart + qtDayIdx * 360.0 * QT_MS
+qt90Start = qtDayQStart + qt90Idx * 90.0 * QT_MS
+qtTd = time + 6 * 60 * QT_MS
+qtDow = dayofweek(qtTd, QT_TZ)
+qtDom = dayofmonth(qtTd, QT_TZ)
+qtNewDay = na(qtDom[1]) ? false : qtDom != qtDom[1]
+int qtWkIdx = qtDow == dayofweek.monday ? 0 : qtDow == dayofweek.tuesday ? 1 : qtDow == dayofweek.wednesday ? 2 : qtDow == dayofweek.thursday ? 3 : -1
+qtNew90 = na(qt90Start[1]) ? false : qt90Start != qt90Start[1]
+qtNewDayQ = na(qtDayQStart[1]) ? false : qtDayQStart != qtDayQStart[1]
+var float qtHi = na
+var float qtLo = na
+var float qtAvgR = na
+var string qtModel = "AMD"
+var float qtQ1Hi = na
+var float qtQ1Lo = na
+var bool qtJudasDone = false
+if qtNew90
+    if not na(qtHi)
+        float qr = qtHi - qtLo
+        qtAvgR := na(qtAvgR) ? qr : qtAvgR * 0.9 + qr * 0.1
+        if qt90Idx[1] == 0
+            qtQ1Hi := qtHi
+            qtQ1Lo := qtLo
+            qtModel := qr > qtAvgR * 1.35 ? "XAMD" : "AMD"
+    qtHi := high
+    qtLo := low
+    qtJudasDone := false
+else
+    qtHi := math.max(nz(qtHi, high), high)
+    qtLo := math.min(nz(qtLo, low), low)
+int qtManipIdx = qtModel == "AMD" ? 1 : 2
+qtInManip = qt90Idx == qtManipIdx
+qtInDist = qt90Idx == qtManipIdx + 1
+qtInAccum = qtModel == "AMD" ? qt90Idx == 0 : qt90Idx == 1
+var float qtTSO = na
+var float qtTDO = na
+var float qtTWO = na
+if qtNew90 and qt90Idx == 1
+    qtTSO := open
+if qtNewDayQ and qtDayIdx == 1
+    qtTDO := open
+if qtNewDay and qtDow == dayofweek.tuesday
+    qtTWO := open
+qtJudasBear = qtInManip and not qtJudasDone and not na(qtQ1Hi) and high > qtQ1Hi and close < qtQ1Hi
+qtJudasBull = qtInManip and not qtJudasDone and not na(qtQ1Lo) and low < qtQ1Lo and close > qtQ1Lo
+if (qtJudasBear or qtJudasBull) and barstate.isconfirmed
+    qtJudasDone := true
+f_qtPhHe(int idx, string md) => md == "AMD" ? (idx == 0 ? "צבירה" : idx == 1 ? "מניפולציה" : idx == 2 ? "חלוקה" : "המשך") : (idx == 0 ? "המשך" : idx == 1 ? "צבירה" : idx == 2 ? "מניפולציה" : "חלוקה")
+f_qtSide(float lvl) => na(lvl) ? "—" : close > lvl ? "מעל" : "מתחת"
+// ─── AVWAP מעוגן: True Day Open, True Session Open, שבועי (ב' 18:00 NY), וסווינג אחרון — כללים למדידה (1.15) ───
+var float avTdoPV = 0.0
+var float avTdoVV = 0.0
+var float avTsoPV = 0.0
+var float avTsoVV = 0.0
+var float avWkPV = 0.0
+var float avWkVV = 0.0
+var float avSwLPV = 0.0
+var float avSwLVV = 0.0
+var float avSwSPV = 0.0
+var float avSwSVV = 0.0
+if qtNewDayQ and qtDayIdx == 1
+    avTdoPV := 0.0
+    avTdoVV := 0.0
+if qtNew90 and qt90Idx == 1
+    avTsoPV := 0.0
+    avTsoVV := 0.0
+if qtNewDay and qtDow == dayofweek.tuesday
+    avWkPV := 0.0
+    avWkVV := 0.0
+if not na(lastPL) and lastPL != lastPL[1]
+    avSwLPV := 0.0
+    avSwLVV := 0.0
+if not na(lastPH) and lastPH != lastPH[1]
+    avSwSPV := 0.0
+    avSwSVV := 0.0
+avTdoPV += hlc3 * volume
+avTdoVV += volume
+avTsoPV += hlc3 * volume
+avTsoVV += volume
+avWkPV += hlc3 * volume
+avWkVV += volume
+avSwLPV += hlc3 * volume
+avSwLVV += volume
+avSwSPV += hlc3 * volume
+avSwSVV += volume
+avwapTDO = avTdoVV > 0 and not na(qtTDO) ? avTdoPV / avTdoVV : na
+avwapTSO = avTsoVV > 0 and not na(qtTSO) ? avTsoPV / avTsoVV : na
+avwapWK = avWkVV > 0 and not na(qtTWO) ? avWkPV / avWkVV : na
+avwapSwL = avSwLVV > 0 ? avSwLPV / avSwLVV : na
+avwapSwS = avSwSVV > 0 ? avSwSPV / avSwSVV : na
+avwTdoRtL = ta.barssince(low <= avwapTDO and close > avwapTDO) <= 2
+avwTdoRtS = ta.barssince(high >= avwapTDO and close < avwapTDO) <= 2
+avwSwRtL = ta.barssince(low <= avwapSwL and close > avwapSwL) <= 2
+avwSwRtS = ta.barssince(high >= avwapSwS and close < avwapSwS) <= 2
+avwSlopeUp = not na(avwapD) and avwapD > avwapD[5]
+avwSlopeDn = not na(avwapD) and avwapD < avwapD[5]
 recN = 10
 // אירועים: קרו ב-recN הנרות האחרונים (ta.barssince ברמה העליונה)
 evL_bos = ta.barssince(bosUp) <= recN
