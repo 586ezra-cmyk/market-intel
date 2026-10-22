@@ -1188,8 +1188,8 @@ sBgPhase = sBgPhaseIn and tTrade
 sLvlW = sLvlWIn and tTrade
 sLvlD = sLvlDIn and tTrade
 sLvl4 = sLvl4In and tTrade
-sLvl15 = sLvl15In and tTrade
-sLvlSes = sLvlSesIn and tTrade
+sLvl15 = sLvl15In and tFull
+sLvlSes = sLvlSesIn and tFull
 sOBbox = sOBboxIn and tTrade
 sArm = sArmIn and tTrade
 recent = bar_index > last_bar_index - 80
@@ -1770,8 +1770,8 @@ sQtLn = input.bool(true, "מפרידי רבעים (90 דק', מתחת ל-4H) + T
 sPs = input.bool(true, "P — ריטסט POC (טריגר)", group=gZ)
 plot(sEma and tTrade ? ema12 : na, "EMA", color=color.new(#45c4ff, 0), linewidth=1)
 plot(sPocLn and tTrade and vpOn ? pocNow : na, "POC היום", color=color.new(#ff9f1c, 0), linewidth=2, style=plot.style_linebr)
-plot(sPocLn and tTrade and vpOn and not na(pocNow) ? vah : na, "VAH", color=color.new(#ff9f1c, 60), linewidth=1, style=plot.style_linebr)
-plot(sPocLn and tTrade and vpOn and not na(pocNow) ? val : na, "VAL", color=color.new(#ff9f1c, 60), linewidth=1, style=plot.style_linebr)
+plot(sPocLn and tFull and vpOn and not na(pocNow) ? vah : na, "VAH", color=color.new(#ff9f1c, 60), linewidth=1, style=plot.style_linebr)
+plot(sPocLn and tFull and vpOn and not na(pocNow) ? val : na, "VAL", color=color.new(#ff9f1c, 60), linewidth=1, style=plot.style_linebr)
 tipP = "P = ריטסט POC: אחרי BOS המחיר יצא מהערך, חזר ל-POC של היום, נגע וסגר חזרה בכיוון המבנה (המחקר 19 — סוחרי ה-Volume Profile). סטופ מעבר ל-POC / לקצה נר הריטסט. נמדד ב-Path Lab לפני ניקוד"
 f_mark(sPs and pRtL, "P", tipP, color.new(#ff9f1c, 0), false, size.small)
 f_mark(sPs and pRtS, "P", tipP, color.new(#ff9f1c, 0), true, size.small)
@@ -1782,7 +1782,7 @@ f_npocDraw(bool on) =>
     if on and newDay and not na(prevPoc)
         array.push(npLn, line.new(bar_index, prevPoc, bar_index + 1, prevPoc, color=color.new(#ff9f1c, 25), style=line.style_dashed, width=1))
         array.push(npLv, prevPoc)
-        if array.size(npLn) > 6
+        if array.size(npLn) > 3
             line.delete(array.shift(npLn))
             array.shift(npLv)
     if array.size(npLn) > 0
@@ -1852,11 +1852,11 @@ f_zones(bool on) =>
             zbt = array.get(zBotA, k)
             zp = array.get(zPocA, k)
             bx = array.get(zBx, k)
-            zx1 = math.max(bar_index - zBarsN, 0)
+            zx1 = math.max(bar_index - 40, 0)
             zOk = on and not na(zt) and not na(zbt) and not na(zp)
             box.set_lefttop(bx, zx1, zOk ? zt : close)
             box.set_rightbottom(bx, bar_index + 20, zOk ? zbt : close)
-            box.set_bgcolor(bx, color.new(#ffd166, zOk ? 88 : 100))
+            box.set_bgcolor(bx, color.new(#ffd166, zOk ? 93 : 100))
             box.set_text(bx, zOk ? "עיגון " + str.tostring(k + 1) : "")
             box.set_text_color(bx, color.new(#ffd166, zOk ? 30 : 100))
             box.set_text_size(bx, size.tiny)
@@ -1866,7 +1866,7 @@ f_zones(bool on) =>
                 zy = j == 0 ? zt : j == 1 ? zp : zbt
                 line.set_xy1(ln, zx1, zOk ? zy : close)
                 line.set_xy2(ln, bar_index + 20, zOk ? zy : close)
-                line.set_color(ln, color.new(#ffd166, zOk ? (j == 1 ? 10 : 45) : 100))
+                line.set_color(ln, color.new(#ffd166, zOk ? (j == 1 ? 25 : 72) : 100))
     float zUp = na
     float zDn = na
     int zIn = 0
@@ -1887,10 +1887,12 @@ f_qtDraw(bool on) =>
     var line[] qtLn = array.new<line>()
     var label[] qtLb = array.new<label>()
     if on and qtNew90
-        array.push(qtLn, line.new(bar_index, low, bar_index, high, extend=extend.both, color=color.new(color.gray, 72), style=line.style_dotted, width=1))
-        array.push(qtLb, label.new(bar_index, high, "Q" + str.tostring(qt90Idx + 1) + (qt90Idx == 0 ? " · " + (qtDayIdx == 0 ? "אסיה" : qtDayIdx == 1 ? "לונדון" : qtDayIdx == 2 ? "ניו-יורק" : "אחה\"צ") : ""), xloc=xloc.bar_index, yloc=yloc.abovebar, style=label.style_none, textcolor=color.new(color.gray, 35), size=size.tiny))
+        array.push(qtLn, line.new(bar_index, low, bar_index, high, extend=extend.both, color=color.new(color.gray, tFull ? 72 : 86), style=line.style_dotted, width=1))
         if array.size(qtLn) > 32
             line.delete(array.shift(qtLn))
+    if on and qtNew90 and tFull
+        array.push(qtLb, label.new(bar_index, high, "Q" + str.tostring(qt90Idx + 1) + (qt90Idx == 0 ? " · " + (qtDayIdx == 0 ? "אסיה" : qtDayIdx == 1 ? "לונדון" : qtDayIdx == 2 ? "ניו-יורק" : "אחה\"צ") : ""), xloc=xloc.bar_index, yloc=yloc.abovebar, style=label.style_none, textcolor=color.new(color.gray, 35), size=size.tiny))
+        if array.size(qtLb) > 32
             label.delete(array.shift(qtLb))
     true
 f_qtDraw(sQtLn and tTrade and tfMin <= 60)
@@ -1919,11 +1921,19 @@ if nearOn
                 nearKind := array.get(nKinds, ni)
 nearPct = f_nearD(nearLvl)
 nearNow = nearOn and not na(nearLvl) and nearPct <= nearX and nearPct < nearPct[1]
-nearFire = nearNow and not nearNow[1] and barstate.isconfirmed
+var string nearLastKind = ""
+var int nearLastBar = na
+var label[] nearLbs = array.new<label>()
+nearFire0 = nearNow and not nearNow[1] and barstate.isconfirmed
+nearFire = nearFire0 and not (nearKind == nearLastKind and not na(nearLastBar) and bar_index - nearLastBar < 30)
 if nearFire
+    nearLastKind := nearKind
+    nearLastBar := bar_index
     alert("מתקרב ל" + nearKind + " " + str.tostring(nearLvl, format.mintick) + " (" + str.tostring(nearPct, "#.##") + "% מהמחיר) · " + syminfo.ticker + " " + timeframe.period, alert.freq_once_per_bar_close)
     if nearLbl and not cleanMode
-        label.new(bar_index, goUp ? high : low, "→ " + nearKind, xloc=xloc.bar_index, yloc=goUp ? yloc.abovebar : yloc.belowbar, style=label.style_label_center, color=color.new(color.teal, 30), textcolor=color.white, size=size.tiny)
+        array.push(nearLbs, label.new(bar_index, goUp ? high : low, "→ " + nearKind, xloc=xloc.bar_index, yloc=goUp ? yloc.abovebar : yloc.belowbar, style=label.style_label_center, color=color.new(color.teal, 30), textcolor=color.white, size=size.tiny))
+        if array.size(nearLbs) > 4
+            label.delete(array.shift(nearLbs))
 alertcondition(nearFire, "HTT · מתקרב לרמה", "המחיר מתקרב לרמת עניין — {{ticker}} {{interval}} (הפירוט בהתראת alert())")
 
 // ═══ HTT ALERT BLOCK — סטאפ איכותי: 46 אישורים, רמה, webhook אחד (נוצר על ידי gen_chart_alert_block.py) ═══
