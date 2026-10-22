@@ -13,6 +13,7 @@ POS, NEG = lv['pos'], lv['neg']
 PER5 = lv.get('perTf', {}).get('5', {})
 POS5, NEG5 = PER5.get('pos', POS), PER5.get('neg', NEG)
 HE = {
+    'pocRt': 'ריטסט POC של היום (טריגר P)', 'pocAt': 'על ה-POC של היום (נגיעה וסגירה בכיוון)', 'pocSide': 'בצד הנכון של POC היום', 'vaIn': 'בתוך אזור הערך של היום', 'vaCheap': 'בצד הזול של אזור הערך (מתחת ל-VAL ללונג / מעל VAH לשורט)', 'pocTrend': 'POC היום זז בכיוון (12 נרות)', 'ema12Ok': 'EMA 12 — בצד הנכון ובשיפוע בכיוון', 'ema12Side': 'בצד הנכון של EMA 12',
     'qtJudas': "ג'ודאס של הרבע (תורת הרבעים)",
     'qtAccum': "רבע צבירה (90 דק')",
     'qtManip': "רבע מניפולציה (90 דק')",
@@ -152,10 +153,10 @@ A('''f_qsr(bool isL) =>
 qBufQ = stopBuf / 100.0
 qBrkL = qBrk and (bosUp or chochUp) and (phase == 3 or phase == 5) and barstate.isconfirmed
 qBrkS = qBrk and (bosDn or chochDn) and (phase == 3 or phase == 5) and barstate.isconfirmed
-qTrigL = flyLong ? "F" : wingLong ? "W" : obLong ? "O" : wSig ? "M" : buttcL ? "K" : qBrkL ? "B" : ""
-qTrigS = flyShort ? "F" : wingShort ? "W" : obShort ? "O" : mSig ? "M" : rbtiS ? "K" : qBrkS ? "B" : ""
-qStopL = flyLong ? math.min(nz(cExt, low), nz(lastPL, low)) * (1 - qBufQ) : wingLong ? nz(lastPL, low) * (1 - qBufQ) : obLong ? obLBot * (1 - qBufQ) : wSig ? nz(wLow2, low) * (1 - qBufQ) : buttcL ? math.min(low, jacLvl) * (1 - qBufQ) : nz(lastPL, low) * (1 - qBufQ)
-qStopS = flyShort ? math.max(nz(cExt, high), nz(lastPH, high)) * (1 + qBufQ) : wingShort ? nz(lastPH, high) * (1 + qBufQ) : obShort ? obSTop * (1 + qBufQ) : mSig ? nz(mHigh2, high) * (1 + qBufQ) : rbtiS ? math.max(high, jacLvl) * (1 + qBufQ) : nz(lastPH, high) * (1 + qBufQ)
+qTrigL = flyLong ? "F" : wingLong ? "W" : obLong ? "O" : wSig ? "M" : buttcL ? "K" : pRtL ? "P" : qBrkL ? "B" : ""
+qTrigS = flyShort ? "F" : wingShort ? "W" : obShort ? "O" : mSig ? "M" : rbtiS ? "K" : pRtS ? "P" : qBrkS ? "B" : ""
+qStopL = flyLong ? math.min(nz(cExt, low), nz(lastPL, low)) * (1 - qBufQ) : wingLong ? nz(lastPL, low) * (1 - qBufQ) : obLong ? obLBot * (1 - qBufQ) : wSig ? nz(wLow2, low) * (1 - qBufQ) : buttcL ? math.min(low, jacLvl) * (1 - qBufQ) : pRtL ? math.min(low, pocNow) * (1 - qBufQ) : nz(lastPL, low) * (1 - qBufQ)
+qStopS = flyShort ? math.max(nz(cExt, high), nz(lastPH, high)) * (1 + qBufQ) : wingShort ? nz(lastPH, high) * (1 + qBufQ) : obShort ? obSTop * (1 + qBufQ) : mSig ? nz(mHigh2, high) * (1 + qBufQ) : rbtiS ? math.max(high, jacLvl) * (1 + qBufQ) : pRtS ? math.max(high, pocNow) * (1 + qBufQ) : nz(lastPH, high) * (1 + qBufQ)
 qSigL = qOn and qTrigL != "" and close > qStopL
 qSigS = qOn and qTrigS != "" and close < qStopS
 qLvl = qSigL ? qLvlL : qSigS ? qLvlS : 0

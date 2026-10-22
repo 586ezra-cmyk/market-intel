@@ -42,6 +42,7 @@ EVENTS = [
     ('crkRt',   'buttcL',     'rbtiS'),
     ('tso',     'tsoNow and spring', 'tsoNow and utSig'),
     ('qtJudas', 'qtJudasBull', 'qtJudasBear'),
+    ('pocRt',   'pRtL',       'pRtS'),
 ]
 STATES = [
     ('test',    'testOK',                       'testOK'),
@@ -92,6 +93,13 @@ STATES = [
     ('avwSwRt', 'avwSwRtL',                     'avwSwRtS'),
     ('avwSlope', 'avwSlopeUp',                  'avwSlopeDn'),
     ('avwStack', 'not na(avwapD) and not na(avwapWK) and close > avwapD and close > avwapWK', 'not na(avwapD) and not na(avwapWK) and close < avwapD and close < avwapWK'),
+    ('pocAt',   'pocAtL',                      'pocAtS'),
+    ('pocSide', 'not na(pocNow) and close > pocNow', 'not na(pocNow) and close < pocNow'),
+    ('vaIn',    'vaIn',                        'vaIn'),
+    ('vaCheap', 'vaCheapL',                    'vaCheapS'),
+    ('pocTrend', 'pocRising',                  'pocFalling'),
+    ('ema12Ok', 'ema12OkL',                    'ema12OkS'),
+    ('ema12Side', 'close > ema12',             'close < ema12'),
 ]
 FLAGS = [e[0] for e in EVENTS] + [s[0] for s in STATES]
 
@@ -248,65 +256,6 @@ cvdLo20 = ta.lowest(cvd, 20)
 cvdHi20 = ta.highest(cvd, 20)
 cvdDivBull = low <= cvLo20[1] and cvd > cvdLo20[1]
 cvdDivBear = high >= cvHi20[1] and cvd < cvdHi20[1]
-// ─── תורת הרבעים (Daye): רבעים שבועי/יומי/90 דק', מודל AMD/XAMD ל-90 דק', True Opens, Judas — לטבלה ולמדידה (1.11) ───
-QT_TZ = "America/New_York"
-QT_MS = 60000.0
-qtHH = hour(time, QT_TZ)
-qtMM = minute(time, QT_TZ)
-qtOff = (qtHH * 60 + qtMM - 1080 + 1440) % 1440
-qtDayStart = time - qtOff * QT_MS - second(time, QT_TZ) * 1000
-int qtDayIdx = int(math.floor(qtOff / 360))
-int qtOff360 = qtOff % 360
-int qt90Idx = int(math.floor(qtOff360 / 90))
-qtDayQStart = qtDayStart + qtDayIdx * 360.0 * QT_MS
-qt90Start = qtDayQStart + qt90Idx * 90.0 * QT_MS
-qtTd = time + 21600000
-qtDow = dayofweek(qtTd, QT_TZ)
-qtDom = dayofmonth(qtTd, QT_TZ)
-qtNewDay = na(qtDom[1]) ? false : qtDom != qtDom[1]
-int qtWkIdx = qtDow == dayofweek.monday ? 0 : qtDow == dayofweek.tuesday ? 1 : qtDow == dayofweek.wednesday ? 2 : qtDow == dayofweek.thursday ? 3 : -1
-qtNew90 = na(qt90Start[1]) ? false : qt90Start != qt90Start[1]
-qtNewDayQ = na(qtDayQStart[1]) ? false : qtDayQStart != qtDayQStart[1]
-var float qtHi = na
-var float qtLo = na
-var float qtAvgR = na
-var string qtModel = "AMD"
-var float qtQ1Hi = na
-var float qtQ1Lo = na
-var bool qtJudasDone = false
-if qtNew90
-    if not na(qtHi)
-        float qr = qtHi - qtLo
-        qtAvgR := na(qtAvgR) ? qr : qtAvgR * 0.9 + qr * 0.1
-        if qt90Idx[1] == 0
-            qtQ1Hi := qtHi
-            qtQ1Lo := qtLo
-            qtModel := qr > qtAvgR * 1.35 ? "XAMD" : "AMD"
-    qtHi := high
-    qtLo := low
-    qtJudasDone := false
-else
-    qtHi := math.max(nz(qtHi, high), high)
-    qtLo := math.min(nz(qtLo, low), low)
-int qtManipIdx = qtModel == "AMD" ? 1 : 2
-qtInManip = qt90Idx == qtManipIdx
-qtInDist = qt90Idx == qtManipIdx + 1
-qtInAccum = qtModel == "AMD" ? qt90Idx == 0 : qt90Idx == 1
-var float qtTSO = na
-var float qtTDO = na
-var float qtTWO = na
-if qtNew90 and qt90Idx == 1
-    qtTSO := open
-if qtNewDayQ and qtDayIdx == 1
-    qtTDO := open
-if qtNewDay and qtDow == dayofweek.tuesday
-    qtTWO := open
-qtJudasBear = qtInManip and not qtJudasDone and not na(qtQ1Hi) and high > qtQ1Hi and close < qtQ1Hi
-qtJudasBull = qtInManip and not qtJudasDone and not na(qtQ1Lo) and low < qtQ1Lo and close > qtQ1Lo
-if (qtJudasBear or qtJudasBull) and barstate.isconfirmed
-    qtJudasDone := true
-f_qtPhHe(int idx, string md) => md == "AMD" ? (idx == 0 ? "צבירה" : idx == 1 ? "מניפולציה" : idx == 2 ? "חלוקה" : "המשך") : (idx == 0 ? "המשך" : idx == 1 ? "צבירה" : idx == 2 ? "מניפולציה" : "חלוקה")
-f_qtSide(float lvl) => na(lvl) ? "—" : close > lvl ? "מעל" : "מתחת"
 // ─── AVWAP מעוגן: True Day Open, True Session Open, שבועי (ב' 18:00 NY), וסווינג אחרון — כללים למדידה (1.15) ───
 var float avTdoPV = 0.0
 var float avTdoVV = 0.0
@@ -367,7 +316,7 @@ for name, lexp, sexp in STATES:
     A(f'    s += (isL ? ({lexp}) : ({sexp})) ? "1" : "0"')
 A('    s')
 A('// ── פקודות strategy: עסקה אחת בכל פעם (TV עובד בפוזיציה נטו — כניסה הפוכה של סוג אחר הייתה סוגרת את הקודמת). ההערה של הכניסה נושאת את וקטור האישורים ──')
-TYPES = [('f', 'F', 'טיסה'), ('w', 'W', 'כנף'), ('o', 'O', 'OB'), ('wm', 'M', 'W/M')]
+TYPES = [('f', 'F', 'טיסה'), ('w', 'W', 'כנף'), ('o', 'O', 'OB'), ('wm', 'M', 'W/M'), ('poc', 'P', 'ריטסט POC')]
 for p_, P, heb in TYPES:
     A(f'''// ── {heb} ──
 {p_}New = {p_}N > {p_}N[1]
@@ -385,7 +334,7 @@ A('    firstT := time')
 A('var label metaLb = na')
 A('if barstate.islast')
 A('    label.delete(metaLb)')
-A('    metaLb := label.new(bar_index, close, "META|" + syminfo.tickerid + "|" + timeframe.period + "|" + str.tostring(bar_index + 1) + "|" + str.tostring(firstT) + "|" + str.tostring(time) + "|F" + str.tostring(fN) + "/" + str.tostring(fW) + "|W" + str.tostring(wN) + "/" + str.tostring(wW) + "|O" + str.tostring(oN) + "/" + str.tostring(oW) + "|M" + str.tostring(wmN) + "/" + str.tostring(wmW), xloc=xloc.bar_index, style=label.style_none, textcolor=color.new(color.white, 100), size=size.tiny)')
+A('    metaLb := label.new(bar_index, close, "META|" + syminfo.tickerid + "|" + timeframe.period + "|" + str.tostring(bar_index + 1) + "|" + str.tostring(firstT) + "|" + str.tostring(time) + "|F" + str.tostring(fN) + "/" + str.tostring(fW) + "|W" + str.tostring(wN) + "/" + str.tostring(wW) + "|O" + str.tostring(oN) + "/" + str.tostring(oW) + "|M" + str.tostring(wmN) + "/" + str.tostring(wmW) + "|P" + str.tostring(pocN) + "/" + str.tostring(pocW), xloc=xloc.bar_index, style=label.style_none, textcolor=color.new(color.white, 100), size=size.tiny)')
 text = '\n'.join(head + out) + '\n'
 (ROOT / 'pine/htt_backtest.pine').write_text(text, encoding='utf-8')
 (ROOT / 'backtest/stats/flags.txt').write_text('\n'.join(FLAGS) + '\n', encoding='utf-8')

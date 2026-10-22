@@ -15,6 +15,7 @@ mLiq  = input.bool(true,  "נזילות + Judas",        group=gM)
 mSes  = input.bool(true,  "סשנים + AMD",           group=gM)
 mBB   = input.bool(true,  "בולינגר — סקוויז ופריצה",  group=gM)
 mGap  = input.bool(true,  "גאפים (סגירה → פתיחה)",     group=gM)
+mPOC  = input.bool(true,  "ריטסט POC (P) — ווליום פרופייל", group=gM)
 
 g0 = "ליבה"
 pivLen  = input.int(5, "אורך פיבוט", minval=2, group=g0)
@@ -33,6 +34,7 @@ sqBars  = input.int(8, "אורך התכווצות", minval=4, group=g0)
 sqAtrK  = input.float(2.5, "רוחב התכווצות (ATR)", minval=0.5, step=0.5, group=g0)
 targetR = input.float(3.0, "יעד בדיקה (R)", minval=0.5, step=0.5, group=g0)
 stopBuf = input.float(0.1, "מרווח סטופ %", minval=0.0, step=0.05, group=g0)
+emaLen = input.int(12, "EMA — אישור כיוון: מעל/מתחת + שיפוע (המשתמש 22.10)", minval=2, group=g0)
 fvgMinAtr = input.float(0.5, "FVG: גודל מינימלי של המרווח (ATR)", minval=0.0, step=0.1, group=g0)
 fvgDispAtr = input.float(1.2, "FVG: גודל מינימלי של נר הדחף (ATR)", minval=0.0, step=0.1, group=g0)
 gapMinPct = input.float(0.02, "גאפ: גודל מינימלי (% מהמחיר)", minval=0.0, step=0.01, group=g0)
@@ -40,6 +42,14 @@ dblTolPct = input.float(0.02, "DD/DT: הפרש מקסימלי בין השפלי�
 fvgMaxAge = input.int(200, "FVG: אורך חיים מקסימלי על הגרף (נרות)", minval=20, maxval=2000, group=g0)
 bbLen = input.int(20, "בולינגר: אורך", minval=5, group=g0)
 bbMult = input.float(2.0, "בולינגר: סטיות תקן", minval=0.5, step=0.25, group=g0)
+
+gVP = "ווליום פרופייל (המחקר 19)"
+vpOn = input.bool(true, "לחשב: POC היום, אזור ערך (VAH/VAL), nPOC, אזורי עיגון", group=gVP)
+vpBins = input.int(120, "רזולוציה — תאי מחיר ל-ATR יומי", minval=30, maxval=400, group=gVP)
+vpVA = input.float(70, "אזור ערך — % מהווליום", minval=50, maxval=90, step=5, group=gVP)
+vpMinBars = input.int(12, "POC היום תקף אחרי N נרות", minval=1, maxval=200, group=gVP)
+pocLeaveAtr = input.float(1.0, "ריטסט POC — המחיר יצא מהערך לפחות X ATR ב-10 הנרות שלפני החזרה", minval=0.0, step=0.25, group=gVP)
+pocTolAtr = input.float(0.35, "ריטסט POC — מרחק נגיעה (ATR)", minval=0.05, step=0.05, group=gVP)
 
 gWy = "וויקוף מתקדם (המצגת: חוקי הברזל, ריטסט הקריק, הקשר)"
 useCtxIn = input.bool(true, "חוק הקונטקסט (מ-15 דקות ומעלה): איסוף/פיזור חוזר לפי מגמת המסגרת הגבוהה; ניעור נגד המגמה דורש קליימקס", group=gWy)
@@ -765,6 +775,119 @@ bbBrkDn = mBB and sqRun[1] >= 6 and close < bbL and barstate.isconfirmed
 confBull = (bosUp or chochUp ? 1 : 0) + (sweepLo ? 1 : 0) + (smtBull or ismtBull ? 1 : 0) + (ifvgBull ? 1 : 0) + (judasBull ? 1 : 0) + (twzBull ? 1 : 0) + (spring or volDirUp or lpsMark ? 1 : 0) + (volLow and close > open ? 1 : 0) + (not inPrem ? 1 : 0) + (inKZ ? 1 : 0) + (bbBrkUp ? 1 : 0)
 confBear = (bosDn or chochDn ? 1 : 0) + (sweepHi ? 1 : 0) + (smtBear or ismtBear ? 1 : 0) + (ifvgBear ? 1 : 0) + (judasBear ? 1 : 0) + (twzBear ? 1 : 0) + (utSig or volDirDn or lpsyMark ? 1 : 0) + (volLow and close < open ? 1 : 0) + (inPrem ? 1 : 0) + (inKZ ? 1 : 0) + (bbBrkDn ? 1 : 0)
 
+// ─── EMA (אישור כיוון, המשתמש 22.10: EMA 12 — מעל ועולה ללונג, מתחת ויורד לשורט) ───
+ema12 = ta.ema(close, emaLen)
+emaRising = ema12 > ema12[1]
+ema12OkL = close > ema12 and emaRising
+ema12OkS = close < ema12 and not emaRising
+
+// ─── ווליום פרופייל של היום: POC מתפתח, אזור ערך (VAH/VAL), nPOC של ימים קודמים (המחקר 19, החלטות 21–22.10) ───
+// תאי מחיר (גודל תא = ATR יומי / vpBins, קבוע לכל יום). הווליום של כל נר מתחלק שווה בין התאים שבין השפל לשיא.
+// POC = התא עם הווליום הגבוה ביותר (מתעדכן בכל נר). אזור ערך = הרחבה מה-POC למעלה/למטה (התא הגדול מבין השניים) עד vpVA% מהווליום.
+dAtr = request.security(syminfo.tickerid, "D", ta.atr(14), lookahead=barmerge.lookahead_off)
+newDay = nz(ta.change(time("D")), 0) != 0
+f_binOf(float px, float b) => int(math.floor(px / b))
+f_vpDay() =>
+    var map<int, float> vpDay = map.new<int, float>()
+    var float vpBin = na
+    var int vpPocIdx = na
+    var float vpPocVol = 0.0
+    var float vpTot = 0.0
+    var int vpDayN = 0
+    var float[] npocArr = array.new<float>()
+    var float prevPoc = na
+    var float prevVah = na
+    var float prevVal = na
+    var float vah = na
+    var float val = na
+    float pocNow = na
+    float npUp = na
+    float npDn = na
+    if vpOn
+        if newDay or na(vpBin)
+            if not na(vpPocIdx) and vpDayN >= vpMinBars
+                prevPoc := (vpPocIdx + 0.5) * vpBin
+                prevVah := vah
+                prevVal := val
+                array.unshift(npocArr, prevPoc)
+                if array.size(npocArr) > 5
+                    array.pop(npocArr)
+            map.clear(vpDay)
+            vpBin := math.max(syminfo.mintick, nz(dAtr, atr * 10) / vpBins)
+            vpPocIdx := na
+            vpPocVol := 0.0
+            vpTot := 0.0
+            vpDayN := 0
+            vah := na
+            val := na
+        iLo = f_binOf(low, vpBin)
+        nB = math.min(f_binOf(high, vpBin) - iLo + 1, 400)
+        per = volume / nB
+        for bi = iLo to iLo + nB - 1
+            v = nz(map.get(vpDay, bi)) + per
+            map.put(vpDay, bi, v)
+            if v > vpPocVol
+                vpPocVol := v
+                vpPocIdx := bi
+        vpTot += volume
+        vpDayN += 1
+        if not na(vpPocIdx) and vpTot > 0
+            float acc = vpPocVol
+            int up = vpPocIdx
+            int dn = vpPocIdx
+            float need = vpTot * vpVA / 100
+            int guard = 0
+            while acc < need and guard < 600
+                vu = nz(map.get(vpDay, up + 1))
+                vd = nz(map.get(vpDay, dn - 1))
+                if vu >= vd
+                    up += 1
+                    acc += vu
+                else
+                    dn -= 1
+                    acc += vd
+                guard += 1
+            vah := (up + 1) * vpBin
+            val := dn * vpBin
+        if vpDayN >= vpMinBars and not na(vpPocIdx)
+            pocNow := (vpPocIdx + 0.5) * vpBin
+        if array.size(npocArr) > 0
+            for ni = array.size(npocArr) - 1 to 0
+                nv = array.get(npocArr, ni)
+                if low <= nv and high >= nv
+                    array.remove(npocArr, ni)
+        if array.size(npocArr) > 0
+            for ni = 0 to array.size(npocArr) - 1
+                nv = array.get(npocArr, ni)
+                if nv > close and (na(npUp) or nv < npUp)
+                    npUp := nv
+                if nv < close and (na(npDn) or nv > npDn)
+                    npDn := nv
+    [pocNow, vah, val, prevPoc, prevVah, prevVal, npUp, npDn, vpDayN]
+// POC היום, VAH/VAL, POC/VA של אתמול, ה-nPOC הקרוב מעל ומתחת, מספר הנרות היום
+[pocNow, vah, val, prevPoc, prevVah, prevVal, npUp, npDn, vpDayN] = f_vpDay()
+pocTol = atr * pocTolAtr
+pocAtL = not na(pocNow) and low <= pocNow + pocTol and close > pocNow
+pocAtS = not na(pocNow) and high >= pocNow - pocTol and close < pocNow
+vaIn = not na(vah) and not na(pocNow) and close <= vah and close >= val
+vaCheapL = not na(val) and not na(pocNow) and close < val
+vaCheapS = not na(vah) and not na(pocNow) and close > vah
+pocRising = not na(pocNow) and not na(pocNow[12]) and pocNow > pocNow[12]
+pocFalling = not na(pocNow) and not na(pocNow[12]) and pocNow < pocNow[12]
+
+// ─── טריגר: ריטסט POC (P) — אחרי BOS המחיר יצא מהערך, חזר ל-POC של היום, נגע וסגר חזרה בכיוון המבנה (המחקר 19, החלטת המשתמש 21.10) ───
+pHi10 = ta.highest(high, 10)
+pLo10 = ta.lowest(low, 10)
+pWasUpN = ta.barssince(na(pocNow) or close <= pocNow)
+pWasDnN = ta.barssince(na(pocNow) or close >= pocNow)
+var int pocLastBar = na
+pRtL0 = mPOC and not na(pocNow) and msDir > 0 and nz(pWasUpN[1], 999) >= 2 and nz(pHi10[1], high) >= pocNow + atr * pocLeaveAtr and low <= pocNow + pocTol and close > pocNow and barstate.isconfirmed
+pRtS0 = mPOC and not na(pocNow) and msDir < 0 and nz(pWasDnN[1], 999) >= 2 and nz(pLo10[1], low) <= pocNow - atr * pocLeaveAtr and high >= pocNow - pocTol and close < pocNow and barstate.isconfirmed
+pRtL = pRtL0 and (na(pocLastBar) or bar_index - pocLastBar > 5)
+pRtS = pRtS0 and (na(pocLastBar) or bar_index - pocLastBar > 5)
+if pRtL or pRtS
+    pocLastBar := bar_index
+
 // ─── מנוע בקטסט ─────────────────────────────────────────────────────────────
 buf = stopBuf / 100.0
 var int fN = 0
@@ -879,6 +1002,38 @@ if wmSt == 1
         array.set(sesW, wmSes, array.get(sesW, wmSes) + 1)
         wmSt := 0
 
+// ── P (ריטסט POC): סטופ מעבר ל-POC / לקצה נר הריטסט (מצב העסקה בפונקציה — גוף הסקריפט מוגבל באורך) ──
+f_pTrade(bool sigL, bool sigS) =>
+    var int n = 0
+    var int w = 0
+    var int st = 0
+    var float sp = na
+    var float tp = na
+    var bool isL = true
+    var int ses = 0
+    if (sigL or sigS) and st == 0
+        isL := sigL
+        stp = isL ? math.min(low, pocNow) * (1 - buf) : math.max(high, pocNow) * (1 + buf)
+        if isL ? close > stp : close < stp
+            st := 1
+            sp := stp
+            tp := f_open(stp, isL)
+            n += 1
+            ses := sesIdx
+            array.set(sesN, sesIdx, array.get(sesN, sesIdx) + 1)
+    if st == 1
+        hitS = isL ? low <= sp : high >= sp
+        hitT = isL ? high >= tp : low <= tp
+        if hitS
+            st := 0
+        else if hitT
+            w += 1
+            array.set(sesW, ses, array.get(sesW, ses) + 1)
+            st := 0
+    [n, w, st, sp, tp, isL ? 1 : 0]
+[pocN, pocW, pocSt, pocS, pocT, pocLi] = f_pTrade(pRtL, pRtS)
+pocL = pocLi == 1
+
 // ─── צ'ק-ליסט ────────────────────────────────────────────────────────────────
 ckSpring = (phase == 3 or phase == 4) and cIsBull
 ckUT = (phase == 3 or phase == 4) and not cIsBull
@@ -890,53 +1045,153 @@ float ckTgt = armDir == 1 ? (phase > 0 ? rHi : nz(poolHi, high)) : armDir == -1 
 ckRR = not na(ckStop) and not na(ckTgt) and math.abs(close - ckStop) > 0 ? math.abs(ckTgt - close) / math.abs(close - ckStop) : na
 ckRRok = not na(ckRR) and ckRR >= 3
 
+// ─── תורת הרבעים (Daye): רבעים שבועי/יומי/90 דק', מודל AMD/XAMD ל-90 דק', True Opens, Judas — לטבלה ולמדידה (1.11) ───
+QT_TZ = "America/New_York"
+QT_MS = 60000.0
+qtHH = hour(time, QT_TZ)
+qtMM = minute(time, QT_TZ)
+qtOff = (qtHH * 60 + qtMM - 1080 + 1440) % 1440
+qtDayStart = time - qtOff * QT_MS - second(time, QT_TZ) * 1000
+int qtDayIdx = int(math.floor(qtOff / 360))
+int qtOff360 = qtOff % 360
+int qt90Idx = int(math.floor(qtOff360 / 90))
+qtDayQStart = qtDayStart + qtDayIdx * 360.0 * QT_MS
+qt90Start = qtDayQStart + qt90Idx * 90.0 * QT_MS
+qtTd = time + 21600000
+qtDow = dayofweek(qtTd, QT_TZ)
+qtDom = dayofmonth(qtTd, QT_TZ)
+qtNewDay = na(qtDom[1]) ? false : qtDom != qtDom[1]
+int qtWkIdx = qtDow == dayofweek.monday ? 0 : qtDow == dayofweek.tuesday ? 1 : qtDow == dayofweek.wednesday ? 2 : qtDow == dayofweek.thursday ? 3 : -1
+qtNew90 = na(qt90Start[1]) ? false : qt90Start != qt90Start[1]
+qtNewDayQ = na(qtDayQStart[1]) ? false : qtDayQStart != qtDayQStart[1]
+var float qtHi = na
+var float qtLo = na
+var float qtAvgR = na
+var string qtModel = "AMD"
+var float qtQ1Hi = na
+var float qtQ1Lo = na
+var bool qtJudasDone = false
+if qtNew90
+    if not na(qtHi)
+        float qr = qtHi - qtLo
+        qtAvgR := na(qtAvgR) ? qr : qtAvgR * 0.9 + qr * 0.1
+        if qt90Idx[1] == 0
+            qtQ1Hi := qtHi
+            qtQ1Lo := qtLo
+            qtModel := qr > qtAvgR * 1.35 ? "XAMD" : "AMD"
+    qtHi := high
+    qtLo := low
+    qtJudasDone := false
+else
+    qtHi := math.max(nz(qtHi, high), high)
+    qtLo := math.min(nz(qtLo, low), low)
+int qtManipIdx = qtModel == "AMD" ? 1 : 2
+qtInManip = qt90Idx == qtManipIdx
+qtInDist = qt90Idx == qtManipIdx + 1
+qtInAccum = qtModel == "AMD" ? qt90Idx == 0 : qt90Idx == 1
+var float qtTSO = na
+var float qtTDO = na
+var float qtTWO = na
+if qtNew90 and qt90Idx == 1
+    qtTSO := open
+if qtNewDayQ and qtDayIdx == 1
+    qtTDO := open
+if qtNewDay and qtDow == dayofweek.tuesday
+    qtTWO := open
+qtJudasBear = qtInManip and not qtJudasDone and not na(qtQ1Hi) and high > qtQ1Hi and close < qtQ1Hi
+qtJudasBull = qtInManip and not qtJudasDone and not na(qtQ1Lo) and low < qtQ1Lo and close > qtQ1Lo
+if (qtJudasBear or qtJudasBull) and barstate.isconfirmed
+    qtJudasDone := true
+f_qtPhHe(int idx, string md) => md == "AMD" ? (idx == 0 ? "צבירה" : idx == 1 ? "מניפולציה" : idx == 2 ? "חלוקה" : "המשך") : (idx == 0 ? "המשך" : idx == 1 ? "צבירה" : idx == 2 ? "מניפולציה" : "חלוקה")
+f_qtSide(float lvl) => na(lvl) ? "—" : close > lvl ? "מעל" : "מתחת"
+
 // ═══ ציור — אובייקטים עם tooltip, מתג לכל שכבה ולכל סימון ═══
 gV = "תצוגה — שכבות"
-cleanMode = input.bool(false, "מצב נקי (מינימום)", group=gV)
-sBgPhase = input.bool(true, "קופסת פאזה (סביב הנרות)", group=gV)
-sBgSes  = input.bool(true, "רקע סשנים", group=gV)
-sLvlW   = input.bool(true, "רמות שבועי (רק בגרפי 4H ויומי)", group=gV)
-sLvlD   = input.bool(true, "רמות יומי (רק מתחת ליומי)", group=gV)
-sLvl4   = input.bool(true, "רמות 4H (רק מתחת ל-4H)", group=gV)
-sLvl15  = input.bool(true, "רמות 15m (רק מתחת ל-15m)", group=gV)
-sLvlSes = input.bool(true, "רמות סשן קודם (רק מתחת ל-4H)", group=gV)
+viewMode = input.string("מסחר", "מצב תצוגה", options=["מלא", "מסחר", "נקי"], tooltip="מלא = כל השכבות · מסחר = טווח, טריגרים, רמה, OB, רמות, POC/אזורי עיגון, EMA, True Open · נקי = טווח + טריגרים + רמה", group=gV)
+cleanMode = viewMode == "נקי"
+tFull = viewMode == "מלא"
+tTrade = viewMode != "נקי"
+sBgPhaseIn = input.bool(true, "קופסת פאזה (סביב הנרות)", group=gV)
+sBgSesIn  = input.bool(true, "רקע סשנים", group=gV)
+sLvlWIn   = input.bool(true, "רמות שבועי (רק בגרפי 4H ויומי)", group=gV)
+sLvlDIn   = input.bool(true, "רמות יומי (רק מתחת ליומי)", group=gV)
+sLvl4In   = input.bool(true, "רמות 4H (רק מתחת ל-4H)", group=gV)
+sLvl15In  = input.bool(true, "רמות 15m (רק מתחת ל-15m)", group=gV)
+sLvlSesIn = input.bool(true, "רמות סשן קודם (רק מתחת ל-4H)", group=gV)
 sRange  = input.bool(true, "קריק / אייס + תוויות", group=gV)
-sFlip   = input.bool(true, "פליפ זון (עליון + תחתון)", group=gV)
-sPools  = input.bool(true, "בריכות נזילות", group=gV)
-sWingLn = input.bool(true, "קו הכנף", group=gV)
-sNeck   = input.bool(true, "צווארי W/M", group=gV)
-sOBbox  = input.bool(true, "קופסאות OB", group=gV)
-sMCln   = input.bool(true, "הקרנת מונטה-קרלו", group=gV)
-sFVGbox = input.bool(true, "קופסאות FVG (דורש מודול FVG)", group=gV)
-sAsiaBox = input.bool(true, "טווח אסיה — Dealing Range (מתחת ל-4H)", group=gV)
-sORln = input.bool(true, "קווי טווח פתיחה של הסשן (מתחת לשעה)", group=gV)
-sBB = input.bool(false, "רצועות בולינגר", group=gV)
-sGapBox = input.bool(true, "קופסאות גאפ (עד שנסגר עד הסגירה של הנר שלפניו)", group=gV)
-sBgKZ = input.bool(true, "רקע קיל-זון (מתחת ל-4H)", group=gV)
+sFlipIn   = input.bool(true, "פליפ זון (עליון + תחתון)", group=gV)
+sPoolsIn  = input.bool(true, "בריכות נזילות", group=gV)
+sWingLnIn = input.bool(true, "קו הכנף", group=gV)
+sNeckIn   = input.bool(true, "צווארי W/M", group=gV)
+sOBboxIn  = input.bool(true, "קופסאות OB", group=gV)
+sMClnIn   = input.bool(true, "הקרנת מונטה-קרלו", group=gV)
+sFVGboxIn = input.bool(true, "קופסאות FVG (דורש מודול FVG)", group=gV)
+sAsiaBoxIn = input.bool(true, "טווח אסיה — Dealing Range (מתחת ל-4H)", group=gV)
+sORlnIn = input.bool(true, "קווי טווח פתיחה של הסשן (מתחת לשעה)", group=gV)
+sBBIn = input.bool(false, "רצועות בולינגר", group=gV)
+sGapBoxIn = input.bool(true, "קופסאות גאפ (עד שנסגר עד הסגירה של הנר שלפניו)", group=gV)
+sBgKZIn = input.bool(true, "רקע קיל-זון (מתחת ל-4H)", group=gV)
 gV2 = "תצוגה — סימונים"
 minConf = input.int(5, "סף קונפלואנס ל-⭐", minval=2, maxval=11, group=gV2)
-sArm    = input.bool(true, "⏳ — סטאפ נפתח + קו BOS ממתין", group=gV2)
-sSpring = input.bool(true, "S — ספרינג", group=gV2)
-sUT     = input.bool(true, "U — אפ-טראסט", group=gV2)
-sTest   = input.bool(true, "T — טסט", group=gV2)
-sAdv    = input.bool(true, "JAC / BUTTC / TSO — מונחי המצגת", group=gV2)
+sArmIn    = input.bool(true, "⏳ — סטאפ נפתח + קו BOS ממתין", group=gV2)
+sSpringIn = input.bool(true, "S — ספרינג", group=gV2)
+sUTIn     = input.bool(true, "U — אפ-טראסט", group=gV2)
+sTestIn   = input.bool(true, "T — טסט", group=gV2)
+sAdvIn    = input.bool(true, "JAC / BUTTC / TSO — מונחי המצגת", group=gV2)
 sFlyS   = input.bool(true, "✈ — טיסה", group=gV2)
 sWingS  = input.bool(true, "כנף — שבירת כנף", group=gV2)
 sOBs    = input.bool(true, "OB — אורדר בלוק", group=gV2)
 sWMs    = input.bool(true, "W✓ / M✓ — דאבל הושלם", group=gV2)
-sMCs    = input.bool(true, "🎲 — מונטה-קרלו", group=gV2)
-sEng    = input.bool(true, "✕ — נר בולען (יציאה)", group=gV2)
-sStar   = input.bool(true, "⭐ — קונפלואנס", group=gV2)
-sFlag   = input.bool(true, "🚩 — כל האישורים", group=gV2)
-sTwz    = input.bool(false, "✚ — צבת (לא מהקורס; רק 1H+ ובקצה הטווח)", group=gV2)
-sJud    = input.bool(true, "J — Judas", group=gV2)
-sSwp    = input.bool(true, "💧 — חטיפת נזילות", group=gV2)
-sSmt    = input.bool(true, "⚡ — SMT / iSMT", group=gV2)
-sIFVG   = input.bool(true, "iFVG — מרווח שהתהפך (דורש מודול FVG)", group=gV2)
-sBOS    = input.bool(true, "BOS / CHoCH — שינוי מבנה", group=gV2)
-sBBs    = input.bool(true, "BB — פריצת בולינגר אחרי סקוויז", group=gV2)
-sClimax = input.bool(true, "💥 — נר קליימקס (אחוזון ווליום)", group=gV2)
-sWMlvl  = input.bool(true, "DD / DT — דאבל דאון/טופ מתחיל מול רמת 4H / יומי / שבועי (התראה מוקדמת)", group=gV2)
+sMCsIn    = input.bool(true, "🎲 — מונטה-קרלו", group=gV2)
+sEngIn    = input.bool(true, "✕ — נר בולען (יציאה)", group=gV2)
+sStarIn   = input.bool(true, "⭐ — קונפלואנס", group=gV2)
+sFlagIn   = input.bool(true, "🚩 — כל האישורים", group=gV2)
+sTwzIn    = input.bool(false, "✚ — צבת (לא מהקורס; רק 1H+ ובקצה הטווח)", group=gV2)
+sJudIn    = input.bool(true, "J — Judas", group=gV2)
+sSwpIn    = input.bool(true, "💧 — חטיפת נזילות", group=gV2)
+sSmtIn    = input.bool(true, "⚡ — SMT / iSMT", group=gV2)
+sIFVGIn   = input.bool(true, "iFVG — מרווח שהתהפך (דורש מודול FVG)", group=gV2)
+sBOSIn    = input.bool(true, "BOS / CHoCH — שינוי מבנה", group=gV2)
+sBBsIn    = input.bool(true, "BB — פריצת בולינגר אחרי סקוויז", group=gV2)
+sClimaxIn = input.bool(true, "💥 — נר קליימקס (אחוזון ווליום)", group=gV2)
+sWMlvlIn  = input.bool(true, "DD / DT — דאבל דאון/טופ מתחיל מול רמת 4H / יומי / שבועי (התראה מוקדמת)", group=gV2)
+sBgSes = sBgSesIn and tFull
+sFlip = sFlipIn and tFull
+sPools = sPoolsIn and tFull
+sWingLn = sWingLnIn and tFull
+sNeck = sNeckIn and tFull
+sMCln = sMClnIn and tFull
+sFVGbox = sFVGboxIn and tFull
+sAsiaBox = sAsiaBoxIn and tFull
+sORln = sORlnIn and tFull
+sBB = sBBIn and tFull
+sGapBox = sGapBoxIn and tFull
+sBgKZ = sBgKZIn and tFull
+sSpring = sSpringIn and tFull
+sUT = sUTIn and tFull
+sTest = sTestIn and tFull
+sAdv = sAdvIn and tFull
+sMCs = sMCsIn and tFull
+sEng = sEngIn and tFull
+sStar = sStarIn and tFull
+sFlag = sFlagIn and tFull
+sTwz = sTwzIn and tFull
+sJud = sJudIn and tFull
+sSwp = sSwpIn and tFull
+sSmt = sSmtIn and tFull
+sIFVG = sIFVGIn and tFull
+sBOS = sBOSIn and tFull
+sBBs = sBBsIn and tFull
+sClimax = sClimaxIn and tFull
+sWMlvl = sWMlvlIn and tFull
+sBgPhase = sBgPhaseIn and tTrade
+sLvlW = sLvlWIn and tTrade
+sLvlD = sLvlDIn and tTrade
+sLvl4 = sLvl4In and tTrade
+sLvl15 = sLvl15In and tTrade
+sLvlSes = sLvlSesIn and tTrade
+sOBbox = sOBboxIn and tTrade
+sArm = sArmIn and tTrade
 recent = bar_index > last_bar_index - 80
 
 // ─── רמות אופקיות (קו + תווית עם הסבר) ──────────────────────────────────────
@@ -1468,6 +1723,8 @@ alertcondition(wingShort, "HTT · כנף שורט", "שבירת כנף שורט 
 alertcondition(wingLong, "HTT · כנף לונג", "שבירת כנף לונג (מראה) — {{ticker}} {{interval}} @ {{close}} — RSI {{plot(\"RSI\")}}")
 alertcondition(obLong, "HTT · OB קנייה", "אורדר בלוק קנייה — כניסה לאזור + סגירה חוזרת — RSI {{plot(\"RSI\")}} · {{ticker}} {{interval}}")
 alertcondition(obShort, "HTT · OB מכירה", "אורדר בלוק מכירה — RSI {{plot(\"RSI\")}} · {{ticker}} {{interval}}")
+alertcondition(pRtL, "HTT · P ריטסט POC לונג", "P — ריטסט POC של היום והחזקה (לונג) — RSI {{plot(\"RSI\")}} · {{ticker}} {{interval}} @ {{close}}")
+alertcondition(pRtS, "HTT · P ריטסט POC שורט", "P — ריטסט POC של היום ודחייה (שורט) — RSI {{plot(\"RSI\")}} · {{ticker}} {{interval}} @ {{close}}")
 alertcondition(wState == 1 and wState[1] == 0, "HTT · W נבנית", "דאבל בוטום נבנה — צוואר מסומן — RSI {{plot(\"RSI\")}} · {{ticker}} {{interval}}")
 alertcondition(mState == 1 and mState[1] == 0, "HTT · M נבנית", "דאבל טופ נבנה — צוואר מסומן — RSI {{plot(\"RSI\")}} · {{ticker}} {{interval}}")
 alertcondition(wSig, "HTT · W✓ הושלם", "W הושלם — סגירה מעל הצוואר — RSI {{plot(\"RSI\")}} · {{ticker}} {{interval}}")
@@ -1500,6 +1757,145 @@ alertcondition(gapUp or gapDn, "HTT · גאפ נפתח", "גאפ בין סגיר
 alertcondition(gapFilledNow, "HTT · גאפ נסגר", "הגאפ נסגר: המחיר הגיע לקצה של הנר שלפני הגאפ — RSI {{plot(\"RSI\")}} · {{ticker}} {{interval}}")
 alertcondition(chochUp or chochDn, "HTT · CHoCH", "CHoCH — שינוי אופי נגד הכיוון — RSI {{plot(\"RSI\")}} · {{ticker}} {{interval}}")
 
+// ─── v56: POC היום, VAH/VAL, nPOC, אזורי עיגון (HVN), EMA, מפרידי רבעים, True Day Open, טריגר P ───
+gZ = "תצוגה — ווליום פרופייל, EMA, רבעים (v56)"
+sPocLn = input.bool(true, "POC היום (קו רציף שזז) + VAH/VAL", group=gZ)
+sNpoc = input.bool(true, "nPOC של ימים קודמים (מקווקו, נעלם כשנוגעים)", group=gZ)
+sZones = input.bool(true, "אזורי עיגון (HVN) — מלבן רך + 3 קווים, עד 3 אזורים", group=gZ)
+zBarsN = input.int(300, "אזורי עיגון: חלון חישוב (נרות)", minval=50, maxval=1500, group=gZ)
+zEvery = input.int(20, "אזורי עיגון: חישוב מחדש כל N נרות", minval=1, maxval=200, group=gZ)
+zHalf = input.float(0.5, "אזורי עיגון: רוחב = תאים עם ווליום ≥ X מהשיא", minval=0.2, maxval=0.9, step=0.05, group=gZ)
+sEma = input.bool(true, "EMA (ממוצע נע)", group=gZ)
+sQtLn = input.bool(true, "מפרידי רבעים (90 דק', מתחת ל-4H) + True Day Open", group=gZ)
+sPs = input.bool(true, "P — ריטסט POC (טריגר)", group=gZ)
+plot(sEma and tTrade ? ema12 : na, "EMA", color=color.new(#45c4ff, 0), linewidth=1)
+plot(sPocLn and tTrade and vpOn ? pocNow : na, "POC היום", color=color.new(#ff9f1c, 0), linewidth=2, style=plot.style_linebr)
+plot(sPocLn and tTrade and vpOn and not na(pocNow) ? vah : na, "VAH", color=color.new(#ff9f1c, 60), linewidth=1, style=plot.style_linebr)
+plot(sPocLn and tTrade and vpOn and not na(pocNow) ? val : na, "VAL", color=color.new(#ff9f1c, 60), linewidth=1, style=plot.style_linebr)
+tipP = "P = ריטסט POC: אחרי BOS המחיר יצא מהערך, חזר ל-POC של היום, נגע וסגר חזרה בכיוון המבנה (המחקר 19 — סוחרי ה-Volume Profile). סטופ מעבר ל-POC / לקצה נר הריטסט. נמדד ב-Path Lab לפני ניקוד"
+f_mark(sPs and pRtL, "P", tipP, color.new(#ff9f1c, 0), false, size.small)
+f_mark(sPs and pRtS, "P", tipP, color.new(#ff9f1c, 0), true, size.small)
+// nPOC: קו מקווקו מהיום שאחרי, נמחק כשנוגעים
+f_npocDraw(bool on) =>
+    var line[] npLn = array.new<line>()
+    var float[] npLv = array.new<float>()
+    if on and newDay and not na(prevPoc)
+        array.push(npLn, line.new(bar_index, prevPoc, bar_index + 1, prevPoc, color=color.new(#ff9f1c, 25), style=line.style_dashed, width=1))
+        array.push(npLv, prevPoc)
+        if array.size(npLn) > 6
+            line.delete(array.shift(npLn))
+            array.shift(npLv)
+    if array.size(npLn) > 0
+        for ni = array.size(npLn) - 1 to 0
+            nlv = array.get(npLv, ni)
+            if (low <= nlv and high >= nlv and bar_index > line.get_x1(array.get(npLn, ni))) or not on
+                line.delete(array.get(npLn, ni))
+                array.remove(npLn, ni)
+                array.remove(npLv, ni)
+            else
+                line.set_x2(array.get(npLn, ni), bar_index)
+    true
+f_npocDraw(sNpoc and tTrade and vpOn)
+// אזורי עיגון: שלושת צמתי הווליום (HVN) ב-zBarsN הנרות האחרונים; כל אזור = התאים הרצופים סביב השיא עם ווליום ≥ zHalf מהשיא. מלבן רך + 3 קווים
+f_zones(bool on) =>
+    var float[] zTopA = array.new<float>(3, na)
+    var float[] zBotA = array.new<float>(3, na)
+    var float[] zPocA = array.new<float>(3, na)
+    var map<int, float> vpZ = map.new<int, float>()
+    var box[] zBx = array.new<box>()
+    var line[] zLn = array.new<line>()
+    zTick = on and bar_index > zBarsN and (bar_index % zEvery == 0 or barstate.islast)
+    if zTick
+        map.clear(vpZ)
+        zb = math.max(syminfo.mintick, nz(dAtr, atr * 10) / vpBins)
+        for i = 0 to zBarsN - 1
+            zlo = f_binOf(low[i], zb)
+            znb = math.min(f_binOf(high[i], zb) - zlo + 1, 400)
+            zper = volume[i] / znb
+            for bi = zlo to zlo + znb - 1
+                map.put(vpZ, bi, nz(map.get(vpZ, bi)) + zper)
+        zkeys = map.keys(vpZ)
+        for k = 0 to 2
+            float best = 0.0
+            int bestI = na
+            for ki = 0 to array.size(zkeys) - 1
+                kk = array.get(zkeys, ki)
+                vv = nz(map.get(vpZ, kk))
+                if vv > best
+                    best := vv
+                    bestI := kk
+            if na(bestI) or best <= 0
+                array.set(zTopA, k, na)
+                array.set(zBotA, k, na)
+                array.set(zPocA, k, na)
+            else
+                thr = best * zHalf
+                int zu = bestI
+                int zd = bestI
+                while nz(map.get(vpZ, zu + 1)) >= thr and zu - bestI < 60
+                    zu += 1
+                while nz(map.get(vpZ, zd - 1)) >= thr and bestI - zd < 60
+                    zd -= 1
+                array.set(zTopA, k, (zu + 1) * zb)
+                array.set(zBotA, k, zd * zb)
+                array.set(zPocA, k, (bestI + 0.5) * zb)
+                for bi = zd - 2 to zu + 2
+                    map.put(vpZ, bi, 0.0)
+    if on and array.size(zBx) == 0
+        for k = 0 to 2
+            array.push(zBx, box.new(bar_index, close, bar_index, close, border_color=color.new(#ffd166, 100), bgcolor=color.new(#ffd166, 100)))
+            for j = 0 to 2
+                array.push(zLn, line.new(bar_index, close, bar_index, close, color=color.new(#ffd166, 100), width=j == 1 ? 2 : 1, style=j == 1 ? line.style_solid : line.style_dotted))
+    if array.size(zBx) == 3 and (zTick or barstate.islast or not on)
+        for k = 0 to 2
+            zt = array.get(zTopA, k)
+            zbt = array.get(zBotA, k)
+            zp = array.get(zPocA, k)
+            bx = array.get(zBx, k)
+            zx1 = math.max(bar_index - zBarsN, 0)
+            zOk = on and not na(zt) and not na(zbt) and not na(zp)
+            box.set_lefttop(bx, zx1, zOk ? zt : close)
+            box.set_rightbottom(bx, bar_index + 20, zOk ? zbt : close)
+            box.set_bgcolor(bx, color.new(#ffd166, zOk ? 88 : 100))
+            box.set_text(bx, zOk ? "עיגון " + str.tostring(k + 1) : "")
+            box.set_text_color(bx, color.new(#ffd166, zOk ? 30 : 100))
+            box.set_text_size(bx, size.tiny)
+            box.set_text_halign(bx, text.align_left)
+            for j = 0 to 2
+                ln = array.get(zLn, k * 3 + j)
+                zy = j == 0 ? zt : j == 1 ? zp : zbt
+                line.set_xy1(ln, zx1, zOk ? zy : close)
+                line.set_xy2(ln, bar_index + 20, zOk ? zy : close)
+                line.set_color(ln, color.new(#ffd166, zOk ? (j == 1 ? 10 : 45) : 100))
+    float zUp = na
+    float zDn = na
+    int zIn = 0
+    for k = 0 to 2
+        zp = array.get(zPocA, k)
+        if on and not na(zp)
+            if close >= array.get(zBotA, k) and close <= array.get(zTopA, k)
+                zIn := k + 1
+            if zp > close and (na(zUp) or zp < zUp)
+                zUp := zp
+            if zp < close and (na(zDn) or zp > zDn)
+                zDn := zp
+    [zUp, zDn, zIn]
+// האזור הקרוב מעל/מתחת (ל"מתקרב לרמה") + באיזה אזור אנחנו
+[zUp, zDn, zIn] = f_zones(vpOn and sZones and tTrade)
+// מפרידי רבעים (90 דק') + True Day Open (00:00 NY)
+f_qtDraw(bool on) =>
+    var line[] qtLn = array.new<line>()
+    var label[] qtLb = array.new<label>()
+    if on and qtNew90
+        array.push(qtLn, line.new(bar_index, low, bar_index, high, extend=extend.both, color=color.new(color.gray, 72), style=line.style_dotted, width=1))
+        array.push(qtLb, label.new(bar_index, high, "Q" + str.tostring(qt90Idx + 1) + (qt90Idx == 0 ? " · " + (qtDayIdx == 0 ? "אסיה" : qtDayIdx == 1 ? "לונדון" : qtDayIdx == 2 ? "ניו-יורק" : "אחה\"צ") : ""), xloc=xloc.bar_index, yloc=yloc.abovebar, style=label.style_none, textcolor=color.new(color.gray, 35), size=size.tiny))
+        if array.size(qtLn) > 32
+            line.delete(array.shift(qtLn))
+            label.delete(array.shift(qtLb))
+    true
+f_qtDraw(sQtLn and tTrade and tfMin <= 60)
+f_lvl(qtTDO, color.new(#e0e0e0, 25), 1, line.style_dotted, sQtLn and tTrade and tfMin < 240 and not na(qtTDO), false, "TDO", "True Day Open — פתיחת 00:00 NY (תורת הרבעים): מתחת = דיסקאונט (לונג), מעל = פרימיום (שורט)")
+
 // ─── התראת "מתקרב לרמה" (תוכנית 1.7): X% לפני אזור עניין בכיוון התנועה, פעם אחת לכל התקרבות ───
 gN = "מתקרב לרמה"
 nearOn = input.bool(true, "התראה כשהמחיר מתקרב לרמה (alert() — לבחור 'Any alert() function call')", group=gN)
@@ -1510,8 +1906,8 @@ goUp = close > close[3]
 float nearLvl = na
 string nearKind = ""
 if nearOn
-    nCands = array.from(rHi, rLo, h4H, h4L, dH, dL, wkH, wkL, obLTop, obLBot, obSTop, obSBot, prevSesH, prevSesL, asiaH, asiaL, poolHi, poolLo)
-    nKinds = array.from("קריק", "אייס", "שיא 4H", "שפל 4H", "שיא יומי", "שפל יומי", "שיא שבועי", "שפל שבועי", "OB לונג", "OB לונג", "OB שורט", "OB שורט", "סשן קודם", "סשן קודם", "אסיה", "אסיה", "בריכת נזילות", "בריכת נזילות")
+    nCands = array.from(rHi, rLo, h4H, h4L, dH, dL, wkH, wkL, obLTop, obLBot, obSTop, obSBot, prevSesH, prevSesL, asiaH, asiaL, poolHi, poolLo, npUp, npDn, zUp, zDn, pocNow)
+    nKinds = array.from("קריק", "אייס", "שיא 4H", "שפל 4H", "שיא יומי", "שפל יומי", "שיא שבועי", "שפל שבועי", "OB לונג", "OB לונג", "OB שורט", "OB שורט", "סשן קודם", "סשן קודם", "אסיה", "אסיה", "בריכת נזילות", "בריכת נזילות", "nPOC", "nPOC", "אזור עיגון", "אזור עיגון", "POC היום")
     nBest = 1e10
     for ni = 0 to array.size(nCands) - 1
         nlv = array.get(nCands, ni)
@@ -1606,65 +2002,6 @@ cvdLo20 = ta.lowest(cvd, 20)
 cvdHi20 = ta.highest(cvd, 20)
 cvdDivBull = low <= cvLo20[1] and cvd > cvdLo20[1]
 cvdDivBear = high >= cvHi20[1] and cvd < cvdHi20[1]
-// ─── תורת הרבעים (Daye): רבעים שבועי/יומי/90 דק', מודל AMD/XAMD ל-90 דק', True Opens, Judas — לטבלה ולמדידה (1.11) ───
-QT_TZ = "America/New_York"
-QT_MS = 60000.0
-qtHH = hour(time, QT_TZ)
-qtMM = minute(time, QT_TZ)
-qtOff = (qtHH * 60 + qtMM - 1080 + 1440) % 1440
-qtDayStart = time - qtOff * QT_MS - second(time, QT_TZ) * 1000
-int qtDayIdx = int(math.floor(qtOff / 360))
-int qtOff360 = qtOff % 360
-int qt90Idx = int(math.floor(qtOff360 / 90))
-qtDayQStart = qtDayStart + qtDayIdx * 360.0 * QT_MS
-qt90Start = qtDayQStart + qt90Idx * 90.0 * QT_MS
-qtTd = time + 21600000
-qtDow = dayofweek(qtTd, QT_TZ)
-qtDom = dayofmonth(qtTd, QT_TZ)
-qtNewDay = na(qtDom[1]) ? false : qtDom != qtDom[1]
-int qtWkIdx = qtDow == dayofweek.monday ? 0 : qtDow == dayofweek.tuesday ? 1 : qtDow == dayofweek.wednesday ? 2 : qtDow == dayofweek.thursday ? 3 : -1
-qtNew90 = na(qt90Start[1]) ? false : qt90Start != qt90Start[1]
-qtNewDayQ = na(qtDayQStart[1]) ? false : qtDayQStart != qtDayQStart[1]
-var float qtHi = na
-var float qtLo = na
-var float qtAvgR = na
-var string qtModel = "AMD"
-var float qtQ1Hi = na
-var float qtQ1Lo = na
-var bool qtJudasDone = false
-if qtNew90
-    if not na(qtHi)
-        float qr = qtHi - qtLo
-        qtAvgR := na(qtAvgR) ? qr : qtAvgR * 0.9 + qr * 0.1
-        if qt90Idx[1] == 0
-            qtQ1Hi := qtHi
-            qtQ1Lo := qtLo
-            qtModel := qr > qtAvgR * 1.35 ? "XAMD" : "AMD"
-    qtHi := high
-    qtLo := low
-    qtJudasDone := false
-else
-    qtHi := math.max(nz(qtHi, high), high)
-    qtLo := math.min(nz(qtLo, low), low)
-int qtManipIdx = qtModel == "AMD" ? 1 : 2
-qtInManip = qt90Idx == qtManipIdx
-qtInDist = qt90Idx == qtManipIdx + 1
-qtInAccum = qtModel == "AMD" ? qt90Idx == 0 : qt90Idx == 1
-var float qtTSO = na
-var float qtTDO = na
-var float qtTWO = na
-if qtNew90 and qt90Idx == 1
-    qtTSO := open
-if qtNewDayQ and qtDayIdx == 1
-    qtTDO := open
-if qtNewDay and qtDow == dayofweek.tuesday
-    qtTWO := open
-qtJudasBear = qtInManip and not qtJudasDone and not na(qtQ1Hi) and high > qtQ1Hi and close < qtQ1Hi
-qtJudasBull = qtInManip and not qtJudasDone and not na(qtQ1Lo) and low < qtQ1Lo and close > qtQ1Lo
-if (qtJudasBear or qtJudasBull) and barstate.isconfirmed
-    qtJudasDone := true
-f_qtPhHe(int idx, string md) => md == "AMD" ? (idx == 0 ? "צבירה" : idx == 1 ? "מניפולציה" : idx == 2 ? "חלוקה" : "המשך") : (idx == 0 ? "המשך" : idx == 1 ? "צבירה" : idx == 2 ? "מניפולציה" : "חלוקה")
-f_qtSide(float lvl) => na(lvl) ? "—" : close > lvl ? "מעל" : "מתחת"
 // ─── AVWAP מעוגן: True Day Open, True Session Open, שבועי (ב' 18:00 NY), וסווינג אחרון — כללים למדידה (1.15) ───
 var float avTdoPV = 0.0
 var float avTdoVV = 0.0
@@ -1768,6 +2105,8 @@ qL_tso = ta.barssince(tsoNow and spring) <= recN
 qS_tso = ta.barssince(tsoNow and utSig) <= recN
 qL_qtJudas = ta.barssince(qtJudasBull) <= recN
 qS_qtJudas = ta.barssince(qtJudasBear) <= recN
+qL_pocRt = ta.barssince(pRtL) <= recN
+qS_pocRt = ta.barssince(pRtS) <= recN
 qL_test = testOK
 qS_test = testOK
 qL_pd = not inPrem
@@ -1864,8 +2203,22 @@ qL_avwSlope = avwSlopeUp
 qS_avwSlope = avwSlopeDn
 qL_avwStack = not na(avwapD) and not na(avwapWK) and close > avwapD and close > avwapWK
 qS_avwStack = not na(avwapD) and not na(avwapWK) and close < avwapD and close < avwapWK
-qLvlL = tfMin < 15 ? ((qL_vixOk ? 1 : 0) + (qL_ddt ? 1 : 0) + (qL_phC ? 1 : 0) + (qL_reacc ? 1 : 0) + (qL_atSesLvl ? 1 : 0) + (qL_fvgAt ? 1 : 0) + (qL_htfMs ? 1 : 0) + (qL_ob ? 1 : 0) + (qL_sweep ? 1 : 0) + (qL_fvg ? 1 : 0) + (qL_judas ? 1 : 0) - ((qL_htfCD ? 1 : 0) + (qL_amdD ? 1 : 0) + (qL_vixHigh ? 1 : 0) + (qL_vixDiv ? 1 : 0) + (qL_shake ? 1 : 0) + (qL_conf4 ? 1 : 0) + (qL_smt ? 1 : 0) + (qL_bb ? 1 : 0) + (qL_bbSq ? 1 : 0) + (qL_phAB ? 1 : 0) + (qL_cTso ? 1 : 0) + (qL_rsi ? 1 : 0))) : ((qL_judas ? 1 : 0) + (qL_ob ? 1 : 0) + (qL_phC ? 1 : 0) + (qL_fvgAt ? 1 : 0) + (qL_sweep ? 1 : 0) + (qL_kz ? 1 : 0) + (qL_sesLon ? 1 : 0) + (qL_htfMs ? 1 : 0) + (qL_fvg ? 1 : 0) + (qL_ddt ? 1 : 0) - ((qL_phD ? 1 : 0) + (qL_conf4 ? 1 : 0) + (qL_volLow ? 1 : 0) + (qL_amdD ? 1 : 0) + (qL_cDir ? 1 : 0) + (qL_htfCD ? 1 : 0) + (qL_rrOk ? 1 : 0) + (qL_ifvg ? 1 : 0) + (qL_lps ? 1 : 0) + (qL_shake ? 1 : 0)))
-qLvlS = tfMin < 15 ? ((qS_vixOk ? 1 : 0) + (qS_ddt ? 1 : 0) + (qS_phC ? 1 : 0) + (qS_reacc ? 1 : 0) + (qS_atSesLvl ? 1 : 0) + (qS_fvgAt ? 1 : 0) + (qS_htfMs ? 1 : 0) + (qS_ob ? 1 : 0) + (qS_sweep ? 1 : 0) + (qS_fvg ? 1 : 0) + (qS_judas ? 1 : 0) - ((qS_htfCD ? 1 : 0) + (qS_amdD ? 1 : 0) + (qS_vixHigh ? 1 : 0) + (qS_vixDiv ? 1 : 0) + (qS_shake ? 1 : 0) + (qS_conf4 ? 1 : 0) + (qS_smt ? 1 : 0) + (qS_bb ? 1 : 0) + (qS_bbSq ? 1 : 0) + (qS_phAB ? 1 : 0) + (qS_cTso ? 1 : 0) + (qS_rsi ? 1 : 0))) : ((qS_judas ? 1 : 0) + (qS_ob ? 1 : 0) + (qS_phC ? 1 : 0) + (qS_fvgAt ? 1 : 0) + (qS_sweep ? 1 : 0) + (qS_kz ? 1 : 0) + (qS_sesLon ? 1 : 0) + (qS_htfMs ? 1 : 0) + (qS_fvg ? 1 : 0) + (qS_ddt ? 1 : 0) - ((qS_phD ? 1 : 0) + (qS_conf4 ? 1 : 0) + (qS_volLow ? 1 : 0) + (qS_amdD ? 1 : 0) + (qS_cDir ? 1 : 0) + (qS_htfCD ? 1 : 0) + (qS_rrOk ? 1 : 0) + (qS_ifvg ? 1 : 0) + (qS_lps ? 1 : 0) + (qS_shake ? 1 : 0)))
+qL_pocAt = pocAtL
+qS_pocAt = pocAtS
+qL_pocSide = not na(pocNow) and close > pocNow
+qS_pocSide = not na(pocNow) and close < pocNow
+qL_vaIn = vaIn
+qS_vaIn = vaIn
+qL_vaCheap = vaCheapL
+qS_vaCheap = vaCheapS
+qL_pocTrend = pocRising
+qS_pocTrend = pocFalling
+qL_ema12Ok = ema12OkL
+qS_ema12Ok = ema12OkS
+qL_ema12Side = close > ema12
+qS_ema12Side = close < ema12
+qLvlL = tfMin < 15 ? ((qL_vixOk ? 1 : 0) + (qL_ddt ? 1 : 0) + (qL_phC ? 1 : 0) + (qL_reacc ? 1 : 0) + (qL_atSesLvl ? 1 : 0) + (qL_fvgAt ? 1 : 0) + (qL_htfMs ? 1 : 0) + (qL_ob ? 1 : 0) + (qL_sweep ? 1 : 0) + (qL_fvg ? 1 : 0) + (qL_judas ? 1 : 0) + (qL_pocAt ? 1 : 0) + (qL_ema12Ok ? 1 : 0) - ((qL_htfCD ? 1 : 0) + (qL_amdD ? 1 : 0) + (qL_vixHigh ? 1 : 0) + (qL_vixDiv ? 1 : 0) + (qL_shake ? 1 : 0) + (qL_conf4 ? 1 : 0) + (qL_smt ? 1 : 0) + (qL_bb ? 1 : 0) + (qL_bbSq ? 1 : 0) + (qL_phAB ? 1 : 0) + (qL_cTso ? 1 : 0) + (qL_rsi ? 1 : 0))) : ((qL_judas ? 1 : 0) + (qL_ob ? 1 : 0) + (qL_phC ? 1 : 0) + (qL_fvgAt ? 1 : 0) + (qL_sweep ? 1 : 0) + (qL_kz ? 1 : 0) + (qL_sesLon ? 1 : 0) + (qL_htfMs ? 1 : 0) + (qL_fvg ? 1 : 0) + (qL_ddt ? 1 : 0) + (qL_pocAt ? 1 : 0) + (qL_ema12Ok ? 1 : 0) - ((qL_phD ? 1 : 0) + (qL_conf4 ? 1 : 0) + (qL_volLow ? 1 : 0) + (qL_amdD ? 1 : 0) + (qL_cDir ? 1 : 0) + (qL_htfCD ? 1 : 0) + (qL_rrOk ? 1 : 0) + (qL_ifvg ? 1 : 0) + (qL_lps ? 1 : 0) + (qL_shake ? 1 : 0)))
+qLvlS = tfMin < 15 ? ((qS_vixOk ? 1 : 0) + (qS_ddt ? 1 : 0) + (qS_phC ? 1 : 0) + (qS_reacc ? 1 : 0) + (qS_atSesLvl ? 1 : 0) + (qS_fvgAt ? 1 : 0) + (qS_htfMs ? 1 : 0) + (qS_ob ? 1 : 0) + (qS_sweep ? 1 : 0) + (qS_fvg ? 1 : 0) + (qS_judas ? 1 : 0) + (qS_pocAt ? 1 : 0) + (qS_ema12Ok ? 1 : 0) - ((qS_htfCD ? 1 : 0) + (qS_amdD ? 1 : 0) + (qS_vixHigh ? 1 : 0) + (qS_vixDiv ? 1 : 0) + (qS_shake ? 1 : 0) + (qS_conf4 ? 1 : 0) + (qS_smt ? 1 : 0) + (qS_bb ? 1 : 0) + (qS_bbSq ? 1 : 0) + (qS_phAB ? 1 : 0) + (qS_cTso ? 1 : 0) + (qS_rsi ? 1 : 0))) : ((qS_judas ? 1 : 0) + (qS_ob ? 1 : 0) + (qS_phC ? 1 : 0) + (qS_fvgAt ? 1 : 0) + (qS_sweep ? 1 : 0) + (qS_kz ? 1 : 0) + (qS_sesLon ? 1 : 0) + (qS_htfMs ? 1 : 0) + (qS_fvg ? 1 : 0) + (qS_ddt ? 1 : 0) + (qS_pocAt ? 1 : 0) + (qS_ema12Ok ? 1 : 0) - ((qS_phD ? 1 : 0) + (qS_conf4 ? 1 : 0) + (qS_volLow ? 1 : 0) + (qS_amdD ? 1 : 0) + (qS_cDir ? 1 : 0) + (qS_htfCD ? 1 : 0) + (qS_rrOk ? 1 : 0) + (qS_ifvg ? 1 : 0) + (qS_lps ? 1 : 0) + (qS_shake ? 1 : 0)))
 f_qsr(bool isL) =>
     string s = ""
     if isL ? atIceL : atCreekS
@@ -1887,10 +2240,10 @@ f_qsr(bool isL) =>
 qBufQ = stopBuf / 100.0
 qBrkL = qBrk and (bosUp or chochUp) and (phase == 3 or phase == 5) and barstate.isconfirmed
 qBrkS = qBrk and (bosDn or chochDn) and (phase == 3 or phase == 5) and barstate.isconfirmed
-qTrigL = flyLong ? "F" : wingLong ? "W" : obLong ? "O" : wSig ? "M" : buttcL ? "K" : qBrkL ? "B" : ""
-qTrigS = flyShort ? "F" : wingShort ? "W" : obShort ? "O" : mSig ? "M" : rbtiS ? "K" : qBrkS ? "B" : ""
-qStopL = flyLong ? math.min(nz(cExt, low), nz(lastPL, low)) * (1 - qBufQ) : wingLong ? nz(lastPL, low) * (1 - qBufQ) : obLong ? obLBot * (1 - qBufQ) : wSig ? nz(wLow2, low) * (1 - qBufQ) : buttcL ? math.min(low, jacLvl) * (1 - qBufQ) : nz(lastPL, low) * (1 - qBufQ)
-qStopS = flyShort ? math.max(nz(cExt, high), nz(lastPH, high)) * (1 + qBufQ) : wingShort ? nz(lastPH, high) * (1 + qBufQ) : obShort ? obSTop * (1 + qBufQ) : mSig ? nz(mHigh2, high) * (1 + qBufQ) : rbtiS ? math.max(high, jacLvl) * (1 + qBufQ) : nz(lastPH, high) * (1 + qBufQ)
+qTrigL = flyLong ? "F" : wingLong ? "W" : obLong ? "O" : wSig ? "M" : buttcL ? "K" : pRtL ? "P" : qBrkL ? "B" : ""
+qTrigS = flyShort ? "F" : wingShort ? "W" : obShort ? "O" : mSig ? "M" : rbtiS ? "K" : pRtS ? "P" : qBrkS ? "B" : ""
+qStopL = flyLong ? math.min(nz(cExt, low), nz(lastPL, low)) * (1 - qBufQ) : wingLong ? nz(lastPL, low) * (1 - qBufQ) : obLong ? obLBot * (1 - qBufQ) : wSig ? nz(wLow2, low) * (1 - qBufQ) : buttcL ? math.min(low, jacLvl) * (1 - qBufQ) : pRtL ? math.min(low, pocNow) * (1 - qBufQ) : nz(lastPL, low) * (1 - qBufQ)
+qStopS = flyShort ? math.max(nz(cExt, high), nz(lastPH, high)) * (1 + qBufQ) : wingShort ? nz(lastPH, high) * (1 + qBufQ) : obShort ? obSTop * (1 + qBufQ) : mSig ? nz(mHigh2, high) * (1 + qBufQ) : rbtiS ? math.max(high, jacLvl) * (1 + qBufQ) : pRtS ? math.max(high, pocNow) * (1 + qBufQ) : nz(lastPH, high) * (1 + qBufQ)
 qSigL = qOn and qTrigL != "" and close > qStopL
 qSigS = qOn and qTrigS != "" and close < qStopS
 qLvl = qSigL ? qLvlL : qSigS ? qLvlS : 0
@@ -1898,22 +2251,25 @@ qLvl = qSigL ? qLvlL : qSigS ? qLvlS : 0
 f_qp0(bool isL) => ((isL ? qL_bos : qS_bos) ? "\"bos\"," : "") + ((isL ? qL_choch : qS_choch) ? "\"choch\"," : "") + ((isL ? qL_sweep : qS_sweep) ? "\"sweep\"," : "") + (((isL ? qL_smt : qS_smt) and not (tfMin < 15 ? true : false)) ? "\"smt\"," : "") + ((isL ? qL_ismt : qS_ismt) ? "\"ismt\"," : "") + (((isL ? qL_ifvg : qS_ifvg) and not (tfMin < 15 ? false : true)) ? "\"ifvg\"," : "") + ((isL ? qL_fvg : qS_fvg) ? "\"fvg\"," : "") + ((isL ? qL_judas : qS_judas) ? "\"judas\"," : "") + ((isL ? qL_tweezer : qS_tweezer) ? "\"tweezer\"," : "") + ((isL ? qL_volC : qS_volC) ? "\"volC\"," : "") + (((isL ? qL_lps : qS_lps) and not (tfMin < 15 ? false : true)) ? "\"lps\"," : "") + ((isL ? qL_gap : qS_gap) ? "\"gap\"," : "") + ((isL ? qL_ob : qS_ob) ? "\"ob\"," : "") + ((isL ? qL_wm : qS_wm) ? "\"wm\"," : "") + ((isL ? qL_ddt : qS_ddt) ? "\"ddt\"," : "")
 f_qn0(bool isL) => (((isL ? qL_smt : qS_smt) and (tfMin < 15 ? true : false)) ? "\"smt\"," : "") + (((isL ? qL_ifvg : qS_ifvg) and (tfMin < 15 ? false : true)) ? "\"ifvg\"," : "") + ((isL ? qL_shake : qS_shake) ? "\"shake\"," : "") + (((isL ? qL_lps : qS_lps) and (tfMin < 15 ? false : true)) ? "\"lps\"," : "")
 f_qh0(bool isL) => ((isL ? qL_bos : qS_bos) ? "BOS · " : "") + ((isL ? qL_choch : qS_choch) ? "CHoCH · " : "") + ((isL ? qL_sweep : qS_sweep) ? "חטיפת נזילות · " : "") + (((isL ? qL_smt : qS_smt) and not (tfMin < 15 ? true : false)) ? "SMT · " : "") + ((isL ? qL_ismt : qS_ismt) ? "iSMT · " : "") + (((isL ? qL_ifvg : qS_ifvg) and not (tfMin < 15 ? false : true)) ? "iFVG · " : "") + ((isL ? qL_fvg : qS_fvg) ? "FVG חדש · " : "") + ((isL ? qL_judas : qS_judas) ? "ג'ודאס · " : "") + ((isL ? qL_tweezer : qS_tweezer) ? "צבת · " : "") + ((isL ? qL_volC : qS_volC) ? "C ווליום · " : "") + (((isL ? qL_lps : qS_lps) and not (tfMin < 15 ? false : true)) ? "LPS · " : "") + ((isL ? qL_gap : qS_gap) ? "גאפ · " : "") + ((isL ? qL_ob : qS_ob) ? "אורדר בלוק · " : "") + ((isL ? qL_wm : qS_wm) ? "W/M · " : "") + ((isL ? qL_ddt : qS_ddt) ? "DD/DT · " : "")
-f_qp1(bool isL) => ((isL ? qL_engulf : qS_engulf) ? "\"engulf\"," : "") + (((isL ? qL_bb : qS_bb) and not (tfMin < 15 ? true : false)) ? "\"bb\"," : "") + (((isL ? qL_rsi : qS_rsi) and not (tfMin < 15 ? true : false)) ? "\"rsi\"," : "") + ((isL ? qL_climax : qS_climax) ? "\"climax\"," : "") + ((isL ? qL_fvgAt : qS_fvgAt) ? "\"fvgAt\"," : "") + ((isL ? qL_ifvgAt : qS_ifvgAt) ? "\"ifvgAt\"," : "") + ((isL ? qL_atPool : qS_atPool) ? "\"atPool\"," : "") + ((isL ? qL_orBrk : qS_orBrk) ? "\"orBrk\"," : "") + ((isL ? qL_jac : qS_jac) ? "\"jac\"," : "") + ((isL ? qL_crkRt : qS_crkRt) ? "\"crkRt\"," : "") + ((isL ? qL_tso : qS_tso) ? "\"tso\"," : "") + ((isL ? qL_qtJudas : qS_qtJudas) ? "\"qtJudas\"," : "") + ((isL ? qL_test : qS_test) ? "\"test\"," : "") + ((isL ? qL_pd : qS_pd) ? "\"pd\"," : "") + ((isL ? qL_kz : qS_kz) ? "\"kz\"," : "") + ((isL ? qL_sesLon : qS_sesLon) ? "\"sesLon\"," : "")
+f_qp1(bool isL) => ((isL ? qL_engulf : qS_engulf) ? "\"engulf\"," : "") + (((isL ? qL_bb : qS_bb) and not (tfMin < 15 ? true : false)) ? "\"bb\"," : "") + (((isL ? qL_rsi : qS_rsi) and not (tfMin < 15 ? true : false)) ? "\"rsi\"," : "") + ((isL ? qL_climax : qS_climax) ? "\"climax\"," : "") + ((isL ? qL_fvgAt : qS_fvgAt) ? "\"fvgAt\"," : "") + ((isL ? qL_ifvgAt : qS_ifvgAt) ? "\"ifvgAt\"," : "") + ((isL ? qL_atPool : qS_atPool) ? "\"atPool\"," : "") + ((isL ? qL_orBrk : qS_orBrk) ? "\"orBrk\"," : "") + ((isL ? qL_jac : qS_jac) ? "\"jac\"," : "") + ((isL ? qL_crkRt : qS_crkRt) ? "\"crkRt\"," : "") + ((isL ? qL_tso : qS_tso) ? "\"tso\"," : "") + ((isL ? qL_qtJudas : qS_qtJudas) ? "\"qtJudas\"," : "") + ((isL ? qL_pocRt : qS_pocRt) ? "\"pocRt\"," : "") + ((isL ? qL_test : qS_test) ? "\"test\"," : "") + ((isL ? qL_pd : qS_pd) ? "\"pd\"," : "") + ((isL ? qL_kz : qS_kz) ? "\"kz\"," : "")
 f_qn1(bool isL) => (((isL ? qL_bb : qS_bb) and (tfMin < 15 ? true : false)) ? "\"bb\"," : "") + (((isL ? qL_rsi : qS_rsi) and (tfMin < 15 ? true : false)) ? "\"rsi\"," : "")
-f_qh1(bool isL) => ((isL ? qL_engulf : qS_engulf) ? "בולען · " : "") + (((isL ? qL_bb : qS_bb) and not (tfMin < 15 ? true : false)) ? "בולינגר · " : "") + (((isL ? qL_rsi : qS_rsi) and not (tfMin < 15 ? true : false)) ? "RSI · " : "") + ((isL ? qL_climax : qS_climax) ? "קליימקס · " : "") + ((isL ? qL_fvgAt : qS_fvgAt) ? "מ-FVG · " : "") + ((isL ? qL_ifvgAt : qS_ifvgAt) ? "מ-iFVG · " : "") + ((isL ? qL_atPool : qS_atPool) ? "בריכה · " : "") + ((isL ? qL_orBrk : qS_orBrk) ? "פריצת OR · " : "") + ((isL ? qL_jac : qS_jac) ? "JAC/FTI — קפיצה מעבר לקריק/אייס · " : "") + ((isL ? qL_crkRt : qS_crkRt) ? "BUTTC/RBTI — ריטסט הקריק/אייס · " : "") + ((isL ? qL_tso : qS_tso) ? "ניעור סופי (TSO/TUT) · " : "") + ((isL ? qL_qtJudas : qS_qtJudas) ? "ג'ודאס של הרבע (תורת הרבעים) · " : "") + ((isL ? qL_test : qS_test) ? "טסט · " : "") + ((isL ? qL_pd : qS_pd) ? "פרימיום/דיסקאונט · " : "") + ((isL ? qL_kz : qS_kz) ? "קיל-זון · " : "") + ((isL ? qL_sesLon : qS_sesLon) ? "לונדון · " : "")
-f_qp2(bool isL) => ((isL ? qL_sesNY : qS_sesNY) ? "\"sesNY\"," : "") + ((isL ? qL_sesAsia : qS_sesAsia) ? "\"sesAsia\"," : "") + ((isL ? qL_phC : qS_phC) ? "\"phC\"," : "") + (((isL ? qL_phD : qS_phD) and not (tfMin < 15 ? false : true)) ? "\"phD\"," : "") + ((isL ? qL_phE : qS_phE) ? "\"phE\"," : "") + (((isL ? qL_phAB : qS_phAB) and not (tfMin < 15 ? true : false)) ? "\"phAB\"," : "") + (((isL ? qL_cDir : qS_cDir) and not (tfMin < 15 ? false : true)) ? "\"cDir\"," : "") + ((isL ? qL_clues3 : qS_clues3) ? "\"clues3\"," : "") + (((isL ? qL_volLow : qS_volLow) and not (tfMin < 15 ? false : true)) ? "\"volLow\"," : "") + ((isL ? qL_htfMs : qS_htfMs) ? "\"htfMs\"," : "") + (((isL ? qL_rrOk : qS_rrOk) and not (tfMin < 15 ? false : true)) ? "\"rrOk\"," : "") + ((isL ? qL_atEdge : qS_atEdge) ? "\"atEdge\"," : "") + ((isL ? qL_atHtfLvl : qS_atHtfLvl) ? "\"atHtfLvl\"," : "")
+f_qh1(bool isL) => ((isL ? qL_engulf : qS_engulf) ? "בולען · " : "") + (((isL ? qL_bb : qS_bb) and not (tfMin < 15 ? true : false)) ? "בולינגר · " : "") + (((isL ? qL_rsi : qS_rsi) and not (tfMin < 15 ? true : false)) ? "RSI · " : "") + ((isL ? qL_climax : qS_climax) ? "קליימקס · " : "") + ((isL ? qL_fvgAt : qS_fvgAt) ? "מ-FVG · " : "") + ((isL ? qL_ifvgAt : qS_ifvgAt) ? "מ-iFVG · " : "") + ((isL ? qL_atPool : qS_atPool) ? "בריכה · " : "") + ((isL ? qL_orBrk : qS_orBrk) ? "פריצת OR · " : "") + ((isL ? qL_jac : qS_jac) ? "JAC/FTI — קפיצה מעבר לקריק/אייס · " : "") + ((isL ? qL_crkRt : qS_crkRt) ? "BUTTC/RBTI — ריטסט הקריק/אייס · " : "") + ((isL ? qL_tso : qS_tso) ? "ניעור סופי (TSO/TUT) · " : "") + ((isL ? qL_qtJudas : qS_qtJudas) ? "ג'ודאס של הרבע (תורת הרבעים) · " : "") + ((isL ? qL_pocRt : qS_pocRt) ? "ריטסט POC של היום (טריגר P) · " : "") + ((isL ? qL_test : qS_test) ? "טסט · " : "") + ((isL ? qL_pd : qS_pd) ? "פרימיום/דיסקאונט · " : "") + ((isL ? qL_kz : qS_kz) ? "קיל-זון · " : "")
+f_qp2(bool isL) => ((isL ? qL_sesLon : qS_sesLon) ? "\"sesLon\"," : "") + ((isL ? qL_sesNY : qS_sesNY) ? "\"sesNY\"," : "") + ((isL ? qL_sesAsia : qS_sesAsia) ? "\"sesAsia\"," : "") + ((isL ? qL_phC : qS_phC) ? "\"phC\"," : "") + (((isL ? qL_phD : qS_phD) and not (tfMin < 15 ? false : true)) ? "\"phD\"," : "") + ((isL ? qL_phE : qS_phE) ? "\"phE\"," : "") + (((isL ? qL_phAB : qS_phAB) and not (tfMin < 15 ? true : false)) ? "\"phAB\"," : "") + (((isL ? qL_cDir : qS_cDir) and not (tfMin < 15 ? false : true)) ? "\"cDir\"," : "") + ((isL ? qL_clues3 : qS_clues3) ? "\"clues3\"," : "") + (((isL ? qL_volLow : qS_volLow) and not (tfMin < 15 ? false : true)) ? "\"volLow\"," : "") + ((isL ? qL_htfMs : qS_htfMs) ? "\"htfMs\"," : "") + (((isL ? qL_rrOk : qS_rrOk) and not (tfMin < 15 ? false : true)) ? "\"rrOk\"," : "") + ((isL ? qL_atEdge : qS_atEdge) ? "\"atEdge\"," : "")
 f_qn2(bool isL) => (((isL ? qL_phD : qS_phD) and (tfMin < 15 ? false : true)) ? "\"phD\"," : "") + (((isL ? qL_phAB : qS_phAB) and (tfMin < 15 ? true : false)) ? "\"phAB\"," : "") + (((isL ? qL_cDir : qS_cDir) and (tfMin < 15 ? false : true)) ? "\"cDir\"," : "") + (((isL ? qL_volLow : qS_volLow) and (tfMin < 15 ? false : true)) ? "\"volLow\"," : "") + ((isL ? qL_htfCD : qS_htfCD) ? "\"htfCD\"," : "") + ((isL ? qL_amdD : qS_amdD) ? "\"amdD\"," : "") + ((isL ? qL_conf4 : qS_conf4) ? "\"conf4\"," : "") + (((isL ? qL_rrOk : qS_rrOk) and (tfMin < 15 ? false : true)) ? "\"rrOk\"," : "")
-f_qh2(bool isL) => ((isL ? qL_sesNY : qS_sesNY) ? "ניו-יורק · " : "") + ((isL ? qL_sesAsia : qS_sesAsia) ? "אסיה · " : "") + ((isL ? qL_phC : qS_phC) ? "פאזה C · " : "") + (((isL ? qL_phD : qS_phD) and not (tfMin < 15 ? false : true)) ? "פאזה D · " : "") + ((isL ? qL_phE : qS_phE) ? "פאזה E · " : "") + (((isL ? qL_phAB : qS_phAB) and not (tfMin < 15 ? true : false)) ? "פאזה A/B · " : "") + (((isL ? qL_cDir : qS_cDir) and not (tfMin < 15 ? false : true)) ? "כיוון C · " : "") + ((isL ? qL_clues3 : qS_clues3) ? "3 רמזים · " : "") + (((isL ? qL_volLow : qS_volLow) and not (tfMin < 15 ? false : true)) ? "ווליום נמוך · " : "") + ((isL ? qL_htfMs : qS_htfMs) ? "מבנה HTF · " : "") + (((isL ? qL_rrOk : qS_rrOk) and not (tfMin < 15 ? false : true)) ? "1:3 · " : "") + ((isL ? qL_atEdge : qS_atEdge) ? "אייס/קריק · " : "") + ((isL ? qL_atHtfLvl : qS_atHtfLvl) ? "רמת HTF · " : "")
-f_qp3(bool isL) => ((isL ? qL_atSesLvl : qS_atSesLvl) ? "\"atSesLvl\"," : "") + (((isL ? qL_bbSq : qS_bbSq) and not (tfMin < 15 ? true : false)) ? "\"bbSq\"," : "") + ((isL ? qL_vixOk : qS_vixOk) ? "\"vixOk\"," : "") + (((isL ? qL_vixHigh : qS_vixHigh) and not (tfMin < 15 ? true : false)) ? "\"vixHigh\"," : "") + ((isL ? qL_vixSpike : qS_vixSpike) ? "\"vixSpike\"," : "") + (((isL ? qL_vixDiv : qS_vixDiv) and not (tfMin < 15 ? true : false)) ? "\"vixDiv\"," : "") + ((isL ? qL_dq2 : qS_dq2) ? "\"dq2\"," : "") + ((isL ? qL_dq3 : qS_dq3) ? "\"dq3\"," : "") + ((isL ? qL_dqMag : qS_dqMag) ? "\"dqMag\"," : "") + (((isL ? qL_cTso : qS_cTso) and not (tfMin < 15 ? true : false)) ? "\"cTso\"," : "") + ((isL ? qL_reacc : qS_reacc) ? "\"reacc\"," : "") + ((isL ? qL_avwapD : qS_avwapD) ? "\"avwapD\"," : "") + ((isL ? qL_avwapRt : qS_avwapRt) ? "\"avwapRt\"," : "") + ((isL ? qL_cvdOk : qS_cvdOk) ? "\"cvdOk\"," : "") + ((isL ? qL_cvdDiv : qS_cvdDiv) ? "\"cvdDiv\"," : "") + ((isL ? qL_qtAccum : qS_qtAccum) ? "\"qtAccum\"," : "")
+f_qh2(bool isL) => ((isL ? qL_sesLon : qS_sesLon) ? "לונדון · " : "") + ((isL ? qL_sesNY : qS_sesNY) ? "ניו-יורק · " : "") + ((isL ? qL_sesAsia : qS_sesAsia) ? "אסיה · " : "") + ((isL ? qL_phC : qS_phC) ? "פאזה C · " : "") + (((isL ? qL_phD : qS_phD) and not (tfMin < 15 ? false : true)) ? "פאזה D · " : "") + ((isL ? qL_phE : qS_phE) ? "פאזה E · " : "") + (((isL ? qL_phAB : qS_phAB) and not (tfMin < 15 ? true : false)) ? "פאזה A/B · " : "") + (((isL ? qL_cDir : qS_cDir) and not (tfMin < 15 ? false : true)) ? "כיוון C · " : "") + ((isL ? qL_clues3 : qS_clues3) ? "3 רמזים · " : "") + (((isL ? qL_volLow : qS_volLow) and not (tfMin < 15 ? false : true)) ? "ווליום נמוך · " : "") + ((isL ? qL_htfMs : qS_htfMs) ? "מבנה HTF · " : "") + (((isL ? qL_rrOk : qS_rrOk) and not (tfMin < 15 ? false : true)) ? "1:3 · " : "") + ((isL ? qL_atEdge : qS_atEdge) ? "אייס/קריק · " : "")
+f_qp3(bool isL) => ((isL ? qL_atHtfLvl : qS_atHtfLvl) ? "\"atHtfLvl\"," : "") + ((isL ? qL_atSesLvl : qS_atSesLvl) ? "\"atSesLvl\"," : "") + (((isL ? qL_bbSq : qS_bbSq) and not (tfMin < 15 ? true : false)) ? "\"bbSq\"," : "") + ((isL ? qL_vixOk : qS_vixOk) ? "\"vixOk\"," : "") + (((isL ? qL_vixHigh : qS_vixHigh) and not (tfMin < 15 ? true : false)) ? "\"vixHigh\"," : "") + ((isL ? qL_vixSpike : qS_vixSpike) ? "\"vixSpike\"," : "") + (((isL ? qL_vixDiv : qS_vixDiv) and not (tfMin < 15 ? true : false)) ? "\"vixDiv\"," : "") + ((isL ? qL_dq2 : qS_dq2) ? "\"dq2\"," : "") + ((isL ? qL_dq3 : qS_dq3) ? "\"dq3\"," : "") + ((isL ? qL_dqMag : qS_dqMag) ? "\"dqMag\"," : "") + (((isL ? qL_cTso : qS_cTso) and not (tfMin < 15 ? true : false)) ? "\"cTso\"," : "") + ((isL ? qL_reacc : qS_reacc) ? "\"reacc\"," : "") + ((isL ? qL_avwapD : qS_avwapD) ? "\"avwapD\"," : "") + ((isL ? qL_avwapRt : qS_avwapRt) ? "\"avwapRt\"," : "") + ((isL ? qL_cvdOk : qS_cvdOk) ? "\"cvdOk\"," : "") + ((isL ? qL_cvdDiv : qS_cvdDiv) ? "\"cvdDiv\"," : "")
 f_qn3(bool isL) => (((isL ? qL_bbSq : qS_bbSq) and (tfMin < 15 ? true : false)) ? "\"bbSq\"," : "") + (((isL ? qL_vixHigh : qS_vixHigh) and (tfMin < 15 ? true : false)) ? "\"vixHigh\"," : "") + (((isL ? qL_vixDiv : qS_vixDiv) and (tfMin < 15 ? true : false)) ? "\"vixDiv\"," : "") + (((isL ? qL_cTso : qS_cTso) and (tfMin < 15 ? true : false)) ? "\"cTso\"," : "")
-f_qh3(bool isL) => ((isL ? qL_atSesLvl : qS_atSesLvl) ? "רמת סשן · " : "") + (((isL ? qL_bbSq : qS_bbSq) and not (tfMin < 15 ? true : false)) ? "סקוויז · " : "") + ((isL ? qL_vixOk : qS_vixOk) ? "VIX תומך · " : "") + (((isL ? qL_vixHigh : qS_vixHigh) and not (tfMin < 15 ? true : false)) ? "VIX מעל 20 · " : "") + ((isL ? qL_vixSpike : qS_vixSpike) ? "זינוק VIX · " : "") + (((isL ? qL_vixDiv : qS_vixDiv) and not (tfMin < 15 ? true : false)) ? "דיברגנס VIX · " : "") + ((isL ? qL_dq2 : qS_dq2) ? "איכות D ≥ 2 · " : "") + ((isL ? qL_dq3 : qS_dq3) ? "איכות D ≥ 3 · " : "") + ((isL ? qL_dqMag : qS_dqMag) ? "מגנט לקריק/אייס · " : "") + (((isL ? qL_cTso : qS_cTso) and not (tfMin < 15 ? true : false)) ? "C עם ניעור סופי · " : "") + ((isL ? qL_reacc : qS_reacc) ? "איסוף/פיזור חוזר · " : "") + ((isL ? qL_avwapD : qS_avwapD) ? "בצד הנכון של AVWAP יומי · " : "") + ((isL ? qL_avwapRt : qS_avwapRt) ? "ריטסט AVWAP יומי · " : "") + ((isL ? qL_cvdOk : qS_cvdOk) ? "CVD בכיוון (5 נרות) · " : "") + ((isL ? qL_cvdDiv : qS_cvdDiv) ? "דיברגנס CVD (20 נרות) · " : "") + ((isL ? qL_qtAccum : qS_qtAccum) ? "רבע צבירה (90 דק') · " : "")
-f_qp4(bool isL) => ((isL ? qL_qtManip : qS_qtManip) ? "\"qtManip\"," : "") + ((isL ? qL_qtDist : qS_qtDist) ? "\"qtDist\"," : "") + ((isL ? qL_qtDayLon : qS_qtDayLon) ? "\"qtDayLon\"," : "") + ((isL ? qL_tdoDisc : qS_tdoDisc) ? "\"tdoDisc\"," : "") + ((isL ? qL_tsoDisc : qS_tsoDisc) ? "\"tsoDisc\"," : "") + ((isL ? qL_twoDisc : qS_twoDisc) ? "\"twoDisc\"," : "") + ((isL ? qL_avwTdoSide : qS_avwTdoSide) ? "\"avwTdoSide\"," : "") + ((isL ? qL_avwTdoRt : qS_avwTdoRt) ? "\"avwTdoRt\"," : "") + ((isL ? qL_avwWkSide : qS_avwWkSide) ? "\"avwWkSide\"," : "") + ((isL ? qL_avwSwRt : qS_avwSwRt) ? "\"avwSwRt\"," : "") + ((isL ? qL_avwSlope : qS_avwSlope) ? "\"avwSlope\"," : "") + ((isL ? qL_avwStack : qS_avwStack) ? "\"avwStack\"," : "")
+f_qh3(bool isL) => ((isL ? qL_atHtfLvl : qS_atHtfLvl) ? "רמת HTF · " : "") + ((isL ? qL_atSesLvl : qS_atSesLvl) ? "רמת סשן · " : "") + (((isL ? qL_bbSq : qS_bbSq) and not (tfMin < 15 ? true : false)) ? "סקוויז · " : "") + ((isL ? qL_vixOk : qS_vixOk) ? "VIX תומך · " : "") + (((isL ? qL_vixHigh : qS_vixHigh) and not (tfMin < 15 ? true : false)) ? "VIX מעל 20 · " : "") + ((isL ? qL_vixSpike : qS_vixSpike) ? "זינוק VIX · " : "") + (((isL ? qL_vixDiv : qS_vixDiv) and not (tfMin < 15 ? true : false)) ? "דיברגנס VIX · " : "") + ((isL ? qL_dq2 : qS_dq2) ? "איכות D ≥ 2 · " : "") + ((isL ? qL_dq3 : qS_dq3) ? "איכות D ≥ 3 · " : "") + ((isL ? qL_dqMag : qS_dqMag) ? "מגנט לקריק/אייס · " : "") + (((isL ? qL_cTso : qS_cTso) and not (tfMin < 15 ? true : false)) ? "C עם ניעור סופי · " : "") + ((isL ? qL_reacc : qS_reacc) ? "איסוף/פיזור חוזר · " : "") + ((isL ? qL_avwapD : qS_avwapD) ? "בצד הנכון של AVWAP יומי · " : "") + ((isL ? qL_avwapRt : qS_avwapRt) ? "ריטסט AVWAP יומי · " : "") + ((isL ? qL_cvdOk : qS_cvdOk) ? "CVD בכיוון (5 נרות) · " : "") + ((isL ? qL_cvdDiv : qS_cvdDiv) ? "דיברגנס CVD (20 נרות) · " : "")
+f_qp4(bool isL) => ((isL ? qL_qtAccum : qS_qtAccum) ? "\"qtAccum\"," : "") + ((isL ? qL_qtManip : qS_qtManip) ? "\"qtManip\"," : "") + ((isL ? qL_qtDist : qS_qtDist) ? "\"qtDist\"," : "") + ((isL ? qL_qtDayLon : qS_qtDayLon) ? "\"qtDayLon\"," : "") + ((isL ? qL_tdoDisc : qS_tdoDisc) ? "\"tdoDisc\"," : "") + ((isL ? qL_tsoDisc : qS_tsoDisc) ? "\"tsoDisc\"," : "") + ((isL ? qL_twoDisc : qS_twoDisc) ? "\"twoDisc\"," : "") + ((isL ? qL_avwTdoSide : qS_avwTdoSide) ? "\"avwTdoSide\"," : "") + ((isL ? qL_avwTdoRt : qS_avwTdoRt) ? "\"avwTdoRt\"," : "") + ((isL ? qL_avwWkSide : qS_avwWkSide) ? "\"avwWkSide\"," : "") + ((isL ? qL_avwSwRt : qS_avwSwRt) ? "\"avwSwRt\"," : "") + ((isL ? qL_avwSlope : qS_avwSlope) ? "\"avwSlope\"," : "") + ((isL ? qL_avwStack : qS_avwStack) ? "\"avwStack\"," : "") + ((isL ? qL_pocAt : qS_pocAt) ? "\"pocAt\"," : "") + ((isL ? qL_pocSide : qS_pocSide) ? "\"pocSide\"," : "") + ((isL ? qL_vaIn : qS_vaIn) ? "\"vaIn\"," : "")
 f_qn4(bool isL) => ""
-f_qh4(bool isL) => ((isL ? qL_qtManip : qS_qtManip) ? "רבע מניפולציה (90 דק') · " : "") + ((isL ? qL_qtDist : qS_qtDist) ? "רבע חלוקה (90 דק') · " : "") + ((isL ? qL_qtDayLon : qS_qtDayLon) ? "רבע יומי 2 (לונדון, מניפולציה של היום) · " : "") + ((isL ? qL_tdoDisc : qS_tdoDisc) ? "בצד הזול של True Day Open · " : "") + ((isL ? qL_tsoDisc : qS_tsoDisc) ? "בצד הזול של True Session Open · " : "") + ((isL ? qL_twoDisc : qS_twoDisc) ? "בצד הזול של True Weekly Open · " : "") + ((isL ? qL_avwTdoSide : qS_avwTdoSide) ? "בצד הנכון של AVWAP מ-True Day Open · " : "") + ((isL ? qL_avwTdoRt : qS_avwTdoRt) ? "ריטסט AVWAP מ-True Day Open · " : "") + ((isL ? qL_avwWkSide : qS_avwWkSide) ? "בצד הנכון של AVWAP שבועי · " : "") + ((isL ? qL_avwSwRt : qS_avwSwRt) ? "ריטסט AVWAP מהסווינג האחרון · " : "") + ((isL ? qL_avwSlope : qS_avwSlope) ? "שיפוע AVWAP יומי בכיוון · " : "") + ((isL ? qL_avwStack : qS_avwStack) ? "מעל/מתחת גם AVWAP יומי וגם שבועי · " : "")
+f_qh4(bool isL) => ((isL ? qL_qtAccum : qS_qtAccum) ? "רבע צבירה (90 דק') · " : "") + ((isL ? qL_qtManip : qS_qtManip) ? "רבע מניפולציה (90 דק') · " : "") + ((isL ? qL_qtDist : qS_qtDist) ? "רבע חלוקה (90 דק') · " : "") + ((isL ? qL_qtDayLon : qS_qtDayLon) ? "רבע יומי 2 (לונדון, מניפולציה של היום) · " : "") + ((isL ? qL_tdoDisc : qS_tdoDisc) ? "בצד הזול של True Day Open · " : "") + ((isL ? qL_tsoDisc : qS_tsoDisc) ? "בצד הזול של True Session Open · " : "") + ((isL ? qL_twoDisc : qS_twoDisc) ? "בצד הזול של True Weekly Open · " : "") + ((isL ? qL_avwTdoSide : qS_avwTdoSide) ? "בצד הנכון של AVWAP מ-True Day Open · " : "") + ((isL ? qL_avwTdoRt : qS_avwTdoRt) ? "ריטסט AVWAP מ-True Day Open · " : "") + ((isL ? qL_avwWkSide : qS_avwWkSide) ? "בצד הנכון של AVWAP שבועי · " : "") + ((isL ? qL_avwSwRt : qS_avwSwRt) ? "ריטסט AVWAP מהסווינג האחרון · " : "") + ((isL ? qL_avwSlope : qS_avwSlope) ? "שיפוע AVWAP יומי בכיוון · " : "") + ((isL ? qL_avwStack : qS_avwStack) ? "מעל/מתחת גם AVWAP יומי וגם שבועי · " : "") + ((isL ? qL_pocAt : qS_pocAt) ? "על ה-POC של היום (נגיעה וסגירה בכיוון) · " : "") + ((isL ? qL_pocSide : qS_pocSide) ? "בצד הנכון של POC היום · " : "") + ((isL ? qL_vaIn : qS_vaIn) ? "בתוך אזור הערך של היום · " : "")
+f_qp5(bool isL) => ((isL ? qL_vaCheap : qS_vaCheap) ? "\"vaCheap\"," : "") + ((isL ? qL_pocTrend : qS_pocTrend) ? "\"pocTrend\"," : "") + ((isL ? qL_ema12Ok : qS_ema12Ok) ? "\"ema12Ok\"," : "") + ((isL ? qL_ema12Side : qS_ema12Side) ? "\"ema12Side\"," : "")
+f_qn5(bool isL) => ""
+f_qh5(bool isL) => ((isL ? qL_vaCheap : qS_vaCheap) ? "בצד הזול של אזור הערך (מתחת ל-VAL ללונג / מעל VAH לשורט) · " : "") + ((isL ? qL_pocTrend : qS_pocTrend) ? "POC היום זז בכיוון (12 נרות) · " : "") + ((isL ? qL_ema12Ok : qS_ema12Ok) ? "EMA 12 — בצד הנכון ובשיפוע בכיוון · " : "") + ((isL ? qL_ema12Side : qS_ema12Side) ? "בצד הנכון של EMA 12 · " : "")
 qIsL = qSigL
-qPosJ0 = f_qp0(qIsL) + f_qp1(qIsL) + f_qp2(qIsL) + f_qp3(qIsL) + f_qp4(qIsL)
-qNegJ0 = f_qn0(qIsL) + f_qn1(qIsL) + f_qn2(qIsL) + f_qn3(qIsL) + f_qn4(qIsL)
-qHe0 = f_qh0(qIsL) + f_qh1(qIsL) + f_qh2(qIsL) + f_qh3(qIsL) + f_qh4(qIsL)
+qPosJ0 = f_qp0(qIsL) + f_qp1(qIsL) + f_qp2(qIsL) + f_qp3(qIsL) + f_qp4(qIsL) + f_qp5(qIsL)
+qNegJ0 = f_qn0(qIsL) + f_qn1(qIsL) + f_qn2(qIsL) + f_qn3(qIsL) + f_qn4(qIsL) + f_qn5(qIsL)
+qHe0 = f_qh0(qIsL) + f_qh1(qIsL) + f_qh2(qIsL) + f_qh3(qIsL) + f_qh4(qIsL) + f_qh5(qIsL)
 qPosJ = str.length(qPosJ0) > 0 ? str.substring(qPosJ0, 0, str.length(qPosJ0) - 1) : ""
 qNegJ = str.length(qNegJ0) > 0 ? str.substring(qNegJ0, 0, str.length(qNegJ0) - 1) : ""
 qHeS = str.length(qHe0) > 3 ? str.substring(qHe0, 0, str.length(qHe0) - 3) : ""

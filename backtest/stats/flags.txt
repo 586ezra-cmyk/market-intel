@@ -26,6 +26,7 @@ jac
 crkRt
 tso
 qtJudas
+pocRt
 test
 pd
 kz
@@ -74,3 +75,10 @@ avwWkSide
 avwSwRt
 avwSlope
 avwStack
+pocAt
+pocSide
+vaIn
+vaCheap
+pocTrend
+ema12Ok
+ema12Side

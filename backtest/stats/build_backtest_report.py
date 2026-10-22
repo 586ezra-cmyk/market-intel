@@ -12,7 +12,7 @@ IDX = {k: i for i, k in enumerate(FLAGS)}
 LV = json.loads((ROOT.parents[1] / 'apps/web/public/htt-backtest/levels.json').read_text(encoding='utf-8'))
 POS, NEG = LV['pos'], LV['neg']
 TF_HE = {'5': '5 דקות', '15': '15 דקות', '240': '4 שעות'}
-COURSE = ['F', 'W', 'O', 'M', 'B', 'K']
+COURSE = ['F', 'W', 'O', 'M', 'B', 'K', 'P']
 
 def level_of(flags, res=None):
     """רמה = אישורים בעד − אישורים נגד. 5m: רשימת perTf.5 (B); שאר המסגרות: הרשימה הראשית"""

@@ -6,10 +6,11 @@ gM = "מודולים"
 mFly  = input.bool(true,  "טיסה לונג+שורט",        group=gM)
 mWing = input.bool(true,  "שבירת כנף",             group=gM)
 mOB   = input.bool(true,  "אורדר בלוק",            group=gM)
-mWM   = input.bool(true,  "W/M + דאבל/צבת",        group=gM)
+mWM   = input.bool(true,  "W/M + דאבל",             group=gM)
 mMC   = input.bool(false, "מונטה קרלו",            group=gM)
-mFVG  = input.bool(false, "FVG / iFVG",            group=gM)
-mSMT  = input.bool(false, "SMT / iSMT",            group=gM)
+mFVG  = input.bool(true,  "FVG / iFVG",            group=gM)
+mSMT  = input.bool(true,  "SMT / iSMT (צמד קבוע של הקורס)", group=gM)
+mPOC  = input.bool(true,  "ריטסט POC (P) — ווליום פרופייל", group=gM)
 mLiq  = input.bool(true,  "נזילות + Judas",        group=gM)
 
 g0 = "ליבה"
@@ -21,7 +22,6 @@ cVolK   = input.float(0.8, "C: יחס ווליום מ-A", minval=0.3, step=0.1, 
 tolAtr  = input.float(0.25, "טולרנס שוויון (ATR)", minval=0.05, step=0.05, group=g0)
 obDepth = input.float(21.0, "OB: עומק כניסה באזור %", minval=0, maxval=100, step=1, group=g0)
 flyStrict = input.bool(false, "טיסה קפדנית — רק בפאזה D (הקורס); כבוי = C או D", group=g0)
-twzTol = input.float(1.0, "צבת: הפרש מקסימלי בין השפלים/השיאים (נקודות)", minval=0.0, step=0.25, group=g0)
 rsiLen = input.int(14, "RSI: אורך (הקורס: הרגיל)", minval=2, group=g0)
 rsiHi = input.int(70, "RSI: רמה גבוהה", minval=50, maxval=95, group=g0)
 rsiLo = input.int(30, "RSI: רמה נמוכה", minval=5, maxval=50, group=g0)
@@ -29,6 +29,7 @@ sqBars  = input.int(8, "אורך התכווצות", minval=4, group=g0)
 sqAtrK  = input.float(2.5, "רוחב התכווצות (ATR)", minval=0.5, step=0.5, group=g0)
 targetR = input.float(3.0, "יעד בדיקה (R)", minval=0.5, step=0.5, group=g0)
 stopBuf = input.float(0.1, "מרווח סטופ %", minval=0.0, step=0.05, group=g0)
+emaLen = input.int(12, "EMA — אישור כיוון: מעל/מתחת + שיפוע (המשתמש 22.10)", minval=2, group=g0)
 
 gS = "סשנים (שעון ישראל)"
 sesAsia = input.session("0200-1000", "אסיה", group=gS)
@@ -36,13 +37,24 @@ sesLon  = input.session("1000-1800", "לונדון", group=gS)
 sesNY   = input.session("1800-0100", "ניו יורק", group=gS)
 orMin   = input.int(15, "טווח פתיחה (דקות)", minval=5, group=gS)
 
+gVP = "ווליום פרופייל (המחקר 19)"
+vpOn = input.bool(true, "לחשב: POC היום, אזור ערך (VAH/VAL), nPOC, אזורי עיגון", group=gVP)
+vpBins = input.int(120, "רזולוציה — תאי מחיר ל-ATR יומי", minval=30, maxval=400, group=gVP)
+vpVA = input.float(70, "אזור ערך — % מהווליום", minval=50, maxval=90, step=5, group=gVP)
+vpMinBars = input.int(12, "POC היום תקף אחרי N נרות", minval=1, maxval=200, group=gVP)
+pocLeaveAtr = input.float(1.0, "ריטסט POC — המחיר יצא מהערך לפחות X ATR ב-10 הנרות שלפני החזרה", minval=0.0, step=0.25, group=gVP)
+pocTolAtr = input.float(0.35, "ריטסט POC / 'על ה-POC' — מרחק (ATR)", minval=0.05, step=0.05, group=gVP)
+zBarsN = input.int(300, "אזורי עיגון: חלון חישוב (נרות)", minval=50, maxval=1500, group=gVP)
+zEvery = input.int(20, "אזורי עיגון: חישוב מחדש כל N נרות", minval=1, maxval=200, group=gVP)
+zHalf = input.float(0.5, "אזורי עיגון: רוחב = תאים עם ווליום ≥ X מהשיא", minval=0.2, maxval=0.9, step=0.05, group=gVP)
+
 gW = "חיבור"
 secret = input.string("dev-secret", "Secret", group=gW)
 asset2Mode = input.string("אוטומטי", "נכס מתואם (SMT)", options=["אוטומטי", "ידני"], group=gW)
 asset2Man = input.symbol("BINANCE:BTCUSDT", "נכס ידני (רק במצב ידני)", group=gW)
 
 gB = "בקטסט"
-btSel = input.string("הכול", "אסטרטגיה לבדיקה", options=["הכול", "טיסה", "כנף", "אורדר בלוק", "W/M"], group=gB)
+btSel = input.string("הכול", "אסטרטגיה לבדיקה", options=["הכול", "טיסה", "כנף", "אורדר בלוק", "W/M", "ריטסט POC"], group=gB)
 btUseRange = input.bool(false, "הגבל לטווח תאריכים", group=gB)
 btFrom = input.time(timestamp("01 Jan 2026 00:00 +0300"), "מתאריך", group=gB)
 btTo = input.time(timestamp("31 Dec 2026 23:59 +0300"), "עד תאריך", group=gB)
@@ -70,6 +82,7 @@ btFly = btSel == "הכול" or btSel == "טיסה"
 btWing = btSel == "הכול" or btSel == "כנף"
 btOB = btSel == "הכול" or btSel == "אורדר בלוק"
 btWM = btSel == "הכול" or btSel == "W/M"
+btPOC = btSel == "הכול" or btSel == "ריטסט POC"
 
 ph = ta.pivothigh(high, pivLen, pivLen)
 pl = ta.pivotlow(low,  pivLen, pivLen)
@@ -573,8 +586,6 @@ if wSig
     wState := 2
 if mSig
     mState := 2
-twzBull = mWM and math.abs(low - low[1]) <= twzTol and close[1] < open[1] and close > open and (close - open) >= (high - low) * 0.5 and close > close[1]
-twzBear = mWM and math.abs(high - high[1]) <= twzTol and close[1] > open[1] and close < open and (open - close) >= (high - low) * 0.5 and close < close[1]
 
 // ─── טריגר: מונטה קרלו ──────────────────────────────────────────────────────
 var float legA = na
@@ -616,6 +627,169 @@ clue4 = flipHeld
 clues = (clue1 ? 1 : 0) + (clue2 ? 1 : 0) + (clue3 ? 1 : 0) + (clue4 ? 1 : 0)
 
 // ─── קונפלואנס ──────────────────────────────────────────────────────────────
+
+// ─── EMA (אישור כיוון, המשתמש 22.10) ───────────────────────────────────────
+ema12 = ta.ema(close, emaLen)
+emaRising = ema12 > ema12[1]
+ema12OkL = close > ema12 and emaRising
+ema12OkS = close < ema12 and not emaRising
+
+// ─── ווליום פרופייל של היום (כמו ב-HTT Master v56): POC מתפתח, VAH/VAL, nPOC, אזורי עיגון ───
+dAtr = request.security(syminfo.tickerid, "D", ta.atr(14), lookahead=barmerge.lookahead_off)
+newDay = nz(ta.change(time("D")), 0) != 0
+f_binOf(float px, float b) => int(math.floor(px / b))
+f_vpDay() =>
+    var map<int, float> vpDay = map.new<int, float>()
+    var float vpBin = na
+    var int vpPocIdx = na
+    var float vpPocVol = 0.0
+    var float vpTot = 0.0
+    var int vpDayN = 0
+    var float[] npocArr = array.new<float>()
+    var float prevPoc = na
+    var float prevVah = na
+    var float prevVal = na
+    var float vah = na
+    var float val = na
+    float pocNow = na
+    float npUp = na
+    float npDn = na
+    if vpOn
+        if newDay or na(vpBin)
+            if not na(vpPocIdx) and vpDayN >= vpMinBars
+                prevPoc := (vpPocIdx + 0.5) * vpBin
+                prevVah := vah
+                prevVal := val
+                array.unshift(npocArr, prevPoc)
+                if array.size(npocArr) > 5
+                    array.pop(npocArr)
+            map.clear(vpDay)
+            vpBin := math.max(syminfo.mintick, nz(dAtr, atr * 10) / vpBins)
+            vpPocIdx := na
+            vpPocVol := 0.0
+            vpTot := 0.0
+            vpDayN := 0
+            vah := na
+            val := na
+        iLo = f_binOf(low, vpBin)
+        nB = math.min(f_binOf(high, vpBin) - iLo + 1, 400)
+        per = volume / nB
+        for bi = iLo to iLo + nB - 1
+            v = nz(map.get(vpDay, bi)) + per
+            map.put(vpDay, bi, v)
+            if v > vpPocVol
+                vpPocVol := v
+                vpPocIdx := bi
+        vpTot += volume
+        vpDayN += 1
+        if not na(vpPocIdx) and vpTot > 0
+            float acc = vpPocVol
+            int up = vpPocIdx
+            int dn = vpPocIdx
+            float need = vpTot * vpVA / 100
+            int guard = 0
+            while acc < need and guard < 600
+                vu = nz(map.get(vpDay, up + 1))
+                vd = nz(map.get(vpDay, dn - 1))
+                if vu >= vd
+                    up += 1
+                    acc += vu
+                else
+                    dn -= 1
+                    acc += vd
+                guard += 1
+            vah := (up + 1) * vpBin
+            val := dn * vpBin
+        if vpDayN >= vpMinBars and not na(vpPocIdx)
+            pocNow := (vpPocIdx + 0.5) * vpBin
+        if array.size(npocArr) > 0
+            for ni = array.size(npocArr) - 1 to 0
+                nv = array.get(npocArr, ni)
+                if low <= nv and high >= nv
+                    array.remove(npocArr, ni)
+        if array.size(npocArr) > 0
+            for ni = 0 to array.size(npocArr) - 1
+                nv = array.get(npocArr, ni)
+                if nv > close and (na(npUp) or nv < npUp)
+                    npUp := nv
+                if nv < close and (na(npDn) or nv > npDn)
+                    npDn := nv
+    [pocNow, vah, val, prevPoc, prevVah, prevVal, npUp, npDn, vpDayN]
+[pocNow, vah, val, prevPoc, prevVah, prevVal, npUp, npDn, vpDayN] = f_vpDay()
+pocTol = atr * pocTolAtr
+pocAtL = not na(pocNow) and low <= pocNow + pocTol and close > pocNow
+pocAtS = not na(pocNow) and high >= pocNow - pocTol and close < pocNow
+pocRising = not na(pocNow) and not na(pocNow[12]) and pocNow > pocNow[12]
+pocFalling = not na(pocNow) and not na(pocNow[12]) and pocNow < pocNow[12]
+// אזורי עיגון (HVN) — חישוב בלבד (הציור ב-HTT Master): שלושת צמתי הווליום ב-zBarsN הנרות האחרונים
+f_zonesCalc(bool on) =>
+    var float[] zTopA = array.new<float>(3, na)
+    var float[] zBotA = array.new<float>(3, na)
+    var float[] zPocA = array.new<float>(3, na)
+    var map<int, float> vpZ = map.new<int, float>()
+    if on and bar_index > zBarsN and (bar_index % zEvery == 0 or barstate.islast)
+        map.clear(vpZ)
+        zb = math.max(syminfo.mintick, nz(dAtr, atr * 10) / vpBins)
+        for i = 0 to zBarsN - 1
+            zlo = f_binOf(low[i], zb)
+            znb = math.min(f_binOf(high[i], zb) - zlo + 1, 400)
+            zper = volume[i] / znb
+            for bi = zlo to zlo + znb - 1
+                map.put(vpZ, bi, nz(map.get(vpZ, bi)) + zper)
+        zkeys = map.keys(vpZ)
+        for k = 0 to 2
+            float best = 0.0
+            int bestI = na
+            for ki = 0 to array.size(zkeys) - 1
+                kk = array.get(zkeys, ki)
+                vv = nz(map.get(vpZ, kk))
+                if vv > best
+                    best := vv
+                    bestI := kk
+            if na(bestI) or best <= 0
+                array.set(zTopA, k, na)
+                array.set(zBotA, k, na)
+                array.set(zPocA, k, na)
+            else
+                thr = best * zHalf
+                int zu = bestI
+                int zd = bestI
+                while nz(map.get(vpZ, zu + 1)) >= thr and zu - bestI < 60
+                    zu += 1
+                while nz(map.get(vpZ, zd - 1)) >= thr and bestI - zd < 60
+                    zd -= 1
+                array.set(zTopA, k, (zu + 1) * zb)
+                array.set(zBotA, k, zd * zb)
+                array.set(zPocA, k, (bestI + 0.5) * zb)
+                for bi = zd - 2 to zu + 2
+                    map.put(vpZ, bi, 0.0)
+    float zUp = na
+    float zDn = na
+    int zIn = 0
+    for k = 0 to 2
+        zp = array.get(zPocA, k)
+        if on and not na(zp)
+            if close >= array.get(zBotA, k) and close <= array.get(zTopA, k)
+                zIn := k + 1
+            if zp > close and (na(zUp) or zp < zUp)
+                zUp := zp
+            if zp < close and (na(zDn) or zp > zDn)
+                zDn := zp
+    [zUp, zDn, zIn, array.get(zPocA, 0), array.get(zPocA, 1), array.get(zPocA, 2)]
+[zUp, zDn, zIn, zp1, zp2, zp3] = f_zonesCalc(vpOn)
+
+// ─── טריגר: ריטסט POC (P) — אחרי BOS המחיר חזר ל-POC של היום, נגע וסגר חזרה בכיוון המבנה (המחקר 19) ───
+pHi10 = ta.highest(high, 10)
+pLo10 = ta.lowest(low, 10)
+pWasUpN = ta.barssince(na(pocNow) or close <= pocNow)
+pWasDnN = ta.barssince(na(pocNow) or close >= pocNow)
+var int pocLastBar = na
+pRtL0 = mPOC and not na(pocNow) and msDir > 0 and nz(pWasUpN[1], 999) >= 2 and nz(pHi10[1], high) >= pocNow + atr * pocLeaveAtr and low <= pocNow + pocTol and close > pocNow and barstate.isconfirmed
+pRtS0 = mPOC and not na(pocNow) and msDir < 0 and nz(pWasDnN[1], 999) >= 2 and nz(pLo10[1], low) <= pocNow - atr * pocLeaveAtr and high >= pocNow - pocTol and close < pocNow and barstate.isconfirmed
+pRtL = pRtL0 and (na(pocLastBar) or bar_index - pocLastBar > 5)
+pRtS = pRtS0 and (na(pocLastBar) or bar_index - pocLastBar > 5)
+if pRtL or pRtS
+    pocLastBar := bar_index
 
 // ─── מנוע בקטסט ─────────────────────────────────────────────────────────────
 buf = stopBuf / 100.0
@@ -731,6 +905,50 @@ if wmSt == 1
         array.set(sesW, wmSes, array.get(sesW, wmSes) + 1)
         wmSt := 0
 
+// ── P (ריטסט POC): סטופ מעבר ל-POC / לקצה נר הריטסט ──
+f_pTrade(bool sigL, bool sigS) =>
+    var int n = 0
+    var int w = 0
+    var int st = 0
+    var float sp = na
+    var float tp = na
+    var bool isL = true
+    var int ses = 0
+    if (sigL or sigS) and st == 0
+        isL := sigL
+        stp = isL ? math.min(low, pocNow) * (1 - buf) : math.max(high, pocNow) * (1 + buf)
+        if isL ? close > stp : close < stp
+            st := 1
+            sp := stp
+            tp := f_open(stp, isL)
+            n += 1
+            ses := sesIdx
+            array.set(sesN, sesIdx, array.get(sesN, sesIdx) + 1)
+    if st == 1
+        hitS = isL ? low <= sp : high >= sp
+        hitT = isL ? high >= tp : low <= tp
+        if hitS
+            st := 0
+        else if hitT
+            w += 1
+            array.set(sesW, ses, array.get(sesW, ses) + 1)
+            st := 0
+    [n, w, st, sp, tp, isL ? 1 : 0]
+[pocN, pocW, pocSt, pocS, pocT, pocLi] = f_pTrade(pRtL and inBT and btPOC, pRtS and inBT and btPOC)
+pocL = pocLi == 1
+trigAgo = ta.barssince(flyLong or flyShort or wingLong or wingShort or obLong or obShort or wSig or mSig or pRtL or pRtS)
+var string lastTrigNm = "—"
+if flyLong or flyShort
+    lastTrigNm := flyLong ? "✈ לונג" : "✈ שורט"
+if wingLong or wingShort
+    lastTrigNm := wingLong ? "כנף לונג" : "כנף שורט"
+if obLong or obShort
+    lastTrigNm := obLong ? "OB לונג" : "OB שורט"
+if wSig or mSig
+    lastTrigNm := wSig ? "W✓" : "M✓"
+if pRtL or pRtS
+    lastTrigNm := pRtL ? "P לונג" : "P שורט"
+
 // ─── צ'ק-ליסט ────────────────────────────────────────────────────────────────
 ckSpring = (phase == 3 or phase == 4) and cIsBull
 ckUT = (phase == 3 or phase == 4) and not cIsBull
@@ -748,6 +966,11 @@ f_state() =>
     vr = ta.percentrank(volume, 250)
     atrF = ta.atr(14)
     clx = vr >= 95
+    e12 = ta.ema(close, emaLen)
+    hi20f = ta.highest(high, 20)
+    lo20f = ta.lowest(low, 20)
+    hi10f = ta.highest(high, 10)
+    lo10f = ta.lowest(low, 10)
     p1 = ta.pivothigh(high, 5, 5)
     p2 = ta.pivotlow(low, 5, 5)
     var float lph = na
@@ -1048,30 +1271,148 @@ f_state() =>
             tS := 1
             tTgt := fd > 0 ? close + (close - tStop) * targetR : close - (tStop - close) * targetR
             bN += 1
-    twB = math.abs(low - low[1]) <= twzTol and close[1] < open[1] and close > open and (close - open) >= (high - low) * 0.5 and close > close[1]
-    twS = math.abs(high - high[1]) <= twzTol and close[1] > open[1] and close < open and (open - close) >= (high - low) * 0.5 and close < close[1]
-    var int twLast = 0
-    var int twBar = na
-    if twB
-        twLast := 1
-        twBar := bar_index
-    if twS
-        twLast := -1
-        twBar := bar_index
-    tw = not na(twBar) and bar_index - twBar <= 3 and zn == 1 ? twLast : 0
-    [phs, dir, cd, na(fireB) ? -1 : bar_index - fireB, fd, tst ? 1 : 0, zn, clB, wm, bN, bW, tw, rs]
-[phD, dirD, cdD, agoD, fdD, tsD, znD, clD, wmD, bnD, bwD, twD, rsD] = request.security(syminfo.tickerid, "D", f_state(), lookahead=barmerge.lookahead_off)
-[ph4, dir4, cd4, ago4, fd4, ts4, zn4, cl4, wm4, bn4, bw4, tw4, rs4] = request.security(syminfo.tickerid, "240", f_state(), lookahead=barmerge.lookahead_off)
-[ph1h, dir1h, cd1h, ago1h, fd1h, ts1h, zn1h, cl1h, wm1h, bn1h, bw1h, tw1h, rs1h] = request.security(syminfo.tickerid, "60", f_state(), lookahead=barmerge.lookahead_off)
-[ph15, dir15, cd15, ago15, fd15, ts15, zn15, cl15, wm15, bn15, bw15, tw15, rs15] = request.security(syminfo.tickerid, "15", f_state(), lookahead=barmerge.lookahead_off)
-[ph5m, dir5m, cd5m, ago5m, fd5m, ts5m, zn5m, cl5m, wm5m, bn5m, bw5m, tw5m, rs5m] = request.security(syminfo.tickerid, "5", f_state(), lookahead=barmerge.lookahead_off)
+    // ── v56: EMA, פרופיל הטווח (POC/אזור ערך של התהליך), FVG/iFVG, SMT (צד הנכס) ──
+    var map<int, float> rp = map.new<int, float>()
+    var float rpBin = na
+    var int rpPocI = na
+    var float rpPocV = 0.0
+    var float rpTot = 0.0
+    float rpPoc = na
+    float rpVah = na
+    float rpVal = na
+    if phs == 1 and aB == bar_index
+        map.clear(rp)
+        rpBin := math.max(syminfo.mintick, atrF * 0.1)
+        rpPocI := na
+        rpPocV := 0.0
+        rpTot := 0.0
+    if phs > 0 and not na(rpBin)
+        rlo_ = int(math.floor(low / rpBin))
+        rnb_ = math.min(int(math.floor(high / rpBin)) - rlo_ + 1, 400)
+        rper_ = volume / rnb_
+        for bi = rlo_ to rlo_ + rnb_ - 1
+            rv = nz(map.get(rp, bi)) + rper_
+            map.put(rp, bi, rv)
+            if rv > rpPocV
+                rpPocV := rv
+                rpPocI := bi
+        rpTot += volume
+        if not na(rpPocI)
+            rpPoc := (rpPocI + 0.5) * rpBin
+            if barstate.islast and rpTot > 0
+                float acc = rpPocV
+                int up = rpPocI
+                int dn = rpPocI
+                float need = rpTot * vpVA / 100
+                int guard = 0
+                while acc < need and guard < 600
+                    vu = nz(map.get(rp, up + 1))
+                    vd = nz(map.get(rp, dn - 1))
+                    if vu >= vd
+                        up += 1
+                        acc += vu
+                    else
+                        dn -= 1
+                        acc += vd
+                    guard += 1
+                rpVah := (up + 1) * rpBin
+                rpVal := dn * rpBin
+    var float fbTop = na
+    var float fbBot = na
+    var int fbSt = 0
+    var int fbBar = na
+    var float fsTop = na
+    var float fsBot = na
+    var int fsSt = 0
+    var int fsBar = na
+    dispF = high[1] - low[1] >= atrF * 1.2
+    if dispF and low - high[2] >= atrF * 0.5 and low > high[2]
+        fbTop := low
+        fbBot := high[2]
+        fbSt := 1
+        fbBar := bar_index
+    if dispF and low[2] - high >= atrF * 0.5 and high < low[2]
+        fsTop := low[2]
+        fsBot := high
+        fsSt := 1
+        fsBar := bar_index
+    bool fbTouch = false
+    bool fsTouch = false
+    if fbSt == 1 and bar_index > fbBar
+        if close < fbBot
+            fbSt := 2
+        else if low <= fbTop and close > fbBot
+            fbTouch := true
+    else if fbSt == 2
+        if high >= fbTop
+            fbSt := 0
+        else if high >= fbBot and close < fbTop
+            fbTouch := true
+    if fsSt == 1 and bar_index > fsBar
+        if close > fsTop
+            fsSt := 2
+        else if high >= fsBot and close < fsTop
+            fsTouch := true
+    else if fsSt == 2
+        if low <= fsBot
+            fsSt := 0
+        else if low <= fsTop and close > fsBot
+            fsTouch := true
+    if fbSt > 0 and bar_index - fbBar > 200
+        fbSt := 0
+    if fsSt > 0 and bar_index - fsBar > 200
+        fsSt := 0
+    fbCode = fbSt == 0 ? 0 : fbSt == 1 ? (fbTouch ? 3 : bar_index - fbBar <= 3 ? 2 : 1) : (fbTouch ? 5 : 4)
+    fsCode = fsSt == 0 ? 0 : fsSt == 1 ? (fsTouch ? 3 : bar_index - fsBar <= 3 ? 2 : 1) : (fsTouch ? 5 : 4)
+    mHi20 = high >= hi20f
+    mLo20 = low <= lo20f
+    mNewHi = high > high[1] and high >= hi10f and close < high[1]
+    mNewLo = low < low[1] and low <= lo10f and close > low[1]
+    [phs, dir, cd, na(fireB) ? -1 : bar_index - fireB, fd, tst ? 1 : 0, zn, clB, wm, bN, bW, rs, close > e12 ? 1 : -1, e12 > e12[1] ? 1 : 0, rpPoc, rpVah, rpVal, fbCode, fsCode, mHi20, mLo20, mNewHi, mNewLo, bar_index]
+// צד הנכס המתואם לכל מסגרת (SMT/iSMT): שיא/שפל 20 נרות, פריצת הנר הקודם
+f_pair() =>
+    h20 = ta.highest(high, 20)
+    l20 = ta.lowest(low, 20)
+    [high >= h20, low <= l20, high > high[1], low < low[1]]
+[phD, dirD, cdD, agoD, fdD, tsD, znD, clD, wmD, bnD, bwD, rsD, eSD, eUD, rpPD, rpHD, rpLD, fbD, fsD, mH20D, mL20D, mNHD, mNLD, nbD] = request.security(syminfo.tickerid, "D", f_state(), lookahead=barmerge.lookahead_off)
+[ph4, dir4, cd4, ago4, fd4, ts4, zn4, cl4, wm4, bn4, bw4, rs4, eS4, eU4, rpP4, rpH4, rpL4, fb4, fs4, mH204, mL204, mNH4, mNL4, nb4] = request.security(syminfo.tickerid, "240", f_state(), lookahead=barmerge.lookahead_off)
+[ph1h, dir1h, cd1h, ago1h, fd1h, ts1h, zn1h, cl1h, wm1h, bn1h, bw1h, rs1h, eS1h, eU1h, rpP1h, rpH1h, rpL1h, fb1h, fs1h, mH201h, mL201h, mNH1h, mNL1h, nb1h] = request.security(syminfo.tickerid, "60", f_state(), lookahead=barmerge.lookahead_off)
+[ph15, dir15, cd15, ago15, fd15, ts15, zn15, cl15, wm15, bn15, bw15, rs15, eS15, eU15, rpP15, rpH15, rpL15, fb15, fs15, mH2015, mL2015, mNH15, mNL15, nb15] = request.security(syminfo.tickerid, "15", f_state(), lookahead=barmerge.lookahead_off)
+[ph5m, dir5m, cd5m, ago5m, fd5m, ts5m, zn5m, cl5m, wm5m, bn5m, bw5m, rs5m, eS5m, eU5m, rpP5m, rpH5m, rpL5m, fb5m, fs5m, mH205m, mL205m, mNH5m, mNL5m, nb5m] = request.security(syminfo.tickerid, "5", f_state(), lookahead=barmerge.lookahead_off)
+[pH20D, pL20D, pNHD, pNLD] = request.security(smtSym, "D", f_pair(), lookahead=barmerge.lookahead_off)
+[pH204, pL204, pNH4, pNL4] = request.security(smtSym, "240", f_pair(), lookahead=barmerge.lookahead_off)
+[pH201h, pL201h, pNH1h, pNL1h] = request.security(smtSym, "60", f_pair(), lookahead=barmerge.lookahead_off)
+[pH2015, pL2015, pNH15, pNL15] = request.security(smtSym, "15", f_pair(), lookahead=barmerge.lookahead_off)
+[pH205m, pL205m, pNH5m, pNL5m] = request.security(smtSym, "5", f_pair(), lookahead=barmerge.lookahead_off)
+// SMT/iSMT לכל מסגרת: הנכס עשה שיא/שפל והצמד לא — מוצג אם קרה ב-10 הנרות האחרונים של אותה מסגרת
+f_smtCode(bool mh, bool ml, bool nh, bool nl, bool ph_, bool pl_, bool pnh, bool pnl, float tfm) =>
+    w = math.max(1, math.round(10 * tfm / tfMin))
+    sb = ta.barssince(smtOn and mh and not ph_) <= w
+    su = ta.barssince(smtOn and ml and not pl_) <= w
+    ib = ta.barssince(smtOn and nh and not pnh) <= w
+    iu = ta.barssince(smtOn and nl and not pnl) <= w
+    (su ? 1 : 0) + (sb ? 2 : 0) + (iu ? 4 : 0) + (ib ? 8 : 0)
+smtCD = f_smtCode(mH20D, mL20D, mNHD, mNLD, pH20D, pL20D, pNHD, pNLD, 1440)
+smtC4 = f_smtCode(mH204, mL204, mNH4, mNL4, pH204, pL204, pNH4, pNL4, 240)
+smtC1h = f_smtCode(mH201h, mL201h, mNH1h, mNL1h, pH201h, pL201h, pNH1h, pNL1h, 60)
+smtC15 = f_smtCode(mH2015, mL2015, mNH15, mNL15, pH2015, pL2015, pNH15, pNL15, 15)
+smtC5m = f_smtCode(mH205m, mL205m, mNH5m, mNL5m, pH205m, pL205m, pNH5m, pNL5m, 5)
+chartSmtC = (ta.barssince(smtBull) <= 10 ? 1 : 0) + (ta.barssince(smtBear) <= 10 ? 2 : 0) + (ta.barssince(ismtBull) <= 10 ? 4 : 0) + (ta.barssince(ismtBear) <= 10 ? 8 : 0)
+f_smtTxt(int c) =>
+    st = (c % 2 == 1 ? "SMT ▲ · " : "") + (math.floor(c / 2) % 2 == 1 ? "SMT ▼ · " : "") + (math.floor(c / 4) % 2 == 1 ? "iSMT ▲ · " : "") + (math.floor(c / 8) % 2 == 1 ? "iSMT ▼ · " : "")
+    str.length(st) > 3 ? str.substring(st, 0, str.length(st) - 3) : "—"
+f_fvgOne(int c, bool bull) => c == 0 ? "" : c <= 3 ? ("FVG " + (bull ? "▲" : "▼") + (c == 2 ? " טרי" : c == 3 ? " נגע" : "")) : ("iFVG " + (bull ? "▼" : "▲") + (c == 5 ? " נגע" : ""))
+f_fvgTxt(int b, int sc) =>
+    a1 = f_fvgOne(b, true)
+    c1 = f_fvgOne(sc, false)
+    a1 == "" and c1 == "" ? "—" : a1 == "" ? c1 : c1 == "" ? a1 : a1 + " · " + c1
+f_emaTxt(int side, int up2) => (side > 0 ? "מעל " : "מתחת ") + (up2 == 1 ? "▲" : "▼")
+f_pocTxt(float p) => na(p) ? "—" : math.abs(close - p) <= pocTol ? "על ה-POC" : (close > p ? "מעל +" : "מתחת −") + str.tostring(math.abs(close - p) / close * 100, "#.##") + "%"
+f_vaTxt(float h2, float l2) => na(h2) or na(l2) ? "—" : close > h2 ? "יקר" : close < l2 ? "זול" : "בפנים"
+f_px(float v) => na(v) ? "—" : str.tostring(v, format.mintick)
+f_pctD(float v) => na(v) ? "" : " (" + (v >= close ? "+" : "−") + str.tostring(math.abs(v - close) / close * 100, "#.##") + "%)"
 // כמה נרות יש לכל מסגרת גבוהה מטווח הגרף הנוכחי — פחות מהמינימום = המנוע מורעב, מסמנים "?" במקום לנחש
 htfMinBars = input.int(400, "מינימום נרות למסגרת גבוהה (פחות = '?' מעט נתונים)", minval=50, maxval=3000, group=gT)
-nbD = request.security(syminfo.tickerid, "D", bar_index, lookahead=barmerge.lookahead_off)
-nb4 = request.security(syminfo.tickerid, "240", bar_index, lookahead=barmerge.lookahead_off)
-nb1h = request.security(syminfo.tickerid, "60", bar_index, lookahead=barmerge.lookahead_off)
-nb15 = request.security(syminfo.tickerid, "15", bar_index, lookahead=barmerge.lookahead_off)
-nb5m = request.security(syminfo.tickerid, "5", bar_index, lookahead=barmerge.lookahead_off)
 f_starveTip(int nb, string tfn) => "מעט נתונים: " + str.tostring(nb + 1) + " נרות במסגרת " + tfn + " מתוך טווח הגרף הנוכחי (מינימום " + str.tostring(htfMinBars) + "). הפאזה והכיוון כאן לא אמינים — פתח גרף " + tfn + " לקריאה אמיתית"
 f_phN(int p) => p == 1 ? "A" : p == 2 ? "B" : p == 3 ? "C" : p == 4 ? "D" : p == 5 ? "E" : "—"
 f_dirN(int d) => d > 0 ? "שורי" : d < 0 ? "דובי" : "—"
@@ -1126,7 +1467,18 @@ rsiV = ta.rsi(close, rsiLen)
 f_rsiTxt(float r) => na(r) ? "—" : str.tostring(r, "#") + (r >= rsiHi ? " ↓" : r <= rsiLo ? " ↑" : "")
 f_rsiBG(float r, color base) => na(r) ? base : r >= rsiHi ? color.new(RED, 40) : r <= rsiLo ? color.new(GRN, 40) : base
 tipRsi = "RSI " + str.tostring(rsiLen) + " (הקורס: הרגיל, רמות " + str.tostring(rsiHi) + "/" + str.tostring(rsiLo) + "). ↑ = מתחת ל-" + str.tostring(rsiLo) + " (מכור מדי → צפי לעלייה, לונג), ↓ = מעל " + str.tostring(rsiHi) + " (קנוי מדי → צפי לירידה, שורט). אישור בקצה של אזור עניין, לא טריגר. 🎬 25-9, 35-1"
-f_rowW(int r, string nm, int p, int d, string trg, int cd2, int ts2, int zn2, int clB2, int parentPh, int wm2, int bn2, int bw2, int tw2, float rs2) =>
+qTip2 = "רבע לפי קנה המידה של המסגרת: יומי = רבע שבועי (ב'=Q1…ה'=Q4) · 4H = רבע יומי (6 שעות מ-18:00 NY) · 1H = רבע של 90 דק' · 15m/5m = מיקרו-רבע (22.5 דק'). צהוב = רבע המניפולציה של 90 הדקות"
+HDR2 = color.rgb(62, 54, 82)
+f_smtCol(int c, color base) => c == 0 ? base : (c % 2 == 1 or math.floor(c / 4) % 2 == 1) and (math.floor(c / 2) % 2 == 1 or math.floor(c / 8) % 2 == 1) ? color.new(color.yellow, 60) : (c % 2 == 1 or math.floor(c / 4) % 2 == 1) ? color.new(GRN, 40) : color.new(RED, 45)
+f_withTxt(int cd2, int d) => cd2 > 0 and d >= 0 ? "שורי" : cd2 < 0 and d <= 0 ? "דובי" : cd2 != 0 ? "✗" : "—"
+f_withBG(int cd2, int d, color base) => cd2 > 0 and d >= 0 ? GRN : cd2 < 0 and d <= 0 ? color.new(RED, 20) : cd2 != 0 ? color.new(RED, 55) : base
+f_emaBG(int eS, int eU, color base) => eS > 0 and eU == 1 ? color.new(GRN, 35) : eS < 0 and eU == 0 ? color.new(RED, 40) : base
+tipPocTf = "POC של פרופיל הווליום של התהליך במסגרת הזו (מתחילת הטווח): מעל/מתחת + מרחק. 'על ה-POC' = בתוך מרחק הנגיעה. POC של היום — בבלוק Volume Profile למטה"
+tipVaTf = "אזור הערך (70% מהווליום) של פרופיל התהליך במסגרת הזו: בפנים = מחיר הוגן (צפי לסיבוב) · יקר = מעל VAH · זול = מתחת ל-VAL"
+tipEma = "EMA " + str.tostring(emaLen) + ": מעל/מתחת + כיוון הממוצע (▲ עולה / ▼ יורד). ירוק = מעל ועולה (לונג), אדום = מתחת ויורד (שורט)"
+tipSmtTf = "SMT = הנכס עשה שיא/שפל של 20 נרות והצמד לא · iSMT = הנכס פרץ את הנר הקודם וסגר חזרה והצמד לא פרץ. מוצג אם קרה ב-10 הנרות האחרונים של המסגרת. ▲ = לונג, ▼ = שורט. אם יש שניהם — מוצגים שניהם"
+tipFvgTf = "FVG = מרווח פעיל (▲ שורי מתחת למחיר / ▼ דובי מעל) · טרי = נוצר ב-3 הנרות האחרונים · נגע = המחיר בדק אותו עכשיו · iFVG = מרווח שנשבר והתהפך (▼ = עכשיו התנגדות, ▲ = עכשיו תמיכה)"
+f_rowW(int r, string nm, int p, int d, string trg, int cd2, int ts2, int zn2, int clB2, int parentPh, int wm2, float rs2, int eS, int eU, float rpP, float rpH, float rpL, int fbC, int fsC, int smtC, string qTxt, bool qHot) =>
     inSyn = (parentPh == 3 or parentPh == 4) and p >= 3
     rb = inSyn ? color.rgb(66, 55, 10) : r % 2 == 0 ? BG : BG2
     f_cell(0, r, nm, rb, TXT, szL)
@@ -1135,30 +1487,38 @@ f_rowW(int r, string nm, int p, int d, string trg, int cd2, int ts2, int zn2, in
     f_cell(3, r, trg, rb, trg == "—" ? MUT : color.yellow, szN)
     f_cell(4, r, cd2 == 2 ? "V↑" : cd2 == -2 ? "V↓" : cd2 > 0 ? "S" : cd2 < 0 ? "U" : p == 3 ? "V" : "—", cd2 > 0 ? GRN : cd2 < 0 ? color.new(color.orange, 25) : p == 3 ? color.new(color.purple, 25) : rb, cd2 != 0 or p == 3 ? color.white : MUT, szN)
     f_tri(5, r, p >= 3 ? ts2 : -1, rb)
-    f_tri(6, r, zn2, rb)
-    f_tri(7, r, cd2 > 0 ? (d >= 0 ? 1 : 0) : cd2 < 0 ? (d <= 0 ? 1 : 0) : -1, rb)
-    f_cellT(8, r, str.tostring(f_cluCnt(clB2)) + "/4", rb, f_cluCnt(clB2) >= 3 ? color.yellow : TXT, szN, f_cluTip(clB2))
-    f_cell(9, r, parentPh == 0 ? "—" : "בתוך " + f_phN(parentPh), rb, inSyn ? color.yellow : MUT, szN)
+    f_cell(6, r, parentPh == 0 ? "—" : "בתוך " + f_phN(parentPh), rb, inSyn ? color.yellow : MUT, szN)
+    f_tri(7, r, zn2, rb)
+    f_cell(8, r, f_withTxt(cd2, d), f_withBG(cd2, d, rb), cd2 != 0 ? color.white : MUT, szN)
+    f_cellT(9, r, str.tostring(f_cluCnt(clB2)) + "/4", rb, f_cluCnt(clB2) >= 3 ? color.yellow : TXT, szN, f_cluTip(clB2))
     f_cell(10, r, f_wmN(wm2), rb, math.abs(wm2) == 2 ? color.yellow : wm2 != 0 ? TXT : MUT, szN)
-    f_cellT(11, r, bn2 > 0 ? str.tostring(bw2) + "/" + str.tostring(bn2) + " · " + pct(bw2, bn2) : "—", rb, bn2 > 0 ? TXT : MUT, szN, "בקטסט טיסה במסגרת הזו: פגיעות ביעד " + str.tostring(targetR, "#") + "R / כניסות. סטופ = קצה הטווח. מסונן לפי התקופה שבהגדרות")
-    f_cellT(12, r, tw2 > 0 ? "✚ שורי" : tw2 < 0 ? "✚ דובי" : "—", rb, tw2 > 0 ? GRN : tw2 < 0 ? RED : MUT, szN, "צבת (3 נרות אחרונים): שני נרות סמוכים עם שפל/שיא זהה + נר היפוך שסוגר מעבר לשניהם. ⚠ לא מהקורס — אישור נרות")
-    f_cellT(13, r, f_rsiTxt(rs2), f_rsiBG(rs2, rb), color.white, szN, tipRsi)
+    f_cellT(11, r, f_rsiTxt(rs2), f_rsiBG(rs2, rb), color.white, szN, tipRsi)
+    f_cellT(12, r, f_smtTxt(smtC), f_smtCol(smtC, rb), smtC != 0 ? color.white : MUT, szN, tipSmtTf)
+    f_cellT(13, r, f_fvgTxt(fbC, fsC), rb, fbC != 0 or fsC != 0 ? TXT : MUT, szN, tipFvgTf)
+    f_cellT(14, r, f_emaTxt(eS, eU), f_emaBG(eS, eU, rb), color.white, szN, tipEma)
+    f_cellT(15, r, f_pocTxt(rpP), rb, na(rpP) ? MUT : math.abs(close - rpP) <= pocTol ? color.yellow : TXT, szN, tipPocTf)
+    f_cellT(16, r, f_vaTxt(rpH, rpL), rb, na(rpH) ? MUT : TXT, szN, tipVaTf)
+    f_cellT(17, r, qTxt, rb, qHot ? color.yellow : TXT, szN, qTip2)
     true
-f_colP(int c, string nm, int p, int d, string trg, int cd2, int ts2, int zn2, int clB2, int parentPh, int wm2, int bn2, int bw2, int tw2, float rs2) =>
+f_colP(int c, string nm, int p, int d, string trg, int cd2, int ts2, int zn2, int clB2, int parentPh, int wm2, float rs2, int eS, int eU, float rpP, float rpH, float rpL, int fbC, int fsC, int smtC, string qTxt, bool qHot) =>
     f_cell(c, 0, nm, HDR, TXT, szN)
     f_cell(c, 1, f_phN(p), f_phBG(p), color.white, szN)
     f_cell(c, 2, f_dirN(d), BG, d > 0 ? GRN : d < 0 ? RED : MUT, szS)
     f_cell(c, 3, trg, BG2, trg == "—" ? MUT : color.yellow, szS)
     f_cell(c, 4, cd2 == 2 ? "V↑" : cd2 == -2 ? "V↓" : cd2 > 0 ? "S" : cd2 < 0 ? "U" : p == 3 ? "V" : "—", cd2 > 0 ? GRN : cd2 < 0 ? color.new(color.orange, 25) : p == 3 ? color.new(color.purple, 25) : BG, cd2 != 0 or p == 3 ? color.white : MUT, szS)
     f_tri(c, 5, p >= 3 ? ts2 : -1, BG2)
-    f_tri(c, 6, zn2, BG)
-    f_tri(c, 7, cd2 > 0 ? (d >= 0 ? 1 : 0) : cd2 < 0 ? (d <= 0 ? 1 : 0) : -1, BG2)
-    f_cellT(c, 8, str.tostring(f_cluCnt(clB2)) + "/4", BG, f_cluCnt(clB2) >= 3 ? color.yellow : TXT, szS, f_cluTip(clB2))
-    f_cell(c, 9, parentPh == 0 ? "—" : f_phN(parentPh), BG2, MUT, szS)
+    f_cell(c, 6, parentPh == 0 ? "—" : f_phN(parentPh), BG, MUT, szS)
+    f_tri(c, 7, zn2, BG2)
+    f_cell(c, 8, f_withTxt(cd2, d), f_withBG(cd2, d, BG), cd2 != 0 ? color.white : MUT, szS)
+    f_cellT(c, 9, str.tostring(f_cluCnt(clB2)) + "/4", BG2, f_cluCnt(clB2) >= 3 ? color.yellow : TXT, szS, f_cluTip(clB2))
     f_cell(c, 10, f_wmN(wm2), BG, math.abs(wm2) == 2 ? color.yellow : wm2 != 0 ? TXT : MUT, szS)
-    f_cell(c, 11, bn2 > 0 ? str.tostring(bw2) + "/" + str.tostring(bn2) : "—", BG2, bn2 > 0 ? TXT : MUT, szS)
-    f_cell(c, 12, tw2 > 0 ? "✚" : tw2 < 0 ? "✚" : "—", BG, tw2 > 0 ? GRN : tw2 < 0 ? RED : MUT, szS)
-    f_cell(c, 13, f_rsiTxt(rs2), f_rsiBG(rs2, BG2), color.white, szS)
+    f_cell(c, 11, f_rsiTxt(rs2), f_rsiBG(rs2, BG2), color.white, szS)
+    f_cell(c, 12, f_smtTxt(smtC), f_smtCol(smtC, BG), smtC != 0 ? color.white : MUT, szS)
+    f_cell(c, 13, f_fvgTxt(fbC, fsC), BG2, fbC != 0 or fsC != 0 ? TXT : MUT, szS)
+    f_cell(c, 14, f_emaTxt(eS, eU), f_emaBG(eS, eU, BG), color.white, szS)
+    f_cell(c, 15, f_pocTxt(rpP), BG2, na(rpP) ? MUT : math.abs(close - rpP) <= pocTol ? color.yellow : TXT, szS)
+    f_cell(c, 16, f_vaTxt(rpH, rpL), BG, na(rpH) ? MUT : TXT, szS)
+    f_cell(c, 17, qTxt, BG2, qHot ? color.yellow : TXT, szS)
     true
 // ─── תורת הרבעים (Daye) לטבלה: רבעים, מודל AMD/XAMD של 90 הדקות, True Opens ───
 QT_TZ = "America/New_York"
@@ -1207,6 +1567,13 @@ qtRowTxt = (qtWkIdx >= 0 ? "שבועי Q" + str.tostring(qtWkIdx + 1) : "שבו�
 qtToTxt = "יומי " + f_qtSide(qtTDO) + " · סשן " + f_qtSide(qtTSO) + " · שבועי " + f_qtSide(qtTWO)
 qtTip = "תורת הרבעים (Daye): שבועי ב'=Q1…ה'=Q4 · יומי 18:00 NY=Q1 אסיה, 00:00=Q2 לונדון, 06:00=Q3 ניו-יורק, 12:00=Q4 · 90 דק' בתוך כל סשן. AMD: Q1 צבירה, Q2 מניפולציה (Judas), Q3 חלוקה; XAMD כש-Q1 מתוח"
 qtToTip = "המחיר מול הפתיחה האמיתית: יומי = 00:00 NY · סשן = תחילת Q2 של 90 הדקות · שבועי = יום ב' 18:00 NY. מתחת = דיסקאונט (טוב ללונג), מעל = פרימיום (טוב לשורט)"
+qtMicroIdx = int(math.floor((qtOff % 90) / 22.5))
+qtSesHe = qtDayIdx == 0 ? "אסיה" : qtDayIdx == 1 ? "לונדון" : qtDayIdx == 2 ? "ניו-יורק" : "אחה\"צ"
+qTxtD = (qtWkIdx >= 0 ? "שבועי Q" + str.tostring(qtWkIdx + 1) : "שבועי —") + " (" + dayName + "')"
+qTxt4 = "יומי Q" + str.tostring(qtDayIdx + 1) + " · " + qtSesHe
+qTxt1h = "90' Q" + str.tostring(qt90Idx + 1) + " · " + f_qtPhHe(qt90Idx, qtModel)
+qTxt15 = "90' Q" + str.tostring(qt90Idx + 1) + " · מיקרו Q" + str.tostring(qtMicroIdx + 1)
+qTxt5m = "מיקרו Q" + str.tostring(qtMicroIdx + 1) + " · 90' Q" + str.tostring(qt90Idx + 1)
 f_starveW(int r, int nb, string tfn) =>
     if nb >= 0 and nb + 1 < htfMinBars
         f_cellT(1, r, "?", color.new(color.gray, 55), color.white, szL, f_starveTip(nb, tfn))
@@ -1215,135 +1582,193 @@ f_starveP(int c, int nb, string tfn) =>
     if nb >= 0 and nb + 1 < htfMinBars
         f_cellT(c, 1, "?", color.new(color.gray, 55), color.white, szN, f_starveTip(nb, tfn))
         f_cell(c, 2, "—", BG, MUT, szS)
+// צ'ק-ליסט של הגרף הנוכחי: 7 פריטים — Test, קצה, 1:3, סשן, עם מרחב, EMA, POC
+f_ckList() =>
+    string m = ""
+    int n = 0
+    if armDir != 0
+        okT = ckTest
+        okZ = okZone
+        okR = ckRRok
+        okS = ckSes
+        okM = (armDir > 0 and msDir >= 0) or (armDir < 0 and msDir <= 0)
+        okE = armDir > 0 ? ema12OkL : ema12OkS
+        okP = armDir > 0 ? (pocAtL or (not na(pocNow) and close > pocNow)) : (pocAtS or (not na(pocNow) and close < pocNow))
+        n := (okT ? 1 : 0) + (okZ ? 1 : 0) + (okR ? 1 : 0) + (okS ? 1 : 0) + (okM ? 1 : 0) + (okE ? 1 : 0) + (okP ? 1 : 0)
+        m := (okT ? "" : "Test · ") + (okZ ? "" : "קצה · ") + (okR ? "" : "1:3 · ") + (okS ? "" : "סשן · ") + (okM ? "" : "עם מרחב · ") + (okE ? "" : "EMA · ") + (okP ? "" : "POC · ")
+    [n, str.length(m) > 3 ? str.substring(m, 0, str.length(m) - 3) : ""]
+[ckN, ckMiss] = f_ckList()
+// מצב המסגרת של הגרף עצמו (למסגרת שאינה אחת מחמש הקבועות)
+[phC_, dirC_, cdC_, agoC_, fdC_, tsC_, znC_, clC_, wmC_, bnC_, bwC_, rsC_, eSC_, eUC_, rpPC_, rpHC_, rpLC_, fbC_, fsC_, mH20C_, mL20C_, mNHC_, mNLC_, nbC_] = request.security(syminfo.tickerid, timeframe.period, f_state(), lookahead=barmerge.lookahead_off)
 if barstate.islast
-    curTrig = fSt == 1 ? "✈ פתוח" : wSt == 1 ? "כנף פתוח" : oSt == 1 ? "OB פתוח" : wmSt == 1 ? "W/M פתוח" : armDir == 1 ? "✈ חמוש" : armDir == -1 ? "✈ חמוש שורט" : "—"
+    curTrig = fSt == 1 ? "✈ פתוח" : wSt == 1 ? "כנף פתוח" : oSt == 1 ? "OB פתוח" : wmSt == 1 ? "W/M פתוח" : pocSt == 1 ? "P פתוח" : armDir == 1 ? "✈ חמוש" : armDir == -1 ? "✈ חמוש שורט" : "—"
     tfp = timeframe.period
     isStdTF = tfp == "D" or tfp == "240" or tfp == "60" or tfp == "15" or tfp == "5"
     chartClB = (clue1 ? 1 : 0) + (clue2 ? 2 : 0) + (clue3 ? 4 : 0) + (clue4 ? 8 : 0)
     chartWm = wState == 2 ? 2 : wState == 1 ? 1 : mState == 2 ? -2 : mState == 1 ? -1 : 0
-    chartTw = okZone and (twzBull or twzBull[1] or twzBull[2]) ? 1 : okZone and (twzBear or twzBear[1] or twzBear[2]) ? -1 : 0
     synCnt = ((ph4 >= 3 ? 1 : 0) + (ph1h >= 3 ? 1 : 0) + (ph15 >= 3 ? 1 : 0) + (ph5m >= 3 ? 1 : 0))
     bosPend = armDir == 1 ? "BOS: סגירה מעל " + str.tostring(lastPH, format.mintick) : armDir == -1 ? "BOS: סגירה מתחת " + str.tostring(lastPL, format.mintick) : "BOS: —"
+    qChart = tfMin >= 1440 ? qTxtD : tfMin >= 240 ? qTxt4 : tfMin >= 60 ? qTxt1h : tfMin >= 15 ? qTxt15 : qTxt5m
+    chartTxt = "הגרף (" + tfp + ") · " + (armDir == 1 ? "✈ לונג חמוש" : armDir == -1 ? "✈ שורט חמוש" : "אין סטאפ") + " · RSI " + f_rsiTxt(rsiV)
+    rrTxt = "יחס 1:3 " + (na(ckRR) ? "—" : str.tostring(ckRR, "#.#")) + (ckRRok ? " ✓" : " ✗") + (na(ckStop) ? "" : " · סטופ " + f_px(ckStop) + " · יעד " + f_px(ckTgt))
+    sesTxt = "סשן " + sesName + (ckSes ? " ✓" : " ✗") + " · מיקום " + str.tostring(pdPct) + "% " + (inPrem ? "פרימיום" : "דיסקאונט")
+    amdTxt = "AMD " + amdPh + " · סינרגיה " + (synCnt >= 3 ? "🔥 " : "") + str.tostring(synCnt) + "/4"
+    ckTxt = armDir == 0 ? "צ'ק-ליסט: אין סטאפ חמוש" : "צ'ק-ליסט " + str.tostring(ckN) + "/7" + (ckMiss == "" ? " ✓ הכול" : " · חסר: " + ckMiss)
+    lastTrigTxt = na(trigAgo) ? "טריגר אחרון: —" : "טריגר אחרון: " + lastTrigNm + " לפני " + str.tostring(trigAgo) + " נרות"
+    btTxt = "בקטסט " + str.tostring(targetR, "#") + "R · " + btPeriod
+    flyTxt = "✈ טיסה " + str.tostring(fW) + "/" + str.tostring(fN) + " · " + pct(fW, fN)
+    wingTxt = "כנף " + str.tostring(wW) + "/" + str.tostring(wN) + " · " + pct(wW, wN)
+    obwmTxt = "OB " + str.tostring(oW) + "/" + str.tostring(oN) + " · W/M " + str.tostring(wmW) + "/" + str.tostring(wmN)
+    pTxt = "P ריטסט POC " + str.tostring(pocW) + "/" + str.tostring(pocN) + " · " + pct(pocW, pocN)
+    sesBtTxt = "לונ' " + str.tostring(array.get(sesW, 1)) + "/" + str.tostring(array.get(sesN, 1)) + " · ניו' " + str.tostring(array.get(sesW, 2)) + "/" + str.tostring(array.get(sesN, 2)) + " · אס' " + str.tostring(array.get(sesW, 0)) + "/" + str.tostring(array.get(sesN, 0))
+    flyTfTxt = "✈ טיסה לפי מסגרת: D " + str.tostring(bwD) + "/" + str.tostring(bnD) + " · 4H " + str.tostring(bw4) + "/" + str.tostring(bn4) + " · 1H " + str.tostring(bw1h) + "/" + str.tostring(bn1h) + " · 15m " + str.tostring(bw15) + "/" + str.tostring(bn15) + " · 5m " + str.tostring(bw5m) + "/" + str.tostring(bn5m)
+    pocDirTxt = pocRising ? " ▲ עולה" : pocFalling ? " ▼ יורד" : ""
+    vaRelTxt = na(prevVah) or na(vah) ? "" : val > prevVah ? " · מול אתמול: גבוה (מגמה ↑)" : vah < prevVal ? " · מול אתמול: נמוך (מגמה ↓)" : val >= prevVal and vah <= prevVah ? " · מול אתמול: בפנים (איזון)" : " · מול אתמול: חופף"
+    vpTxt = na(pocNow) ? "Volume Profile · POC היום: עוד אין (" + str.tostring(vpDayN) + "/" + str.tostring(vpMinBars) + " נרות)" : "Volume Profile · POC היום " + f_px(pocNow) + pocDirTxt + " · ערך " + f_px(val) + "–" + f_px(vah) + " (" + f_vaTxt(vah, val) + ")" + vaRelTxt + " · nPOC ↑ " + f_px(npUp) + f_pctD(npUp) + " · ↓ " + f_px(npDn) + f_pctD(npDn)
+    zTxt = "אזורי עיגון (" + str.tostring(zBarsN) + " נרות): " + (zIn > 0 ? "בתוך #" + str.tostring(zIn) : "מחוץ") + " · למעלה " + f_px(zUp) + f_pctD(zUp) + " · למטה " + f_px(zDn) + f_pctD(zDn) + " · #1 " + f_px(zp1) + " · #2 " + f_px(zp2) + " · #3 " + f_px(zp3)
+    dayTxt = "יום " + dayName + "' · מודל 90' " + qtModel + " · " + qTxt5m
+    tipVp = "POC היום = המחיר שבו נסחר הכי הרבה ווליום היום (מתעדכן) · ערך = VAL–VAH (" + str.tostring(vpVA, "#") + "%) · מול אתמול: גבוה/נמוך = יום מגמה, בפנים/חופף = איזון · nPOC = POC של ימים קודמים שעוד לא נגעו בו (יעד)"
+    tipZ = "אזורי עיגון = שלושת צמתי הווליום הגבוהים (HVN) ב-" + str.tostring(zBarsN) + " הנרות האחרונים, לפי סדר עוצמה (#1 הכי חזק). 'מאיפה לאן': בתוך איזה אזור אנחנו ומה האזור הבא למעלה ולמטה. מצוירים על הגרף ב-HTT Master"
     if tblLayout == "טלפון"
-        f_spacers(6, 21)
+        f_spacers(6, 29)
         f_cell(0, 0, "TF", HDR, TXT, szN)
         f_cell(0, 1, "פאזה", HDR, TXT, szS)
         f_cell(0, 2, "מרחב", HDR, TXT, szS)
         f_cell(0, 3, "טריגר", HDR, TXT, szS)
         f_cell(0, 4, "S/U", HDR, TXT, szS)
         f_cell(0, 5, "Test", HDR, TXT, szS)
-        f_cell(0, 6, "קצה", HDR, TXT, szS)
-        f_cell(0, 7, "עם מרחב", HDR, TXT, szS)
-        f_cellT(0, 8, "רמזים", HDR, TXT, szS, "4 רמזי הכיוון — רחף על התא לפירוט")
-        f_cell(0, 9, "בתוך", HDR, TXT, szS)
-        f_cell(0, 10, "W/M", HDR, TXT, szS)
-        f_cell(0, 11, "✈ בק'", HDR, TXT, szS)
-        f_cell(0, 12, "צבת", HDR, TXT, szS)
-        f_cellT(0, 13, "RSI", HDR, TXT, szS, tipRsi)
-        f_colP(1, "D", phD, dirD, tfp == "D" ? curTrig : f_trigN(phD, cdD, agoD, fdD), cdD, tsD, znD, clD, 0, wmD, bnD, bwD, twD, rsD)
-        f_colP(2, "4H", ph4, dir4, tfp == "240" ? curTrig : f_trigN(ph4, cd4, ago4, fd4), cd4, ts4, zn4, cl4, phD, wm4, bn4, bw4, tw4, rs4)
-        f_colP(3, "1H", ph1h, dir1h, tfp == "60" ? curTrig : f_trigN(ph1h, cd1h, ago1h, fd1h), cd1h, ts1h, zn1h, cl1h, ph4, wm1h, bn1h, bw1h, tw1h, rs1h)
-        f_colP(4, "15m", ph15, dir15, tfp == "15" ? curTrig : f_trigN(ph15, cd15, ago15, fd15), cd15, ts15, zn15, cl15, ph1h, wm15, bn15, bw15, tw15, rs15)
-        f_colP(5, "5m", ph5m, dir5m, tfp == "5" ? curTrig : f_trigN(ph5m, cd5m, ago5m, fd5m), cd5m, ts5m, zn5m, cl5m, ph15, wm5m, bn5m, bw5m, tw5m, rs5m)
+        f_cell(0, 6, "בתוך", HDR, TXT, szS)
+        f_cell(0, 7, "קצה", HDR2, TXT, szS)
+        f_cell(0, 8, "עם מרחב", HDR2, TXT, szS)
+        f_cellT(0, 9, "רמזים", HDR2, TXT, szS, "4 רמזי הכיוון — רחף על התא לפירוט")
+        f_cell(0, 10, "W/M", HDR2, TXT, szS)
+        f_cellT(0, 11, "RSI", HDR2, TXT, szS, tipRsi)
+        f_cellT(0, 12, "SMT", HDR2, TXT, szS, tipSmtTf)
+        f_cellT(0, 13, "FVG", HDR2, TXT, szS, tipFvgTf)
+        f_cellT(0, 14, "EMA", HDR2, TXT, szS, tipEma)
+        f_cellT(0, 15, "POC", HDR2, TXT, szS, tipPocTf)
+        f_cellT(0, 16, "ערך", HDR2, TXT, szS, tipVaTf)
+        f_cellT(0, 17, "רבע", HDR2, TXT, szS, qTip2)
+        f_colP(1, "D", phD, dirD, tfp == "D" ? curTrig : f_trigN(phD, cdD, agoD, fdD), cdD, tsD, znD, clD, 0, wmD, rsD, eSD, eUD, rpPD, rpHD, rpLD, fbD, fsD, smtCD, qTxtD, false)
+        f_colP(2, "4H", ph4, dir4, tfp == "240" ? curTrig : f_trigN(ph4, cd4, ago4, fd4), cd4, ts4, zn4, cl4, phD, wm4, rs4, eS4, eU4, rpP4, rpH4, rpL4, fb4, fs4, smtC4, qTxt4, qtDayIdx == 1)
+        f_colP(3, "1H", ph1h, dir1h, tfp == "60" ? curTrig : f_trigN(ph1h, cd1h, ago1h, fd1h), cd1h, ts1h, zn1h, cl1h, ph4, wm1h, rs1h, eS1h, eU1h, rpP1h, rpH1h, rpL1h, fb1h, fs1h, smtC1h, qTxt1h, qtInManip)
+        f_colP(4, "15m", ph15, dir15, tfp == "15" ? curTrig : f_trigN(ph15, cd15, ago15, fd15), cd15, ts15, zn15, cl15, ph1h, wm15, rs15, eS15, eU15, rpP15, rpH15, rpL15, fb15, fs15, smtC15, qTxt15, qtInManip)
+        f_colP(5, "5m", ph5m, dir5m, tfp == "5" ? curTrig : f_trigN(ph5m, cd5m, ago5m, fd5m), cd5m, ts5m, zn5m, cl5m, ph15, wm5m, rs5m, eS5m, eU5m, rpP5m, rpH5m, rpL5m, fb5m, fs5m, smtC5m, qTxt5m, qtInManip)
         f_starveP(1, nbD, "D")
         f_starveP(2, nb4, "4H")
         f_starveP(3, nb1h, "1H")
         f_starveP(4, nb15, "15m")
         f_starveP(5, nb5m, "5m")
         if not isStdTF
-            f_colP(6, tfp, phase, msDir, curTrig, armDir, ckTest ? 1 : 0, phase > 0 ? (okZone ? 1 : 0) : -1, chartClB, 0, chartWm, fN, fW, chartTw, rsiV)
-        f_cell(0, 14, "הגרף (" + tfp + ")", HDR, TXT, szS)
-        f_cell(1, 14, (armDir == 1 ? "✈ לונג חמוש" : armDir == -1 ? "✈ שורט חמוש" : "אין סטאפ") + " · RSI " + f_rsiTxt(rsiV), HDR, armDir != 0 ? color.yellow : MUT, szS)
-        f_cell(3, 14, "יחס 1:3", HDR, TXT, szS)
-        f_cell(4, 14, (na(ckRR) ? "—" : str.tostring(ckRR, "#.#")) + (ckRRok ? " ✓" : " ✗"), ckRRok ? GRN : color.new(RED, 45), color.white, szS)
-        f_cell(0, 15, "סשן", BG2, TXT, szS)
-        f_cell(1, 15, sesName + (ckSes ? " ✓" : " ✗"), ckSes ? GRN : color.new(RED, 45), color.white, szS)
-        f_cell(3, 15, "מיקום", BG2, TXT, szS)
-        f_cell(4, 15, str.tostring(pdPct) + "% " + (inPrem ? "פרימיום" : "דיסקאונט"), BG2, TXT, szS)
-        f_cell(0, 16, "AMD", BG, TXT, szS)
-        f_cell(1, 16, amdPh + " · סינרגיה " + str.tostring(synCnt) + "/4", BG, synCnt >= 3 ? color.yellow : TXT, szS)
-        f_cell(3, 16, "BOS", BG, TXT, szS)
-        f_cell(4, 16, bosPend, BG, color.yellow, szS)
-        f_cell(0, 17, "בקטסט " + str.tostring(targetR, "#") + "R", HDR, TXT, szS)
-        f_cell(1, 17, btPeriod, HDR, MUT, szS)
-        f_cell(3, 17, "✈ טיסה", HDR, TXT, szS)
-        f_cell(4, 17, str.tostring(fW) + "/" + str.tostring(fN) + " · " + pct(fW, fN), HDR, TXT, szS)
-        f_cell(0, 18, "כנף", BG2, TXT, szS)
-        f_cell(1, 18, str.tostring(wW) + "/" + str.tostring(wN) + " · " + pct(wW, wN), BG2, TXT, szS)
-        f_cell(3, 18, "OB · W/M", BG2, TXT, szS)
-        f_cell(4, 18, str.tostring(oW) + "/" + str.tostring(oN) + " · " + str.tostring(wmW) + "/" + str.tostring(wmN), BG2, TXT, szS)
-        f_cell(0, 19, "סשנים", BG, MUT, szS)
-        f_cell(1, 19, "לונ' " + str.tostring(array.get(sesW, 1)) + "/" + str.tostring(array.get(sesN, 1)) + " · ניו' " + str.tostring(array.get(sesW, 2)) + "/" + str.tostring(array.get(sesN, 2)) + " · אס' " + str.tostring(array.get(sesW, 0)) + "/" + str.tostring(array.get(sesN, 0)), BG, TXT, szS)
-        f_cellT(0, 20, "רבעים", BG2, TXT, szS, qtTip)
-        f_cell(1, 20, qtRowTxt, BG2, qtInManip ? color.yellow : TXT, szS)
-        f_cellT(3, 20, "True Open", BG2, TXT, szS, qtToTip)
-        f_cell(4, 20, qtToTxt, BG2, TXT, szS)
-        for pr = 14 to 18
+            f_colP(6, tfp, phase, msDir, curTrig, armDir, ckTest ? 1 : 0, phase > 0 ? (okZone ? 1 : 0) : -1, chartClB, 0, chartWm, rsiV, close > ema12 ? 1 : -1, emaRising ? 1 : 0, rpPC_, rpHC_, rpLC_, fbC_, fsC_, chartSmtC, qChart, qtInManip)
+        f_cell(0, 18, "הגרף (" + tfp + ")", HDR, TXT, szS)
+        f_cell(1, 18, (armDir == 1 ? "✈ לונג חמוש" : armDir == -1 ? "✈ שורט חמוש" : "אין סטאפ") + " · RSI " + f_rsiTxt(rsiV), HDR, armDir != 0 ? color.yellow : MUT, szS)
+        f_cell(3, 18, "יחס 1:3", HDR, TXT, szS)
+        f_cell(4, 18, (na(ckRR) ? "—" : str.tostring(ckRR, "#.#")) + (ckRRok ? " ✓" : " ✗") + (na(ckStop) ? "" : " · סטופ " + f_px(ckStop) + " · יעד " + f_px(ckTgt)), ckRRok ? GRN : color.new(RED, 45), color.white, szS)
+        f_cell(0, 19, "סשן", BG2, TXT, szS)
+        f_cell(1, 19, sesName + (ckSes ? " ✓" : " ✗"), ckSes ? GRN : color.new(RED, 45), color.white, szS)
+        f_cell(3, 19, "מיקום", BG2, TXT, szS)
+        f_cell(4, 19, str.tostring(pdPct) + "% " + (inPrem ? "פרימיום" : "דיסקאונט"), BG2, TXT, szS)
+        f_cell(0, 20, "AMD", BG, TXT, szS)
+        f_cell(1, 20, amdPh + " · סינרגיה " + str.tostring(synCnt) + "/4", BG, synCnt >= 3 ? color.yellow : TXT, szS)
+        f_cell(3, 20, "BOS", BG, TXT, szS)
+        f_cell(4, 20, bosPend, BG, color.yellow, szS)
+        f_cell(0, 21, "צ'ק-ליסט", BG2, TXT, szS)
+        f_cell(1, 21, armDir == 0 ? "אין סטאפ חמוש" : str.tostring(ckN) + "/7" + (ckMiss == "" ? " ✓ הכול" : " · חסר: " + ckMiss), BG2, ckN >= 6 ? color.yellow : TXT, szS)
+        f_cell(3, 21, "טריגר", BG2, TXT, szS)
+        f_cell(4, 21, na(trigAgo) ? "—" : lastTrigNm + " לפני " + str.tostring(trigAgo), BG2, TXT, szS)
+        f_cell(0, 22, "בקטסט " + str.tostring(targetR, "#") + "R", HDR, TXT, szS)
+        f_cell(1, 22, btPeriod, HDR, MUT, szS)
+        f_cell(3, 22, "✈ טיסה", HDR, TXT, szS)
+        f_cell(4, 22, str.tostring(fW) + "/" + str.tostring(fN) + " · " + pct(fW, fN), HDR, TXT, szS)
+        f_cell(0, 23, "כנף", BG2, TXT, szS)
+        f_cell(1, 23, str.tostring(wW) + "/" + str.tostring(wN) + " · " + pct(wW, wN), BG2, TXT, szS)
+        f_cell(3, 23, "OB · W/M", BG2, TXT, szS)
+        f_cell(4, 23, str.tostring(oW) + "/" + str.tostring(oN) + " · " + str.tostring(wmW) + "/" + str.tostring(wmN), BG2, TXT, szS)
+        f_cell(0, 24, "P ריטסט POC", BG, TXT, szS)
+        f_cell(1, 24, str.tostring(pocW) + "/" + str.tostring(pocN) + " · " + pct(pocW, pocN), BG, TXT, szS)
+        f_cell(3, 24, "סשנים", BG, MUT, szS)
+        f_cell(4, 24, sesBtTxt, BG, TXT, szS)
+        f_cellT(0, 25, "רבעים", BG2, TXT, szS, qtTip)
+        f_cell(1, 25, qtRowTxt, BG2, qtInManip ? color.yellow : TXT, szS)
+        f_cellT(0, 26, "True Open", BG, TXT, szS, qtToTip)
+        f_cell(1, 26, qtToTxt, BG, TXT, szS)
+        f_cellT(0, 27, "VP", BG2, TXT, szS, tipVp)
+        f_cell(1, 27, vpTxt, BG2, TXT, szS)
+        f_cellT(0, 28, "עיגון", BG, TXT, szS, tipZ)
+        f_cell(1, 28, zTxt, BG, TXT, szS)
+        f_cell(0, 29, "✈ TF", BG2, MUT, szS)
+        f_cell(1, 29, flyTfTxt, BG2, MUT, szS)
+        for pr = 18 to 24
             table.merge_cells(t, cx + 1, cy + pr, cx + 2, cy + pr)
             table.merge_cells(t, cx + 4, cy + pr, cx + 5, cy + pr)
-        table.merge_cells(t, cx + 1, cy + 19, cx + 5, cy + 19)
+        for pr = 25 to 29
+            table.merge_cells(t, cx + 1, cy + pr, cx + 5, cy + pr)
     else
-        f_spacers(14, 11)
+        f_spacers(17, 12)
         f_cell(0, 0, "TF", HDR, TXT, szN)
         f_cell(1, 0, "פאזה", HDR, TXT, szN)
         f_cellT(2, 0, "מרחב", HDR, TXT, szN, "מרחב קונים/מוכרים (12-5): כיוון ה-BOS האחרון. שורי = מרחב קונים, דובי = מרחב מוכרים")
         f_cell(3, 0, "טריגר", HDR, TXT, szN)
         f_cellT(4, 0, "S/U", HDR, TXT, szN, "ספרינג (S) / אפ-טראסט (U) — כיוון ההכרעה של פאזה C · V = C לפי ווליום בלי ניעור (כיוון עוד לא ידוע) → V↑/V↓ אחרי שה-LPS קבע כיוון")
-        f_cell(5, 0, "Test", HDR, TXT, szN)
-        f_cellT(6, 0, "קצה", HDR, TXT, szN, "אזור עניין (48-1): המחיר ב-20% העליונים או התחתונים של הטווח (אייס↔קריק). ✗ = במרכז = שטח מת")
-        f_cellT(7, 0, "עם מרחב", HDR, TXT, szN, "ההכרעה (S/U) תואמת לכיוון המרחב: ספרינג במרחב קונים ✓, UT במרחב מוכרים ✓. לא קשור לעמודת 'קצה הטווח'")
-        f_cellT(8, 0, "רמזים", HDR, TXT, szN, "4 רמזי הכיוון של הקורס — רחף על התא בשורה לפירוט מלא")
-        f_cell(9, 0, "בתוך", HDR, TXT, szN)
-        f_cellT(10, 0, "W/M", HDR, TXT, szN, "דאבל בוטום/טופ: נבנית = שני שפלים/שיאים שווים; ✓ = סגירה מעבר לצוואר")
-        f_cellT(11, 0, "✈ בק' TF", HDR, TXT, szN, "טיסה בכל מסגרת: פגיעות/כניסות · אחוז. מסונן לפי 'תקופה אחרונה' / טווח תאריכים")
-        f_cellT(12, 0, "צבת", HDR, TXT, szN, "צבת בכל מסגרת — שני נרות סמוכים עם שפל/שיא זהה + נר היפוך. לא מהקורס")
-        f_cellT(13, 0, "RSI", HDR, TXT, szN, tipRsi)
-        f_rowW(1, "D", phD, dirD, tfp == "D" ? curTrig : f_trigN(phD, cdD, agoD, fdD), cdD, tsD, znD, clD, 0, wmD, bnD, bwD, twD, rsD)
-        f_rowW(2, "4H", ph4, dir4, tfp == "240" ? curTrig : f_trigN(ph4, cd4, ago4, fd4), cd4, ts4, zn4, cl4, phD, wm4, bn4, bw4, tw4, rs4)
-        f_rowW(3, "1H", ph1h, dir1h, tfp == "60" ? curTrig : f_trigN(ph1h, cd1h, ago1h, fd1h), cd1h, ts1h, zn1h, cl1h, ph4, wm1h, bn1h, bw1h, tw1h, rs1h)
-        f_rowW(4, "15m", ph15, dir15, tfp == "15" ? curTrig : f_trigN(ph15, cd15, ago15, fd15), cd15, ts15, zn15, cl15, ph1h, wm15, bn15, bw15, tw15, rs15)
-        f_rowW(5, "5m", ph5m, dir5m, tfp == "5" ? curTrig : f_trigN(ph5m, cd5m, ago5m, fd5m), cd5m, ts5m, zn5m, cl5m, ph15, wm5m, bn5m, bw5m, tw5m, rs5m)
+        f_cellT(5, 0, "Test", HDR, TXT, szN, "טסט (22-4): חזרה בווליום נמוך אחרי C — LPS/LPSY או נגיעה באזור הניעור")
+        f_cellT(6, 0, "בתוך", HDR, TXT, szN, "הפאזה של המסגרת שמעל. צהוב = סינרגיה (המסגרת שמעל ב-C/D וגם זו ב-C ומעלה)")
+        f_cellT(7, 0, "קצה", HDR2, TXT, szN, "אזור עניין (48-1): המחיר ב-20% העליונים או התחתונים של הטווח (אייס↔קריק). ✗ = במרכז = שטח מת")
+        f_cellT(8, 0, "עם מרחב", HDR2, TXT, szN, "ההכרעה (S/U) תואמת לכיוון המרחב: שורי = ספרינג במרחב קונים, דובי = UT במרחב מוכרים, ✗ = ניעור נגד המבנה")
+        f_cellT(9, 0, "רמזים", HDR2, TXT, szN, "4 רמזי הכיוון של הקורס — רחף על התא בשורה לפירוט מלא")
+        f_cellT(10, 0, "W/M", HDR2, TXT, szN, "דאבל בוטום/טופ: נבנית = שני שפלים/שיאים שווים; ✓ = סגירה מעבר לצוואר")
+        f_cellT(11, 0, "RSI", HDR2, TXT, szN, tipRsi)
+        f_cellT(12, 0, "SMT/iSMT", HDR2, TXT, szN, tipSmtTf)
+        f_cellT(13, 0, "FVG/iFVG", HDR2, TXT, szN, tipFvgTf)
+        f_cellT(14, 0, "EMA " + str.tostring(emaLen), HDR2, TXT, szN, tipEma)
+        f_cellT(15, 0, "POC", HDR2, TXT, szN, tipPocTf)
+        f_cellT(16, 0, "אזור ערך", HDR2, TXT, szN, tipVaTf)
+        f_cellT(17, 0, "רבע", HDR2, TXT, szN, qTip2)
+        f_rowW(1, "D", phD, dirD, tfp == "D" ? curTrig : f_trigN(phD, cdD, agoD, fdD), cdD, tsD, znD, clD, 0, wmD, rsD, eSD, eUD, rpPD, rpHD, rpLD, fbD, fsD, smtCD, qTxtD, false)
+        f_rowW(2, "4H", ph4, dir4, tfp == "240" ? curTrig : f_trigN(ph4, cd4, ago4, fd4), cd4, ts4, zn4, cl4, phD, wm4, rs4, eS4, eU4, rpP4, rpH4, rpL4, fb4, fs4, smtC4, qTxt4, qtDayIdx == 1)
+        f_rowW(3, "1H", ph1h, dir1h, tfp == "60" ? curTrig : f_trigN(ph1h, cd1h, ago1h, fd1h), cd1h, ts1h, zn1h, cl1h, ph4, wm1h, rs1h, eS1h, eU1h, rpP1h, rpH1h, rpL1h, fb1h, fs1h, smtC1h, qTxt1h, qtInManip)
+        f_rowW(4, "15m", ph15, dir15, tfp == "15" ? curTrig : f_trigN(ph15, cd15, ago15, fd15), cd15, ts15, zn15, cl15, ph1h, wm15, rs15, eS15, eU15, rpP15, rpH15, rpL15, fb15, fs15, smtC15, qTxt15, qtInManip)
+        f_rowW(5, "5m", ph5m, dir5m, tfp == "5" ? curTrig : f_trigN(ph5m, cd5m, ago5m, fd5m), cd5m, ts5m, zn5m, cl5m, ph15, wm5m, rs5m, eS5m, eU5m, rpP5m, rpH5m, rpL5m, fb5m, fs5m, smtC5m, qTxt5m, qtInManip)
         f_starveW(1, nbD, "D")
         f_starveW(2, nb4, "4H")
         f_starveW(3, nb1h, "1H")
         f_starveW(4, nb15, "15m")
         f_starveW(5, nb5m, "5m")
         if not isStdTF
-            f_rowW(6, "גרף (" + tfp + ")", phase, msDir, curTrig, armDir, ckTest ? 1 : 0, phase > 0 ? (okZone ? 1 : 0) : -1, chartClB, 0, chartWm, fN, fW, chartTw, rsiV)
-        if not tblCompact
-            f_cell(0, 8, "הגרף (" + tfp + ") · " + (armDir == 1 ? "✈ לונג חמוש" : armDir == -1 ? "✈ שורט חמוש" : "אין סטאפ") + " · RSI " + f_rsiTxt(rsiV), HDR, armDir != 0 ? color.yellow : TXT, szN)
-            f_cell(3, 8, "יחס 1:3 " + (na(ckRR) ? "—" : str.tostring(ckRR, "#.#")) + (ckRRok ? " ✓" : " ✗"), ckRRok ? GRN : color.new(RED, 45), color.white, szN)
-            f_cell(5, 8, "סשן " + sesName + (ckSes ? " ✓" : " ✗"), ckSes ? GRN : color.new(RED, 45), color.white, szN)
-            f_cell(7, 8, "מיקום " + str.tostring(pdPct) + "% " + (inPrem ? "פרימיום" : "דיסקאונט"), BG, TXT, szN)
-            f_cell(9, 8, "AMD " + amdPh, BG2, TXT, szN)
-            f_cell(11, 8, "סינרגיה " + (synCnt >= 3 ? "🔥 " : "") + str.tostring(synCnt) + "/4", BG, synCnt >= 3 ? color.yellow : MUT, szN)
-            f_cellT(0, 9, "בקטסט " + str.tostring(targetR, "#") + "R · " + btPeriod, HDR, TXT, szN, "סטטיסטיקה על הגרף הנוכחי לפי אסטרטגיה: פגיעות/כניסות · אחוז. בהגדרות: אסטרטגיה, תקופה אחרונה, טווח תאריכים")
-            f_cell(3, 9, "✈ טיסה " + str.tostring(fW) + "/" + str.tostring(fN) + " · " + pct(fW, fN), BG, TXT, szN)
-            f_cell(5, 9, "כנף " + str.tostring(wW) + "/" + str.tostring(wN) + " · " + pct(wW, wN), BG2, TXT, szN)
-            f_cell(7, 9, "OB " + str.tostring(oW) + "/" + str.tostring(oN) + " · " + pct(oW, oN), BG, TXT, szN)
-            f_cell(9, 9, "W/M " + str.tostring(wmW) + "/" + str.tostring(wmN) + " · " + pct(wmW, wmN), BG2, TXT, szN)
-            f_cell(11, 9, "לונ' " + str.tostring(array.get(sesW, 1)) + "/" + str.tostring(array.get(sesN, 1)) + " · ניו' " + str.tostring(array.get(sesW, 2)) + "/" + str.tostring(array.get(sesN, 2)) + " · אס' " + str.tostring(array.get(sesW, 0)) + "/" + str.tostring(array.get(sesN, 0)), BG, TXT, szS)
-            f_cellT(0, 10, "רבעים · " + qtRowTxt, BG2, qtInManip ? color.yellow : TXT, szN, qtTip)
-            f_cellT(7, 10, "True Open · " + qtToTxt, BG, TXT, szN, qtToTip)
-            for pr = 8 to 10
-                table.merge_cells(t, cx + 0, cy + pr, cx + 2, cy + pr)
-                table.merge_cells(t, cx + 3, cy + pr, cx + 4, cy + pr)
-                table.merge_cells(t, cx + 5, cy + pr, cx + 6, cy + pr)
-                table.merge_cells(t, cx + 7, cy + pr, cx + 8, cy + pr)
-                table.merge_cells(t, cx + 9, cy + pr, cx + 10, cy + pr)
-                table.merge_cells(t, cx + 11, cy + pr, cx + 12, cy + pr)
+            f_rowW(6, "גרף (" + tfp + ")", phase, msDir, curTrig, armDir, ckTest ? 1 : 0, phase > 0 ? (okZone ? 1 : 0) : -1, chartClB, 0, chartWm, rsiV, close > ema12 ? 1 : -1, emaRising ? 1 : 0, rpPC_, rpHC_, rpLC_, fbC_, fsC_, chartSmtC, qChart, qtInManip)
         f_cell(0, 7, bosPend, BG2, color.yellow, szS)
-        f_cell(1, 7, "", BG2, TXT, szS)
-        f_cell(2, 7, "", BG2, TXT, szS)
-        f_cell(3, 7, "", BG2, TXT, szS)
-        f_cell(4, 7, "", BG2, TXT, szS)
-        f_cell(5, 7, smtOn ? "SMT מול " + smtSym : "SMT: אין צמד לנכס הזה", BG2, MUT, szS)
-        f_cell(6, 7, "", BG2, TXT, szS)
-        f_cell(7, 7, "", BG2, TXT, szS)
-        f_cell(8, 7, "", BG2, TXT, szS)
-        f_cell(9, 7, "", BG2, TXT, szS)
-        f_cell(10, 7, "יום " + dayName, BG2, TXT, szS)
-        f_cell(11, 7, "", BG2, TXT, szS)
-        table.merge_cells(t, cx + 0, cy + 7, cx + 4, cy + 7)
-        table.merge_cells(t, cx + 5, cy + 7, cx + 9, cy + 7)
-        table.merge_cells(t, cx + 10, cy + 7, cx + 11, cy + 7)
+        f_cell(6, 7, smtOn ? "SMT מול " + smtSym : "SMT: אין צמד לנכס הזה", BG2, MUT, szS)
+        f_cell(12, 7, dayTxt, BG2, TXT, szS)
+        table.merge_cells(t, cx + 0, cy + 7, cx + 5, cy + 7)
+        table.merge_cells(t, cx + 6, cy + 7, cx + 11, cy + 7)
+        table.merge_cells(t, cx + 12, cy + 7, cx + 17, cy + 7)
+        if not tblCompact
+            f_cell(0, 8, chartTxt, HDR, armDir != 0 ? color.yellow : TXT, szN)
+            f_cell(3, 8, rrTxt, ckRRok ? GRN : color.new(RED, 45), color.white, szN)
+            f_cell(6, 8, sesTxt, ckSes ? GRN : color.new(RED, 45), color.white, szN)
+            f_cell(9, 8, amdTxt, BG, synCnt >= 3 ? color.yellow : TXT, szN)
+            f_cell(12, 8, ckTxt, BG2, armDir != 0 and ckN >= 6 ? color.yellow : TXT, szN)
+            f_cell(15, 8, lastTrigTxt, BG, TXT, szN)
+        f_cellT(0, 9, btTxt, HDR, TXT, szN, "סטטיסטיקה חיה על הגרף הנוכחי לפי טריגר: פגיעות ביעד / כניסות · אחוז. סטופ = קצה הטווח/הניעור. בהגדרות: אסטרטגיה, תקופה אחרונה, טווח תאריכים. המדידה המלאה — Path Lab באתר")
+        f_cell(3, 9, flyTxt, BG, TXT, szN)
+        f_cell(6, 9, wingTxt, BG2, TXT, szN)
+        f_cell(9, 9, obwmTxt, BG, TXT, szN)
+        f_cell(12, 9, pTxt, BG2, TXT, szN)
+        f_cell(15, 9, sesBtTxt, BG, MUT, szN)
+        if not tblCompact
+            f_cellT(0, 10, "רבעים · " + qtRowTxt, BG2, qtInManip ? color.yellow : TXT, szN, qtTip)
+            f_cellT(9, 10, "True Open · " + qtToTxt, BG, TXT, szN, qtToTip)
+            f_cellT(0, 11, vpTxt, BG, TXT, szN, tipVp)
+            f_cellT(9, 11, zTxt, BG2, zIn > 0 ? color.yellow : TXT, szN, tipZ)
+            f_cell(0, 12, flyTfTxt, BG2, MUT, szN)
+        for pr = 8 to 9
+            table.merge_cells(t, cx + 0, cy + pr, cx + 2, cy + pr)
+            table.merge_cells(t, cx + 3, cy + pr, cx + 5, cy + pr)
+            table.merge_cells(t, cx + 6, cy + pr, cx + 8, cy + pr)
+            table.merge_cells(t, cx + 9, cy + pr, cx + 11, cy + pr)
+            table.merge_cells(t, cx + 12, cy + pr, cx + 14, cy + pr)
+            table.merge_cells(t, cx + 15, cy + pr, cx + 17, cy + pr)
+        for pr = 10 to 11
+            table.merge_cells(t, cx + 0, cy + pr, cx + 8, cy + pr)
+            table.merge_cells(t, cx + 9, cy + pr, cx + 17, cy + pr)
+        table.merge_cells(t, cx + 0, cy + 12, cx + 17, cy + 12)

@@ -290,6 +290,9 @@ if wSig or mSig
 // K = ריטסט הקריק/אייס אחרי הקפיצה (BUTTC/RBTI, המצגת): סטופ מעבר לקו או לשפל/שיא נר הריטסט
 if buttcL or rbtiS
     f_add("K", buttcL, buttcL ? math.min(low, jacLvl) * (1 - buf2) : math.max(high, jacLvl) * (1 + buf2), close, buttcL ? flagsL : flagsS)
+// P = ריטסט POC של היום אחרי BOS (המחקר 19): סטופ מעבר ל-POC / לקצה נר הריטסט
+if pRtL or pRtS
+    f_add("P", pRtL, pRtL ? math.min(low, pocNow) * (1 - buf2) : math.max(high, pocNow) * (1 + buf2), close, pRtL ? flagsL : flagsS)
 // R = אורדר בלוק בכניסה בריטסט (הקורס 12-6: לימיט 21% לתוך הבלוק מהקצה הקרוב, סטופ מעבר לקצה הרחוק), עד 30 נרות להתמלא
 var float[] pdPx = array.new<float>()
 var float[] pdSt = array.new<float>()

@@ -16,6 +16,7 @@ mLiq  = input.bool(true,  "נזילות + Judas",        group=gM)
 mSes  = input.bool(true,  "סשנים + AMD",           group=gM)
 mBB   = input.bool(true,  "בולינגר — סקוויז ופריצה",  group=gM)
 mGap  = input.bool(true,  "גאפים (סגירה → פתיחה)",     group=gM)
+mPOC  = input.bool(true,  "ריטסט POC (P) — ווליום פרופייל", group=gM)
 
 g0 = "ליבה"
 pivLen  = input.int(5, "אורך פיבוט", minval=2, group=g0)
@@ -34,6 +35,7 @@ sqBars  = input.int(8, "אורך התכווצות", minval=4, group=g0)
 sqAtrK  = input.float(2.5, "רוחב התכווצות (ATR)", minval=0.5, step=0.5, group=g0)
 targetR = input.float(3.0, "יעד בדיקה (R)", minval=0.5, step=0.5, group=g0)
 stopBuf = input.float(0.1, "מרווח סטופ %", minval=0.0, step=0.05, group=g0)
+emaLen = input.int(12, "EMA — אישור כיוון: מעל/מתחת + שיפוע (המשתמש 22.10)", minval=2, group=g0)
 fvgMinAtr = input.float(0.5, "FVG: גודל מינימלי של המרווח (ATR)", minval=0.0, step=0.1, group=g0)
 fvgDispAtr = input.float(1.2, "FVG: גודל מינימלי של נר הדחף (ATR)", minval=0.0, step=0.1, group=g0)
 gapMinPct = input.float(0.02, "גאפ: גודל מינימלי (% מהמחיר)", minval=0.0, step=0.01, group=g0)
@@ -41,6 +43,14 @@ dblTolPct = input.float(0.02, "DD/DT: הפרש מקסימלי בין השפלי�
 fvgMaxAge = input.int(200, "FVG: אורך חיים מקסימלי על הגרף (נרות)", minval=20, maxval=2000, group=g0)
 bbLen = input.int(20, "בולינגר: אורך", minval=5, group=g0)
 bbMult = input.float(2.0, "בולינגר: סטיות תקן", minval=0.5, step=0.25, group=g0)
+
+gVP = "ווליום פרופייל (המחקר 19)"
+vpOn = input.bool(true, "לחשב: POC היום, אזור ערך (VAH/VAL), nPOC, אזורי עיגון", group=gVP)
+vpBins = input.int(120, "רזולוציה — תאי מחיר ל-ATR יומי", minval=30, maxval=400, group=gVP)
+vpVA = input.float(70, "אזור ערך — % מהווליום", minval=50, maxval=90, step=5, group=gVP)
+vpMinBars = input.int(12, "POC היום תקף אחרי N נרות", minval=1, maxval=200, group=gVP)
+pocLeaveAtr = input.float(1.0, "ריטסט POC — המחיר יצא מהערך לפחות X ATR ב-10 הנרות שלפני החזרה", minval=0.0, step=0.25, group=gVP)
+pocTolAtr = input.float(0.35, "ריטסט POC — מרחק נגיעה (ATR)", minval=0.05, step=0.05, group=gVP)
 
 gWy = "וויקוף מתקדם (המצגת: חוקי הברזל, ריטסט הקריק, הקשר)"
 useCtxIn = input.bool(true, "חוק הקונטקסט (מ-15 דקות ומעלה): איסוף/פיזור חוזר לפי מגמת המסגרת הגבוהה; ניעור נגד המגמה דורש קליימקס", group=gWy)
@@ -766,6 +776,119 @@ bbBrkDn = mBB and sqRun[1] >= 6 and close < bbL and barstate.isconfirmed
 confBull = (bosUp or chochUp ? 1 : 0) + (sweepLo ? 1 : 0) + (smtBull or ismtBull ? 1 : 0) + (ifvgBull ? 1 : 0) + (judasBull ? 1 : 0) + (twzBull ? 1 : 0) + (spring or volDirUp or lpsMark ? 1 : 0) + (volLow and close > open ? 1 : 0) + (not inPrem ? 1 : 0) + (inKZ ? 1 : 0) + (bbBrkUp ? 1 : 0)
 confBear = (bosDn or chochDn ? 1 : 0) + (sweepHi ? 1 : 0) + (smtBear or ismtBear ? 1 : 0) + (ifvgBear ? 1 : 0) + (judasBear ? 1 : 0) + (twzBear ? 1 : 0) + (utSig or volDirDn or lpsyMark ? 1 : 0) + (volLow and close < open ? 1 : 0) + (inPrem ? 1 : 0) + (inKZ ? 1 : 0) + (bbBrkDn ? 1 : 0)
 
+// ─── EMA (אישור כיוון, המשתמש 22.10: EMA 12 — מעל ועולה ללונג, מתחת ויורד לשורט) ───
+ema12 = ta.ema(close, emaLen)
+emaRising = ema12 > ema12[1]
+ema12OkL = close > ema12 and emaRising
+ema12OkS = close < ema12 and not emaRising
+
+// ─── ווליום פרופייל של היום: POC מתפתח, אזור ערך (VAH/VAL), nPOC של ימים קודמים (המחקר 19, החלטות 21–22.10) ───
+// תאי מחיר (גודל תא = ATR יומי / vpBins, קבוע לכל יום). הווליום של כל נר מתחלק שווה בין התאים שבין השפל לשיא.
+// POC = התא עם הווליום הגבוה ביותר (מתעדכן בכל נר). אזור ערך = הרחבה מה-POC למעלה/למטה (התא הגדול מבין השניים) עד vpVA% מהווליום.
+dAtr = request.security(syminfo.tickerid, "D", ta.atr(14), lookahead=barmerge.lookahead_off)
+newDay = nz(ta.change(time("D")), 0) != 0
+f_binOf(float px, float b) => int(math.floor(px / b))
+f_vpDay() =>
+    var map<int, float> vpDay = map.new<int, float>()
+    var float vpBin = na
+    var int vpPocIdx = na
+    var float vpPocVol = 0.0
+    var float vpTot = 0.0
+    var int vpDayN = 0
+    var float[] npocArr = array.new<float>()
+    var float prevPoc = na
+    var float prevVah = na
+    var float prevVal = na
+    var float vah = na
+    var float val = na
+    float pocNow = na
+    float npUp = na
+    float npDn = na
+    if vpOn
+        if newDay or na(vpBin)
+            if not na(vpPocIdx) and vpDayN >= vpMinBars
+                prevPoc := (vpPocIdx + 0.5) * vpBin
+                prevVah := vah
+                prevVal := val
+                array.unshift(npocArr, prevPoc)
+                if array.size(npocArr) > 5
+                    array.pop(npocArr)
+            map.clear(vpDay)
+            vpBin := math.max(syminfo.mintick, nz(dAtr, atr * 10) / vpBins)
+            vpPocIdx := na
+            vpPocVol := 0.0
+            vpTot := 0.0
+            vpDayN := 0
+            vah := na
+            val := na
+        iLo = f_binOf(low, vpBin)
+        nB = math.min(f_binOf(high, vpBin) - iLo + 1, 400)
+        per = volume / nB
+        for bi = iLo to iLo + nB - 1
+            v = nz(map.get(vpDay, bi)) + per
+            map.put(vpDay, bi, v)
+            if v > vpPocVol
+                vpPocVol := v
+                vpPocIdx := bi
+        vpTot += volume
+        vpDayN += 1
+        if not na(vpPocIdx) and vpTot > 0
+            float acc = vpPocVol
+            int up = vpPocIdx
+            int dn = vpPocIdx
+            float need = vpTot * vpVA / 100
+            int guard = 0
+            while acc < need and guard < 600
+                vu = nz(map.get(vpDay, up + 1))
+                vd = nz(map.get(vpDay, dn - 1))
+                if vu >= vd
+                    up += 1
+                    acc += vu
+                else
+                    dn -= 1
+                    acc += vd
+                guard += 1
+            vah := (up + 1) * vpBin
+            val := dn * vpBin
+        if vpDayN >= vpMinBars and not na(vpPocIdx)
+            pocNow := (vpPocIdx + 0.5) * vpBin
+        if array.size(npocArr) > 0
+            for ni = array.size(npocArr) - 1 to 0
+                nv = array.get(npocArr, ni)
+                if low <= nv and high >= nv
+                    array.remove(npocArr, ni)
+        if array.size(npocArr) > 0
+            for ni = 0 to array.size(npocArr) - 1
+                nv = array.get(npocArr, ni)
+                if nv > close and (na(npUp) or nv < npUp)
+                    npUp := nv
+                if nv < close and (na(npDn) or nv > npDn)
+                    npDn := nv
+    [pocNow, vah, val, prevPoc, prevVah, prevVal, npUp, npDn, vpDayN]
+// POC היום, VAH/VAL, POC/VA של אתמול, ה-nPOC הקרוב מעל ומתחת, מספר הנרות היום
+[pocNow, vah, val, prevPoc, prevVah, prevVal, npUp, npDn, vpDayN] = f_vpDay()
+pocTol = atr * pocTolAtr
+pocAtL = not na(pocNow) and low <= pocNow + pocTol and close > pocNow
+pocAtS = not na(pocNow) and high >= pocNow - pocTol and close < pocNow
+vaIn = not na(vah) and not na(pocNow) and close <= vah and close >= val
+vaCheapL = not na(val) and not na(pocNow) and close < val
+vaCheapS = not na(vah) and not na(pocNow) and close > vah
+pocRising = not na(pocNow) and not na(pocNow[12]) and pocNow > pocNow[12]
+pocFalling = not na(pocNow) and not na(pocNow[12]) and pocNow < pocNow[12]
+
+// ─── טריגר: ריטסט POC (P) — אחרי BOS המחיר יצא מהערך, חזר ל-POC של היום, נגע וסגר חזרה בכיוון המבנה (המחקר 19, החלטת המשתמש 21.10) ───
+pHi10 = ta.highest(high, 10)
+pLo10 = ta.lowest(low, 10)
+pWasUpN = ta.barssince(na(pocNow) or close <= pocNow)
+pWasDnN = ta.barssince(na(pocNow) or close >= pocNow)
+var int pocLastBar = na
+pRtL0 = mPOC and not na(pocNow) and msDir > 0 and nz(pWasUpN[1], 999) >= 2 and nz(pHi10[1], high) >= pocNow + atr * pocLeaveAtr and low <= pocNow + pocTol and close > pocNow and barstate.isconfirmed
+pRtS0 = mPOC and not na(pocNow) and msDir < 0 and nz(pWasDnN[1], 999) >= 2 and nz(pLo10[1], low) <= pocNow - atr * pocLeaveAtr and high >= pocNow - pocTol and close < pocNow and barstate.isconfirmed
+pRtL = pRtL0 and (na(pocLastBar) or bar_index - pocLastBar > 5)
+pRtS = pRtS0 and (na(pocLastBar) or bar_index - pocLastBar > 5)
+if pRtL or pRtS
+    pocLastBar := bar_index
+
 // ─── מנוע בקטסט ─────────────────────────────────────────────────────────────
 buf = stopBuf / 100.0
 var int fN = 0
@@ -880,6 +1003,38 @@ if wmSt == 1
         array.set(sesW, wmSes, array.get(sesW, wmSes) + 1)
         wmSt := 0
 
+// ── P (ריטסט POC): סטופ מעבר ל-POC / לקצה נר הריטסט (מצב העסקה בפונקציה — גוף הסקריפט מוגבל באורך) ──
+f_pTrade(bool sigL, bool sigS) =>
+    var int n = 0
+    var int w = 0
+    var int st = 0
+    var float sp = na
+    var float tp = na
+    var bool isL = true
+    var int ses = 0
+    if (sigL or sigS) and st == 0
+        isL := sigL
+        stp = isL ? math.min(low, pocNow) * (1 - buf) : math.max(high, pocNow) * (1 + buf)
+        if isL ? close > stp : close < stp
+            st := 1
+            sp := stp
+            tp := f_open(stp, isL)
+            n += 1
+            ses := sesIdx
+            array.set(sesN, sesIdx, array.get(sesN, sesIdx) + 1)
+    if st == 1
+        hitS = isL ? low <= sp : high >= sp
+        hitT = isL ? high >= tp : low <= tp
+        if hitS
+            st := 0
+        else if hitT
+            w += 1
+            array.set(sesW, ses, array.get(sesW, ses) + 1)
+            st := 0
+    [n, w, st, sp, tp, isL ? 1 : 0]
+[pocN, pocW, pocSt, pocS, pocT, pocLi] = f_pTrade(pRtL, pRtS)
+pocL = pocLi == 1
+
 // ─── צ'ק-ליסט ────────────────────────────────────────────────────────────────
 ckSpring = (phase == 3 or phase == 4) and cIsBull
 ckUT = (phase == 3 or phase == 4) and not cIsBull
@@ -890,6 +1045,66 @@ float ckStop = armDir == 1 ? math.min(nz(cExt, low), nz(lastPL, low)) : armDir =
 float ckTgt = armDir == 1 ? (phase > 0 ? rHi : nz(poolHi, high)) : armDir == -1 ? (phase > 0 ? rLo : nz(poolLo, low)) : na
 ckRR = not na(ckStop) and not na(ckTgt) and math.abs(close - ckStop) > 0 ? math.abs(ckTgt - close) / math.abs(close - ckStop) : na
 ckRRok = not na(ckRR) and ckRR >= 3
+
+// ─── תורת הרבעים (Daye): רבעים שבועי/יומי/90 דק', מודל AMD/XAMD ל-90 דק', True Opens, Judas — לטבלה ולמדידה (1.11) ───
+QT_TZ = "America/New_York"
+QT_MS = 60000.0
+qtHH = hour(time, QT_TZ)
+qtMM = minute(time, QT_TZ)
+qtOff = (qtHH * 60 + qtMM - 1080 + 1440) % 1440
+qtDayStart = time - qtOff * QT_MS - second(time, QT_TZ) * 1000
+int qtDayIdx = int(math.floor(qtOff / 360))
+int qtOff360 = qtOff % 360
+int qt90Idx = int(math.floor(qtOff360 / 90))
+qtDayQStart = qtDayStart + qtDayIdx * 360.0 * QT_MS
+qt90Start = qtDayQStart + qt90Idx * 90.0 * QT_MS
+qtTd = time + 21600000
+qtDow = dayofweek(qtTd, QT_TZ)
+qtDom = dayofmonth(qtTd, QT_TZ)
+qtNewDay = na(qtDom[1]) ? false : qtDom != qtDom[1]
+int qtWkIdx = qtDow == dayofweek.monday ? 0 : qtDow == dayofweek.tuesday ? 1 : qtDow == dayofweek.wednesday ? 2 : qtDow == dayofweek.thursday ? 3 : -1
+qtNew90 = na(qt90Start[1]) ? false : qt90Start != qt90Start[1]
+qtNewDayQ = na(qtDayQStart[1]) ? false : qtDayQStart != qtDayQStart[1]
+var float qtHi = na
+var float qtLo = na
+var float qtAvgR = na
+var string qtModel = "AMD"
+var float qtQ1Hi = na
+var float qtQ1Lo = na
+var bool qtJudasDone = false
+if qtNew90
+    if not na(qtHi)
+        float qr = qtHi - qtLo
+        qtAvgR := na(qtAvgR) ? qr : qtAvgR * 0.9 + qr * 0.1
+        if qt90Idx[1] == 0
+            qtQ1Hi := qtHi
+            qtQ1Lo := qtLo
+            qtModel := qr > qtAvgR * 1.35 ? "XAMD" : "AMD"
+    qtHi := high
+    qtLo := low
+    qtJudasDone := false
+else
+    qtHi := math.max(nz(qtHi, high), high)
+    qtLo := math.min(nz(qtLo, low), low)
+int qtManipIdx = qtModel == "AMD" ? 1 : 2
+qtInManip = qt90Idx == qtManipIdx
+qtInDist = qt90Idx == qtManipIdx + 1
+qtInAccum = qtModel == "AMD" ? qt90Idx == 0 : qt90Idx == 1
+var float qtTSO = na
+var float qtTDO = na
+var float qtTWO = na
+if qtNew90 and qt90Idx == 1
+    qtTSO := open
+if qtNewDayQ and qtDayIdx == 1
+    qtTDO := open
+if qtNewDay and qtDow == dayofweek.tuesday
+    qtTWO := open
+qtJudasBear = qtInManip and not qtJudasDone and not na(qtQ1Hi) and high > qtQ1Hi and close < qtQ1Hi
+qtJudasBull = qtInManip and not qtJudasDone and not na(qtQ1Lo) and low < qtQ1Lo and close > qtQ1Lo
+if (qtJudasBear or qtJudasBull) and barstate.isconfirmed
+    qtJudasDone := true
+f_qtPhHe(int idx, string md) => md == "AMD" ? (idx == 0 ? "צבירה" : idx == 1 ? "מניפולציה" : idx == 2 ? "חלוקה" : "המשך") : (idx == 0 ? "המשך" : idx == 1 ? "צבירה" : idx == 2 ? "מניפולציה" : "חלוקה")
+f_qtSide(float lvl) => na(lvl) ? "—" : close > lvl ? "מעל" : "מתחת"
 
 
 // ═══ HTT Path Lab — הקשר HTF, DD/DT, דגלים, מעקב מסלול ═══
@@ -1042,65 +1257,6 @@ cvdLo20 = ta.lowest(cvd, 20)
 cvdHi20 = ta.highest(cvd, 20)
 cvdDivBull = low <= cvLo20[1] and cvd > cvdLo20[1]
 cvdDivBear = high >= cvHi20[1] and cvd < cvdHi20[1]
-// ─── תורת הרבעים (Daye): רבעים שבועי/יומי/90 דק', מודל AMD/XAMD ל-90 דק', True Opens, Judas — לטבלה ולמדידה (1.11) ───
-QT_TZ = "America/New_York"
-QT_MS = 60000.0
-qtHH = hour(time, QT_TZ)
-qtMM = minute(time, QT_TZ)
-qtOff = (qtHH * 60 + qtMM - 1080 + 1440) % 1440
-qtDayStart = time - qtOff * QT_MS - second(time, QT_TZ) * 1000
-int qtDayIdx = int(math.floor(qtOff / 360))
-int qtOff360 = qtOff % 360
-int qt90Idx = int(math.floor(qtOff360 / 90))
-qtDayQStart = qtDayStart + qtDayIdx * 360.0 * QT_MS
-qt90Start = qtDayQStart + qt90Idx * 90.0 * QT_MS
-qtTd = time + 21600000
-qtDow = dayofweek(qtTd, QT_TZ)
-qtDom = dayofmonth(qtTd, QT_TZ)
-qtNewDay = na(qtDom[1]) ? false : qtDom != qtDom[1]
-int qtWkIdx = qtDow == dayofweek.monday ? 0 : qtDow == dayofweek.tuesday ? 1 : qtDow == dayofweek.wednesday ? 2 : qtDow == dayofweek.thursday ? 3 : -1
-qtNew90 = na(qt90Start[1]) ? false : qt90Start != qt90Start[1]
-qtNewDayQ = na(qtDayQStart[1]) ? false : qtDayQStart != qtDayQStart[1]
-var float qtHi = na
-var float qtLo = na
-var float qtAvgR = na
-var string qtModel = "AMD"
-var float qtQ1Hi = na
-var float qtQ1Lo = na
-var bool qtJudasDone = false
-if qtNew90
-    if not na(qtHi)
-        float qr = qtHi - qtLo
-        qtAvgR := na(qtAvgR) ? qr : qtAvgR * 0.9 + qr * 0.1
-        if qt90Idx[1] == 0
-            qtQ1Hi := qtHi
-            qtQ1Lo := qtLo
-            qtModel := qr > qtAvgR * 1.35 ? "XAMD" : "AMD"
-    qtHi := high
-    qtLo := low
-    qtJudasDone := false
-else
-    qtHi := math.max(nz(qtHi, high), high)
-    qtLo := math.min(nz(qtLo, low), low)
-int qtManipIdx = qtModel == "AMD" ? 1 : 2
-qtInManip = qt90Idx == qtManipIdx
-qtInDist = qt90Idx == qtManipIdx + 1
-qtInAccum = qtModel == "AMD" ? qt90Idx == 0 : qt90Idx == 1
-var float qtTSO = na
-var float qtTDO = na
-var float qtTWO = na
-if qtNew90 and qt90Idx == 1
-    qtTSO := open
-if qtNewDayQ and qtDayIdx == 1
-    qtTDO := open
-if qtNewDay and qtDow == dayofweek.tuesday
-    qtTWO := open
-qtJudasBear = qtInManip and not qtJudasDone and not na(qtQ1Hi) and high > qtQ1Hi and close < qtQ1Hi
-qtJudasBull = qtInManip and not qtJudasDone and not na(qtQ1Lo) and low < qtQ1Lo and close > qtQ1Lo
-if (qtJudasBear or qtJudasBull) and barstate.isconfirmed
-    qtJudasDone := true
-f_qtPhHe(int idx, string md) => md == "AMD" ? (idx == 0 ? "צבירה" : idx == 1 ? "מניפולציה" : idx == 2 ? "חלוקה" : "המשך") : (idx == 0 ? "המשך" : idx == 1 ? "צבירה" : idx == 2 ? "מניפולציה" : "חלוקה")
-f_qtSide(float lvl) => na(lvl) ? "—" : close > lvl ? "מעל" : "מתחת"
 // ─── AVWAP מעוגן: True Day Open, True Session Open, שבועי (ב' 18:00 NY), וסווינג אחרון — כללים למדידה (1.15) ───
 var float avTdoPV = 0.0
 var float avTdoVV = 0.0
@@ -1206,6 +1362,8 @@ evL_tso = ta.barssince(tsoNow and spring) <= recN
 evS_tso = ta.barssince(tsoNow and utSig) <= recN
 evL_qtJudas = ta.barssince(qtJudasBull) <= recN
 evS_qtJudas = ta.barssince(qtJudasBear) <= recN
+evL_pocRt = ta.barssince(pRtL) <= recN
+evS_pocRt = ta.barssince(pRtS) <= recN
 f_flags(bool isL) =>
     string s = ""
     s += (isL ? evL_bos : evS_bos) ? "1" : "0"
@@ -1236,6 +1394,7 @@ f_flags(bool isL) =>
     s += (isL ? evL_crkRt : evS_crkRt) ? "1" : "0"
     s += (isL ? evL_tso : evS_tso) ? "1" : "0"
     s += (isL ? evL_qtJudas : evS_qtJudas) ? "1" : "0"
+    s += (isL ? evL_pocRt : evS_pocRt) ? "1" : "0"
     s += (isL ? (testOK) : (testOK)) ? "1" : "0"
     s += (isL ? (not inPrem) : (inPrem)) ? "1" : "0"
     s += (isL ? (inKZ) : (inKZ)) ? "1" : "0"
@@ -1284,6 +1443,13 @@ f_flags(bool isL) =>
     s += (isL ? (avwSwRtL) : (avwSwRtS)) ? "1" : "0"
     s += (isL ? (avwSlopeUp) : (avwSlopeDn)) ? "1" : "0"
     s += (isL ? (not na(avwapD) and not na(avwapWK) and close > avwapD and close > avwapWK) : (not na(avwapD) and not na(avwapWK) and close < avwapD and close < avwapWK)) ? "1" : "0"
+    s += (isL ? (pocAtL) : (pocAtS)) ? "1" : "0"
+    s += (isL ? (not na(pocNow) and close > pocNow) : (not na(pocNow) and close < pocNow)) ? "1" : "0"
+    s += (isL ? (vaIn) : (vaIn)) ? "1" : "0"
+    s += (isL ? (vaCheapL) : (vaCheapS)) ? "1" : "0"
+    s += (isL ? (pocRising) : (pocFalling)) ? "1" : "0"
+    s += (isL ? (ema12OkL) : (ema12OkS)) ? "1" : "0"
+    s += (isL ? (close > ema12) : (close < ema12)) ? "1" : "0"
     s
 // ── מעקב מסלול: מערכים מקבילים, סיגנל = שורה ──
 var string[] kT = array.new<string>()
@@ -1531,6 +1697,9 @@ if wSig or mSig
 // K = ריטסט הקריק/אייס אחרי הקפיצה (BUTTC/RBTI, המצגת): סטופ מעבר לקו או לשפל/שיא נר הריטסט
 if buttcL or rbtiS
     f_add("K", buttcL, buttcL ? math.min(low, jacLvl) * (1 - buf2) : math.max(high, jacLvl) * (1 + buf2), close, buttcL ? flagsL : flagsS)
+// P = ריטסט POC של היום אחרי BOS (המחקר 19): סטופ מעבר ל-POC / לקצה נר הריטסט
+if pRtL or pRtS
+    f_add("P", pRtL, pRtL ? math.min(low, pocNow) * (1 - buf2) : math.max(high, pocNow) * (1 + buf2), close, pRtL ? flagsL : flagsS)
 // R = אורדר בלוק בכניסה בריטסט (הקורס 12-6: לימיט 21% לתוך הבלוק מהקצה הקרוב, סטופ מעבר לקצה הרחוק), עד 30 נרות להתמלא
 var float[] pdPx = array.new<float>()
 var float[] pdSt = array.new<float>()

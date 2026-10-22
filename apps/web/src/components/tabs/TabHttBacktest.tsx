@@ -503,7 +503,7 @@ function FibSection({ fib }: { fib: FibStats }) {
 }
 
 const GROUP_HE: Record<string, string> = { all: 'כל המסגרות והנכסים', '240': '4 שעות', '15': '15 דקות', '5': '5 דקות', BTCUSDT: 'BTC', ETHUSDT: 'ETH', SOLUSDT: 'SOL', NQ1: 'NQ' }
-const STRAT_SHORT: Record<string, string> = { F: 'טיסה', W: 'כנף', O: 'OB', M: 'W/M' }
+const STRAT_SHORT: Record<string, string> = { F: 'טיסה', W: 'כנף', O: 'OB', M: 'W/M', K: 'ריטסט', P: 'POC' }
 
 function RankSection({ rank, levels }: { rank: RankData; levels: LevelsData | null }) {
   const tier = (r: RankRow) => (r.w >= 0.15 ? 'דרגה 1 — עוגן' : r.w >= 0.05 ? 'דרגה 2 — תומך' : r.w > -0.05 ? 'דרגה 3 — ניטרלי' : r.w > -0.15 ? 'דרגה 4 — מוריד' : 'דרגה 5 — נגד')
@@ -912,7 +912,7 @@ const CONNECTION_STEPS: Array<[string, string, 'done' | 'pending' | 'blocked']> 
 ]
 
 const TF_HE: Record<string, string> = { '240': '4 שעות', '15': '15 דקות', '5': '5 דקות', all: 'הכול' }
-const STRAT_HE2: Record<string, string> = { F: 'טיסה', W: 'שבירת כנף', O: 'אורדר בלוק', M: 'W/M', B: 'פריצה', K: 'ריטסט קריק/אייס' }
+const STRAT_HE2: Record<string, string> = { F: 'טיסה', W: 'שבירת כנף', O: 'אורדר בלוק', M: 'W/M', B: 'פריצה', P: 'ריטסט POC', K: 'ריטסט קריק/אייס' }
 function RepRow({ name, m, perWeek }: { name: string; m?: RepM; perWeek?: boolean }) {
   if (!m || !m.n) return null
   const r = (v?: number) => (v === undefined || v === null ? '—' : (v >= 0 ? '+' : '') + v.toFixed(2))

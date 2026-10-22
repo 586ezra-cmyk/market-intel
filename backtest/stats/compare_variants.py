@@ -6,7 +6,7 @@ from build_stats import STRAT_HE, FLAG_HE
 from build_year_stats import merge
 FLAGS = [l.strip() for l in open('flags.txt', encoding='utf-8') if l.strip()]
 IDX = {k: i for i, k in enumerate(FLAGS)}
-COURSE = ['F', 'W', 'O', 'M', 'B', 'K']
+COURSE = ['F', 'W', 'O', 'M', 'B', 'K', 'P']
 
 def load(path):
     raw = json.load(open(path))
