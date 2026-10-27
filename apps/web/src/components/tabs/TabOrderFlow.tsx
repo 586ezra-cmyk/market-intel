@@ -34,7 +34,7 @@ function useChart(height: number) {
     chartRef.current = chart
     const ro = new ResizeObserver(() => chart.applyOptions({ width: el.clientWidth }))
     ro.observe(el)
-    return () => { ro.disconnect(); chart.remove(); chartRef.current = null }
+    return () => { ro.disconnect(); chartRef.current = null; try { chart.remove() } catch { /* כבר הוסר */ } }
   }, [height])
   return { ref, chartRef }
 }
@@ -81,7 +81,7 @@ export default function TabOrderFlow() {
     const dS = dc.addSeries(HistogramSeries, { priceFormat: { type: 'volume' } })
     dS.setData(bars.map(b => ({ time: ts(b.t), value: b.delta, color: b.delta >= 0 ? 'rgba(38,166,154,0.8)' : 'rgba(239,83,80,0.8)' })))
     pc.timeScale().fitContent(); cc.timeScale().fitContent(); dc.timeScale().fitContent()
-    return () => { pc.removeSeries(candles); cc.removeSeries(cvdS); dc.removeSeries(dS) }
+    return () => { try { pc.removeSeries(candles); cc.removeSeries(cvdS); dc.removeSeries(dS) } catch { /* הגרף כבר הוסר (StrictMode / החלפת טאב) */ } }
   }, [bars, price.chartRef, cvd.chartRef, delta.chartRef])
 
   const sum = useMemo(() => {

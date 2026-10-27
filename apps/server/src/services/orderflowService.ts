@@ -107,8 +107,10 @@ export function getOrderflow(symbol: string, tfMin: number, limit: number): OfBa
     if (avgV > 0 && avgR > 0 && b.vol >= 2 * avgV && (b.h - b.l) <= 0.6 * avgR) b.absorb = b.delta >= 0 ? -1 : 1
     const hi = Math.max(...w.map(x => x.h)), lo = Math.min(...w.map(x => x.l))
     const cvdHi = Math.max(...w.map(x => x.cvd)), cvdLo = Math.min(...w.map(x => x.cvd))
-    if (b.h > hi && b.cvd < cvdHi) b.div = -1
-    else if (b.l < lo && b.cvd > cvdLo) b.div = 1
+    // דיברגנס מסומן רק בנר הראשון של הרצף (לא בכל נר של שיא חדש), כדי שהגרף לא יתמלא
+    const prev = bars[i - 1]
+    if (b.h > hi && b.cvd < cvdHi) b.div = prev.div === -1 ? 0 : -1
+    else if (b.l < lo && b.cvd > cvdLo) b.div = prev.div === 1 ? 0 : 1
   }
   return bars.slice(-limit)
 }
