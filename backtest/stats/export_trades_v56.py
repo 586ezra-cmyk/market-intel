@@ -1,14 +1,21 @@
 # -*- coding: utf-8 -*-
 """ייצוא קומפקטי של כל העסקאות (שנה, 84 דגלים) למעבדת הצירופים באתר + מסמך 22: כל אישור לבדו, בכל מסגרת,
 הדוגמה של המשתמש (ספרינג + תורת הרבעים + SMT + iSMT), והטבלאות המלאות של זוגות/שלשות (n ≥ 30) לפי R."""
-import sys, json, datetime, itertools, collections
+import sys, json, datetime, itertools, collections, pathlib
 import numpy as np
 sys.path.insert(0, '.')
 import build_backtest_report as B
 from build_stats import FLAG_HE, STRAT_HE
 T, _ = B.load()
-FLAGS = B.FLAGS
+# דגלי Order Flow אמיתיים (קריפטו) מ-build_orderflow_features.py — מצורפים אחרי 84 הדגלים
+OF = json.load(open('trades/trades_v56_of.json', encoding='utf-8')) if pathlib.Path('trades/trades_v56_of.json').exists() else {'flags': [], 'he': {}, 'byKey': {}}
+FLAGS = B.FLAGS + OF['flags']
+FLAG_HE = dict(FLAG_HE, **OF['he'])
+for t in T:
+    k = f"{t['sym']}|{t['res']}|{t['strat']}|{t['entryTime']}"
+    t['flags'] = t['flags'] + OF['byKey'].get(k, '0' * len(OF['flags']))
 he = lambda k: FLAG_HE.get(k, k)
+IDX = {k: i for i, k in enumerate(FLAGS)}
 GROUPS = {
  'ספרינג / וויקוף': ['shake', 'volC', 'lps', 'test', 'phC', 'phD', 'phE', 'phAB', 'cDir', 'tso', 'cTso', 'reacc', 'jac', 'crkRt', 'dq2', 'dq3', 'dqMag', 'clues3', 'engulf', 'climax', 'volLow'],
  'מבנה': ['bos', 'choch', 'htfMs', 'htfCD', 'wm', 'ddt', 'ob', 'conf4', 'rrOk', 'atEdge', 'atHtfLvl', 'atSesLvl', 'atPool', 'orBrk'],
@@ -23,6 +30,7 @@ GROUPS = {
  'VIX': ['vixOk', 'vixHigh', 'vixSpike', 'vixDiv'],
  'בולינגר': ['bb', 'bbSq'],
  'RSI / צבת': ['rsi', 'tweezer'],
+ 'Order Flow (קריפטו)': ['ofDeltaOk', 'ofDelta3Ok', 'ofDeltaBig', 'ofCvdOk', 'ofDivFor', 'ofDivAgainst', 'ofAbsorbFor', 'ofAbsorbAgainst', 'ofAvail'],
 }
 # ── 1) קובץ עסקאות קומפקטי לאתר ──
 rows = []
@@ -62,7 +70,7 @@ for tf in ('240', '15', '5'):
     A('| קבוצה | אישור | עסקאות עם | R (הפרש) | PF | 1:3 | סטופ | חצאים |'); A('|---|---|---|---|---|---|---|---|')
     for g, keys in GROUPS.items():
         for k in keys:
-            i = B.IDX.get(k)
+            i = IDX.get(k)
             if i is None: continue
             s = stats([t for t in pool if t['flags'][i] == '1'])
             if s and s['n'] >= 10: A(f"| {g} " + row(he(k), s, base)[1:])
@@ -73,7 +81,7 @@ EX = [('ספרינג + ג׳ודאס של הרבע + SMT + iSMT', ['shake', 'qtJu
 A('| צירוף | מסגרת | עסקאות | R | PF | 1:3 | סטופ | חצאים |'); A('|---|---|---|---|---|---|---|---|')
 for name, keys in EX:
     for tf in ('all', '240', '15', '5'):
-        pool = [t for t in pool_all if (tf == 'all' or t['res'] == tf) and all(t['flags'][B.IDX[k]] == '1' for k in keys)]
+        pool = [t for t in pool_all if (tf == 'all' or t['res'] == tf) and all(t['flags'][IDX[k]] == '1' for k in keys)]
         s = stats(pool)
         A(f"| {name} | {'הכול' if tf == 'all' else TFN[tf]} | " + (row('', s)[4:] if s else '0 | — | — | — | — | — |'))
 A('')
