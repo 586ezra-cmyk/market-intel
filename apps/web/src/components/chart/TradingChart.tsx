@@ -19,6 +19,7 @@ import JudasLayer from './layers/JudasLayer'
 import WyckoffLayer from './layers/WyckoffLayer'
 import ISMTLayer from './layers/ISMTLayer'
 import RepricingLayer from './layers/RepricingLayer'
+import OptionsLevelsLayer from './layers/OptionsLevelsLayer'
 import DetailPanel from './DetailPanel'
 import DrawingToolbar from './DrawingToolbar'
 import ChartDrawingCanvas from './ChartDrawingCanvas'
@@ -209,6 +210,7 @@ export default function TradingChart() {
           <WyckoffLayer        chart={cs.chart} series={cs.candleSeries} />
           <ISMTLayer           chart={cs.chart} series={cs.candleSeries} />
           <RepricingLayer      chart={cs.chart} series={cs.candleSeries} />
+          <OptionsLevelsLayer  chart={cs.chart} series={cs.candleSeries} />
           <ChartDrawingCanvas  chart={cs.chart} series={cs.candleSeries} />
         </>
       )}

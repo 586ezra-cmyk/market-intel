@@ -8,6 +8,38 @@ const TF_MAP: Record<string, string> = {
   '1D': '1d', '1W': '1w', '1M': '1M',
 }
 
+// נאסדק/S&P: אין ב-Binance — נרות מ-Yahoo (NQ=F, ES=F), אותו פורמט
+const YAHOO_MAP: Record<string, string> = { 'NQ1!': 'NQ=F', 'NQ': 'NQ=F', 'NQU2026': 'NQ=F', 'NQZ2026': 'NQ=F', 'ES1!': 'ES=F', 'ES': 'ES=F', 'ESU2026': 'ES=F', 'ESZ2026': 'ES=F', 'XAUUSD': 'GC=F' }
+const YAHOO_TF: Record<string, [string, string]> = { '1m': ['1m', '1d'], '3m': ['5m', '5d'], '5m': ['5m', '5d'], '15m': ['15m', '1mo'], '30m': ['30m', '1mo'], '1h': ['60m', '3mo'], '4h': ['60m', '6mo'], '6h': ['60m', '6mo'], '12h': ['1d', '2y'], '1D': ['1d', '2y'], '1W': ['1wk', '5y'], '1M': ['1mo', '10y'] }
+async function yahooCandles(ySym: string, timeframe: string, limit: number): Promise<Array<{ time: number; open: number; high: number; low: number; close: number; volume: number }> | null> {
+  const [interval, range] = YAHOO_TF[timeframe] ?? ['15m', '1mo']
+  try {
+    const res = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ySym)}?interval=${interval}&range=${range}`, { headers: { 'User-Agent': 'Mozilla/5.0' }, next: { revalidate: 30 } })
+    if (!res.ok) return null
+    const j: any = await res.json()
+    const r = j?.chart?.result?.[0]; const q = r?.indicators?.quote?.[0]
+    if (!r?.timestamp || !q) return null
+    const out: Array<{ time: number; open: number; high: number; low: number; close: number; volume: number }> = []
+    for (let i = 0; i < r.timestamp.length; i++) {
+      if (q.open[i] == null || q.close[i] == null) continue
+      out.push({ time: r.timestamp[i], open: q.open[i], high: q.high[i], low: q.low[i], close: q.close[i], volume: q.volume?.[i] ?? 0 })
+    }
+    // 4h מ-60m: צבירה ל-4 שעות
+    if (timeframe === '4h' || timeframe === '6h') {
+      const span = timeframe === '4h' ? 4 * 3600 : 6 * 3600
+      const agg: typeof out = []
+      for (const c of out) {
+        const t = Math.floor(c.time / span) * span
+        const last = agg[agg.length - 1]
+        if (last && last.time === t) { last.high = Math.max(last.high, c.high); last.low = Math.min(last.low, c.low); last.close = c.close; last.volume += c.volume }
+        else agg.push({ ...c, time: t })
+      }
+      return agg.slice(-limit)
+    }
+    return out.slice(-limit)
+  } catch { return null }
+}
+
 const HEADERS = {
   'Accept': 'application/json',
   'User-Agent': 'Mozilla/5.0 (compatible; MarketIntel/1.0)',
@@ -30,7 +62,15 @@ export async function GET(
   const { symbol, timeframe } = await params
   const sym = String(symbol).toUpperCase()
   // Input validation: symbol and timeframe are interpolated into upstream URLs.
-  if (!/^[A-Z0-9]{3,20}$/.test(sym)) return NextResponse.json({ error: 'Invalid symbol' }, { status: 400 })
+  if (!/^[A-Z0-9!=]{2,20}$/.test(sym)) return NextResponse.json({ error: 'Invalid symbol' }, { status: 400 })
+  if (YAHOO_MAP[sym]) {
+    const tfOk = TF_MAP[timeframe]
+    if (!tfOk) return NextResponse.json({ error: 'Invalid timeframe' }, { status: 400 })
+    const rawL = parseInt(req.nextUrl.searchParams.get('limit') ?? '250', 10)
+    const yc = await yahooCandles(YAHOO_MAP[sym], timeframe, Number.isFinite(rawL) ? Math.min(Math.max(rawL, 1), 500) : 250)
+    if (!yc || !yc.length) return NextResponse.json({ error: `No data for ${sym}` }, { status: 404 })
+    return NextResponse.json(yc)
+  }
   const interval = TF_MAP[timeframe]
   if (!interval) return NextResponse.json({ error: 'Invalid timeframe' }, { status: 400 })
   const rawLimit = parseInt(req.nextUrl.searchParams.get('limit') ?? '250', 10)
