@@ -102,11 +102,13 @@ export default function TabAlertSettings() {
   const [saved,       setSaved]       = useState(false)
   const [testResult,  setTestResult]  = useState<string | null>(null)
   const [httMin,      setHttMin]      = useState<number>(5)
+  const [httMinTf,    setHttMinTf]    = useState<Record<string, number>>({ '240': 3, '15': 4, '5': 3 })
 
   useEffect(() => {
     if (!settings) return
     setMasterOn(settings.telegram_active ?? true)
     if (settings.htt_min_score !== undefined) setHttMin(Number(settings.htt_min_score))
+    setHttMinTf({ '240': Number(settings.htt_min_240 ?? 3), '15': Number(settings.htt_min_15 ?? 4), '5': Number(settings.htt_min_5 ?? 3) })
     if (settings.alert_signals)    setSignals(JSON.parse(settings.alert_signals))
     if (settings.alert_timeframes) setTimeframes(JSON.parse(settings.alert_timeframes))
   }, [settings])
@@ -127,6 +129,9 @@ export default function TabAlertSettings() {
         alert_signals:      JSON.stringify(signals),
         alert_timeframes:   JSON.stringify(timeframes),
         htt_min_score:      httMin,
+        htt_min_240:        httMinTf['240'],
+        htt_min_15:         httMinTf['15'],
+        htt_min_5:          httMinTf['5'],
       })
       setSaved(true); refetch()
       setTimeout(() => setSaved(false), 2000)
@@ -179,6 +184,16 @@ export default function TabAlertSettings() {
             <button onClick={() => setHttMin(v => Math.min(10, v + 1))} className="btn-ghost px-2">+</button>
           </div>
         </div>
+        <div className="grid grid-cols-3 gap-2 text-sm">
+          {([['240', '4 שעות', 'מדידה: רמה 3+ = +0.62R'], ['15', '15 דקות', 'מדידה: רמה 4+ = +0.35R, 5+ = +0.82R'], ['5', '5 דקות', 'מדידה: רמה 3+ = +0.15R']] as Array<[string, string, string]>).map(([k, nm, hint]) => (
+            <div key={k} className="rounded border border-surface-border p-2 flex flex-col items-center gap-1">
+              <div className="text-xs text-slate-300">{nm}</div>
+              <div className="flex items-center gap-2"><button onClick={() => setHttMinTf(v => ({ ...v, [k]: Math.max(0, v[k] - 1) }))} className="btn-ghost px-2">−</button><span className="text-lg font-bold w-6 text-center">{httMinTf[k]}</span><button onClick={() => setHttMinTf(v => ({ ...v, [k]: Math.min(10, v[k] + 1) }))} className="btn-ghost px-2">+</button></div>
+              <div className="text-[10px] text-slate-500 text-center">{hint}</div>
+            </div>
+          ))}
+        </div>
+        <p className="text-[11px] text-slate-500">הרמה לכל מסגרת לפי מדידת השנה (27.10). המונה למעלה = מסגרות אחרות (שעה, יומי). הכרטיס בטלגרם ובאתר כולל גם Order Flow (קריפטו) ורמת האופציות הקרובה (נאסדק).</p>
         <p className="text-[11px] text-slate-500">מהבקטסט: רמה 2 ומעלה חיובית בכל החיתוכים (כ-3 התראות בשבוע לנכס ב-15 דקות), רמה 3 ומעלה נדירה ואיכותית (כ-0.6 בשבוע). ההרצה המדויקת בטאב "סטטיסטיקת בקטסט HTT".</p>
       </div>
 

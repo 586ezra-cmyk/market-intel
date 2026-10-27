@@ -15,7 +15,7 @@ import { parseTF } from '../utils/timeframe'
 import type { Direction, Timeframe } from '@market/shared'
 import { getSetting } from './settings'
 import { saveAlert, TOPIC_HIGH } from '../services/alertDispatcher'
-import { buildHttMessage, httFactors } from '../services/httSetup'
+import { buildHttMessage, httFactors, buildHttContext } from '../services/httSetup'
 
 const router = Router()
 
@@ -405,8 +405,12 @@ router.post('/tradingview', async (req: Request, res: Response) => {
 
       case 'htt_setup': {
         // הרמה המינימלית לטלגרם נקבעת באתר (htt_min_score); כל השאר נשמר ומוצג בטאב ההתראות
-        const minLevel = Number(getSetting('htt_min_score', '5'))
+        // רמה מינימלית לכל מסגרת (מדידת v56, 27.10: 4H ≥3, 15m ≥4, 5m ≥3); מסגרות אחרות — htt_min_score
+        const tfMinKey = tf === '4h' ? 'htt_min_240' : tf === '15m' ? 'htt_min_15' : tf === '5m' ? 'htt_min_5' : ''
+        const tfDefault = tf === '4h' ? '3' : tf === '15m' ? '4' : tf === '5m' ? '3' : ''
+        const minLevel = tfMinKey ? Number(getSetting(tfMinKey, '') || tfDefault) : Number(getSetting('htt_min_score', '5'))
         const level = Math.round(data.score)
+        const ctx = buildHttContext(data.symbol, tf, data.price)
         const input = {
           symbol: data.symbol, timeframe: tf, time: data.time, direction: data.direction, trigger: data.trigger, price: data.price,
           stop: data.stop ?? null, target: data.target ?? null, score: level, confirmations: data.confirmations, negatives: data.negatives,
@@ -420,10 +424,10 @@ router.post('/tradingview', async (req: Request, res: Response) => {
           recommendation: data.direction,
           premiumDiscount: data.negatives.includes('pd') ? (data.direction === 'long' ? 'premium' : 'discount') : (data.direction === 'long' ? 'discount' : 'premium'),
           session: data.session ?? '', inKillZone: data.inKillZone,
-          messageHe: buildHttMessage(input),
+          messageHe: buildHttMessage(input) + (ctx.linesHe.length ? '\n' + ctx.linesHe.join('\n') : ''),
           entryPrice: data.price, stopLoss: data.stop ?? null, tp1: data.target ?? null, tp2: null, tp3: null, fvgId: null, structureId: null,
           tp1Label: 'יעד 1:3', slReason: 'סטופ לפי הקורס (מעבר לניעור/פיבוט)',
-          factorDetails: { htt: input },
+          factorDetails: { htt: input, context: ctx },
           suppressTelegram: level < minLevel,
           bypassMinScore: true,
           topicOverride: TOPIC_HIGH,   // זרם אחד: כל הסטאפים של HTT לנושא "7+", הרמה נבחרת באתר

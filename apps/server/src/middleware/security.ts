@@ -96,6 +96,9 @@ export function errorHandler(err: any, req: Request, res: Response, _next: NextF
 export const SETTING_RULES: Record<string, (v: unknown) => boolean> = {
   min_score: v => typeof v === 'number' && v >= 0 && v <= 10,
   htt_min_score: v => typeof v === 'number' && v >= 0 && v <= 10,
+  htt_min_240: v => typeof v === 'number' && v >= 0 && v <= 10,
+  htt_min_15: v => typeof v === 'number' && v >= 0 && v <= 10,
+  htt_min_5: v => typeof v === 'number' && v >= 0 && v <= 10,
   telegram_active: v => typeof v === 'boolean' || v === 'true' || v === 'false',
   alert_signals: v => typeof v === 'string' && v.length <= 2000 && isJsonArrayOfStrings(v),
   alert_timeframes: v => typeof v === 'string' && v.length <= 500 && isJsonArrayOfStrings(v),
