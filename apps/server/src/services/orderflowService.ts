@@ -9,7 +9,8 @@ export const OF_SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT'] as const
 export const OF_TFS = [1, 5, 15, 60, 240] as const
 const BACKFILL_DAYS = Number(process.env.ORDERFLOW_DAYS ?? 60)
 const MIN_MS = 60_000
-const REST = 'https://api.binance.com/api/v3/klines'
+// מראה הנתונים הציבורית של Binance נגישה מהשרת ב-Railway (api.binance.com מחזיר 451 ממנו); אותם שדות
+const REST_HOSTS = ['https://data-api.binance.vision', 'https://api.binance.com']
 
 interface Row1m { t: number; o: number; h: number; l: number; c: number; vol: number; buy: number }
 
@@ -24,10 +25,17 @@ export interface OfBar {
 }
 
 async function fetchKlines(symbol: string, startTime: number, limit = 1000): Promise<Row1m[]> {
-  const url = `${REST}?symbol=${encodeURIComponent(symbol)}&interval=1m&startTime=${startTime}&limit=${limit}`
-  const res = await fetch(url)
-  if (!res.ok) throw new Error(`Binance ${res.status}`)
-  const raw = (await res.json()) as unknown[][]
+  let raw: unknown[][] | null = null
+  let lastErr = ''
+  for (const host of REST_HOSTS) {
+    try {
+      const res = await fetch(`${host}/api/v3/klines?symbol=${encodeURIComponent(symbol)}&interval=1m&startTime=${startTime}&limit=${limit}`)
+      if (!res.ok) { lastErr = `${host} ${res.status}`; continue }
+      raw = (await res.json()) as unknown[][]
+      break
+    } catch (e) { lastErr = `${host} ${String(e).slice(0, 60)}` }
+  }
+  if (!raw) throw new Error(`Binance klines failed: ${lastErr}`)
   return raw.map(k => ({ t: Number(k[0]), o: Number(k[1]), h: Number(k[2]), l: Number(k[3]), c: Number(k[4]), vol: Number(k[5]), buy: Number(k[9]) }))
 }
 

@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import CombosLab from './CombosLab'
 
 // ─── סטטיסטיקת בקטסט של HTT (אינדיקטור TradingView) ─────────────────────────
 // הנתונים נוצרים על ידי backtest/stats/build_stats.py ונשמרים ב-public/htt-backtest/stats.json
@@ -1085,6 +1086,7 @@ export default function TabHttBacktest() {
       </div>
 
       <DecisionsSection />
+      <CombosLab />
       {report && <ReportSection report={report} />}
 
       {year && <YearSection year={year} />}
