@@ -17,6 +17,8 @@ import connectionsRouter from './routes/connections'
 import watchlistRouter from './routes/watchlist'
 import statsRouter from './routes/stats'
 import notesRouter from './routes/notes'
+import orderflowRouter from './routes/orderflow'
+import { startOrderflow } from './services/orderflowService'
 import { initScheduler } from './services/scheduler'
 import { startOutcomeTracker } from './services/outcomeTracker'
 import { startBinanceWebSocket } from './services/binanceWebSocket'
@@ -68,6 +70,7 @@ app.use('/api/telegram', telegramTestRouter)
 app.use('/api/watchlist', watchlistRouter)
 app.use('/api/stats', statsRouter)
 app.use('/api/notes', notesRouter)
+app.use('/api/orderflow', orderflowRouter)
 
 // Health check (public, no details)
 app.get('/health', (_req, res) => {
@@ -91,6 +94,7 @@ if (config.nodeEnv !== 'test') {
   startOutcomeTracker(db)
   startBinanceWebSocket()
   startYahooFeed()
+  startOrderflow()
 }
 
 server.listen(config.port, () => {

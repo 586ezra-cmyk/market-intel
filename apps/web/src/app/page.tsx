@@ -19,6 +19,7 @@ import TabQuickConfluence from '@/components/tabs/TabQuickConfluence'
 import TabLearning from '@/components/tabs/TabLearning'
 import TabConnections from '@/components/tabs/TabConnections'
 import TabHttBacktest from '@/components/tabs/TabHttBacktest'
+import TabOrderFlow from '@/components/tabs/TabOrderFlow'
 import { useWebSocket } from '@/hooks/useWebSocket'
 
 export type TabId =
@@ -26,7 +27,7 @@ export type TabId =
   | 'journal' | 'backtest' | 'watchlist' | 'matrix'
   | 'history-scan' | 'economic-calendar' | 'knowledge-base'
   | 'notes' | 'reports' | 'quick-confluence' | 'learning'
-  | 'connections' | 'htt-backtest'
+  | 'connections' | 'htt-backtest' | 'orderflow'
 
 const TABS: Array<{ id: TabId; label: string; icon: string }> = [
   { id: 'connections',        label: 'חיבורים',          icon: '🔌' },
@@ -37,6 +38,7 @@ const TABS: Array<{ id: TabId; label: string; icon: string }> = [
   { id: 'journal',           label: 'יומן מסחר',        icon: '📓' },
   { id: 'backtest',          label: 'בק-טסטינג',        icon: '🔬' },
   { id: 'htt-backtest',      label: 'סטטיסטיקת בקטסט HTT', icon: '🧪' },
+  { id: 'orderflow',         label: 'Order Flow',        icon: '🌊' },
   { id: 'watchlist',         label: 'רשימת מעקב',       icon: '👁️' },
   { id: 'matrix',            label: 'מטריצה',           icon: '🗂️' },
   { id: 'history-scan',      label: 'סריקה היסטורית',   icon: '🔍' },
@@ -98,6 +100,7 @@ export default function HomePage() {
             {activeTab === 'journal'           && <TabJournal />}
             {activeTab === 'backtest'          && <TabBacktest />}
             {activeTab === 'htt-backtest'      && <TabHttBacktest />}
+            {activeTab === 'orderflow'         && <TabOrderFlow />}
             {activeTab === 'watchlist'         && <TabWatchlist />}
             {activeTab === 'matrix'            && <TabMatrix />}
             {activeTab === 'history-scan'      && <TabHistoryScan />}
