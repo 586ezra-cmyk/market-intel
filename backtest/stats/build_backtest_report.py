@@ -91,7 +91,7 @@ def main():
     out['byMonth'] = {m: {'n': len(v), 'sumR4': round(sum(mval(t, 's4') for t in v if mval(t, 's4') is not None), 1), 'sumR13': round(sum(mval(t, 's1') for t in v if mval(t, 's1') is not None), 1),
                           'avgR4': round(sum(mval(t, 's4') for t in v if mval(t, 's4') is not None) / max(1, sum(1 for t in v if mval(t, 's4') is not None)), 3)} for m, v in sorted(months.items())}
     # הזרם המומלץ: 4H רמה 3+, 15m רמה 4+, 5m רק OB בריטסט/K/W-M ברמה 2+ (הצעה) — כמה עסקאות ומה נותן
-    rec = [t for t in T if (t['res'] == '240' and t['level'] >= 3) or (t['res'] == '15' and t['level'] >= 4) or (t['res'] == '5' and t['strat'] in ('O', 'K', 'M') and t['level'] >= 2)]
+    rec = [t for t in T if t['strat'] != 'P' and ((t['res'] == '240' and t['level'] >= 3) or (t['res'] == '15' and t['level'] >= 4) or (t['res'] == '5' and t['strat'] in ('O', 'K', 'M') and t['level'] >= 2))]
     out['recommended'] = dict(metrics(rec), perWeekAll=round(len(rec) / weeks, 1))
     out['recommendedByTf'] = {tf: metrics([t for t in rec if t['res'] == tf]) for tf in ('240', '15', '5')}
     (ROOT.parents[1] / 'apps/web/public/htt-backtest/report.json').write_text(json.dumps(out, ensure_ascii=False), encoding='utf-8')
