@@ -1898,6 +1898,25 @@ f_qtDraw(bool on) =>
 f_qtDraw(sQtLn and tTrade and tfMin <= 60)
 f_lvl(qtTDO, color.new(#e0e0e0, 25), 1, line.style_dotted, sQtLn and tTrade and tfMin < 240 and not na(qtTDO), false, "TDO", "True Day Open — פתיחת 00:00 NY (תורת הרבעים): מתחת = דיסקאונט (לונג), מעל = פרימיום (שורט)")
 
+// ─── רמות שוק האופציות (נאסדק): להדבקה מהתדריך בטלגרם — קיר קולים,קיר פוטים,אפס-גמא,מגנט,0DTE (TradingView לא מקבל נתונים מבחוץ) ───
+gOpt = "רמות שוק האופציות (הדבקה מהתדריך)"
+optLvlStr = input.string("", "5 רמות ב-NQ, מופרדות בפסיק: קיר קולים,קיר פוטים,אפס-גמא,מגנט,0DTE", group=gOpt, tooltip="השרת שולח כל יום ב-15:30 שורה מוכנה להדבקה. TradingView לא מקבל נתונים מבחוץ, לכן מדביקים ידנית. רמה חסרה = ריק")
+sOptLn = input.bool(true, "לצייר את הרמות (קווים + תוויות) ולכלול ב'מתקרב לרמה'", group=gOpt)
+f_optN(int i) =>
+    parts = str.split(optLvlStr, ",")
+    array.size(parts) > i ? str.tonumber(str.trim(array.get(parts, i))) : na
+optCW = f_optN(0)
+optPW = f_optN(1)
+optZG = f_optN(2)
+optMG = f_optN(3)
+optZD = f_optN(4)
+tipOpt = "רמת שוק האופציות (גמא): איפה הדילרים מגדרים. מעל אפס-גמא = שוק רגוע (סטאפים של טווח), מתחת = נפיץ (סטאפים של מגמה). מקור: CBOE דרך השרת, עיכוב 15 דק'"
+f_lvl(optCW, color.new(#ff6b6b, 10), 2, line.style_solid, sOptLn and tTrade and not na(optCW), false, "קיר קולים", tipOpt)
+f_lvl(optPW, color.new(#4ade80, 10), 2, line.style_solid, sOptLn and tTrade and not na(optPW), false, "קיר פוטים", tipOpt)
+f_lvl(optZG, color.new(#e0e0e0, 10), 1, line.style_dashed, sOptLn and tTrade and not na(optZG), false, "אפס-גמא", tipOpt)
+f_lvl(optMG, color.new(#c084fc, 20), 1, line.style_dotted, sOptLn and tTrade and not na(optMG), false, "מגנט אופציות", tipOpt)
+f_lvl(optZD, color.new(#fbbf24, 10), 1, line.style_dashed, sOptLn and tTrade and not na(optZD), false, "0DTE", tipOpt)
+
 // ─── התראת "מתקרב לרמה" (תוכנית 1.7): X% לפני אזור עניין בכיוון התנועה, פעם אחת לכל התקרבות ───
 gN = "מתקרב לרמה"
 nearOn = input.bool(true, "התראה כשהמחיר מתקרב לרמה (alert() — לבחור 'Any alert() function call')", group=gN)
@@ -1908,8 +1927,8 @@ goUp = close > close[3]
 float nearLvl = na
 string nearKind = ""
 if nearOn
-    nCands = array.from(rHi, rLo, h4H, h4L, dH, dL, wkH, wkL, obLTop, obLBot, obSTop, obSBot, prevSesH, prevSesL, asiaH, asiaL, poolHi, poolLo, npUp, npDn, zUp, zDn, pocNow)
-    nKinds = array.from("קריק", "אייס", "שיא 4H", "שפל 4H", "שיא יומי", "שפל יומי", "שיא שבועי", "שפל שבועי", "OB לונג", "OB לונג", "OB שורט", "OB שורט", "סשן קודם", "סשן קודם", "אסיה", "אסיה", "בריכת נזילות", "בריכת נזילות", "nPOC", "nPOC", "אזור עיגון", "אזור עיגון", "POC היום")
+    nCands = array.from(rHi, rLo, h4H, h4L, dH, dL, wkH, wkL, obLTop, obLBot, obSTop, obSBot, prevSesH, prevSesL, asiaH, asiaL, poolHi, poolLo, npUp, npDn, zUp, zDn, pocNow, sOptLn ? optCW : na, sOptLn ? optPW : na, sOptLn ? optZG : na, sOptLn ? optMG : na, sOptLn ? optZD : na)
+    nKinds = array.from("קריק", "אייס", "שיא 4H", "שפל 4H", "שיא יומי", "שפל יומי", "שיא שבועי", "שפל שבועי", "OB לונג", "OB לונג", "OB שורט", "OB שורט", "סשן קודם", "סשן קודם", "אסיה", "אסיה", "בריכת נזילות", "בריכת נזילות", "nPOC", "nPOC", "אזור עיגון", "אזור עיגון", "POC היום", "קיר קולים", "קיר פוטים", "אפס-גמא", "מגנט אופציות", "0DTE")
     nBest = 1e10
     for ni = 0 to array.size(nCands) - 1
         nlv = array.get(nCands, ni)
