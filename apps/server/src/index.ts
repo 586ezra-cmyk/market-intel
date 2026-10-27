@@ -18,6 +18,8 @@ import watchlistRouter from './routes/watchlist'
 import statsRouter from './routes/stats'
 import notesRouter from './routes/notes'
 import orderflowRouter from './routes/orderflow'
+import optionsLevelsRouter from './routes/optionsLevels'
+import { startOptionsLevels } from './services/optionsLevelsService'
 import { startOrderflow } from './services/orderflowService'
 import { initScheduler } from './services/scheduler'
 import { startOutcomeTracker } from './services/outcomeTracker'
@@ -71,6 +73,7 @@ app.use('/api/watchlist', watchlistRouter)
 app.use('/api/stats', statsRouter)
 app.use('/api/notes', notesRouter)
 app.use('/api/orderflow', orderflowRouter)
+app.use('/api/options-levels', optionsLevelsRouter)
 
 // Health check (public, no details)
 app.get('/health', (_req, res) => {
@@ -95,6 +98,7 @@ if (config.nodeEnv !== 'test') {
   startBinanceWebSocket()
   startYahooFeed()
   startOrderflow()
+  startOptionsLevels()
 }
 
 server.listen(config.port, () => {

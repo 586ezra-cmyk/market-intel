@@ -2,6 +2,7 @@ import cron from 'node-cron'
 import { sendTelegram, TOPIC_BRIEFING, TOPIC_ECONOMIC } from './alertDispatcher'
 import { getCachedCalendar, sendEventReminders } from './forexFactory'
 import { getDb } from '../db/client'
+import { sendOptionsBriefing } from './optionsLevelsService'
 
 // ─── Morning briefing — 08:00 IL (05:00 UTC) ─────────────────────────────────
 export async function generateMorningBriefing(): Promise<string> {
@@ -124,6 +125,11 @@ export function initScheduler(): void {
     } catch (err) {
       console.error('[Scheduler] Evening summary failed:', err)
     }
+  }, { timezone: 'UTC' })
+
+  // רמות שוק האופציות לנאסדק — 12:30 UTC = 15:30 IL (אחרי עדכון ה-OI של הבוקר בארה"ב), ימי מסחר בלבד
+  cron.schedule('30 12 * * 1-5', async () => {
+    try { await sendOptionsBriefing(); console.log('[Scheduler] options levels briefing sent') } catch (err) { console.error('[Scheduler] options briefing failed:', err) }
   }, { timezone: 'UTC' })
 
   // Event reminders — every 15 min

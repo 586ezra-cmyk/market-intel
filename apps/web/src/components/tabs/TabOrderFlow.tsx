@@ -39,6 +39,40 @@ function useChart(height: number) {
   return { ref, chartRef }
 }
 
+
+// ─── רמות שוק האופציות לנאסדק (שלב 2.7): קיר קולים/פוטים, אפס-גמא, מגנט OI, 0DTE — מהשרת (CBOE, QQQ+NDX → NQ) ───
+interface OptLevels { callWall: number | null; putWall: number | null; zeroGamma: number | null; magnet: number | null; zdte: number | null; zdteExpiry: string | null; netGex: number; regime: string }
+interface OptSnap { ts: number; cboeTs: string; ndxSpot: number; qqqSpot: number; nqLast: number | null; basis: number | null; nq: OptLevels; ndx: OptLevels; qqq: OptLevels }
+function OptionsLevelsPanel() {
+  const [snap, setSnap] = useState<OptSnap | null>(null)
+  const [err, setErr] = useState<string | null>(null)
+  useEffect(() => {
+    let alive = true
+    const load = () => fetch(`${API_BASE}/api/options-levels`, { cache: 'no-store' }).then(r => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))).then(j => { if (alive) { setSnap(j); setErr(null) } }).catch(e => { if (alive) setErr(String(e.message ?? e)) })
+    load(); const id = setInterval(load, 60_000)
+    return () => { alive = false; clearInterval(id) }
+  }, [])
+  if (err) return <div className="card p-3 text-sm text-slate-400">רמות שוק האופציות: {err === 'HTTP 404' ? 'עדיין אין חישוב (הראשון מגיע דקה אחרי עליית השרת)' : err}</div>
+  if (!snap) return <div className="card p-3 text-sm text-slate-400">טוען רמות שוק האופציות…</div>
+  const nq = snap.nqLast
+  const rows: Array<[string, string, number | null]> = [['🧱', 'קיר קולים', snap.nq.callWall], ['⏱', `0DTE (פוקע ${snap.nq.zdteExpiry ?? '—'})`, snap.nq.zdte], ['⚖️', 'אפס-גמא', snap.nq.zeroGamma], ['🛡', 'קיר פוטים', snap.nq.putWall], ['🧲', 'מגנט (OI הגדול)', snap.nq.magnet]]
+  rows.sort((a, b) => (b[2] ?? -1) - (a[2] ?? -1))
+  const pos = snap.nq.regime === 'positive'
+  return (
+    <div className="card p-3 space-y-2">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <div className="font-bold">🎯 רמות שוק האופציות — נאסדק (NQ)</div>
+        <div className="text-xs text-slate-500">NQ {nq?.toLocaleString() ?? '—'} · NDX {Math.round(snap.ndxSpot).toLocaleString()} · בסיס {snap.basis == null ? '—' : (snap.basis >= 0 ? '+' : '') + Math.round(snap.basis)} · CBOE {snap.cboeTs.slice(11, 16)} ET</div>
+      </div>
+      <div className={`text-sm font-bold ${pos ? 'text-emerald-400' : 'text-red-400'}`}>{pos ? 'גמא חיובית: שוק רגוע, חוזר לממוצע. הסטאפים של טווח (OB, W/M, ריטסט POC) ליד הקירות' : 'גמא שלילית: תנועות מתעצמות. הסטאפים של מגמה (טיסה, פריצה); זהירות בלונג נגד ליד קיר פוטים'} · GEX נטו {(snap.nq.netGex / 1e9).toFixed(1)}B$</div>
+      <table className="w-full text-sm"><thead><tr className="text-slate-400 border-b border-surface-border"><th className="text-right py-1">רמה</th><th>NQ</th><th>מרחק</th><th>QQQ</th></tr></thead>
+        <tbody>{rows.map(([ic, nm, v], i) => { const d = v != null && nq ? (v - nq) / nq * 100 : null; const q = nm.startsWith('קיר קולים') ? snap.qqq.callWall : nm.startsWith('0DTE') ? snap.qqq.zdte : nm.startsWith('אפס') ? snap.qqq.zeroGamma : nm.startsWith('קיר פוטים') ? snap.qqq.putWall : snap.qqq.magnet
+          return <tr key={i} className={`border-b border-surface-border ${d != null && Math.abs(d) <= 0.25 ? 'bg-amber-900/30' : ''}`}><td className="py-1 pr-2 text-right">{ic} {nm}</td><td className="text-center font-bold">{v?.toLocaleString() ?? '—'}</td><td className={`text-center ${d == null ? '' : d > 0 ? 'text-emerald-400' : 'text-red-400'}`}>{d == null ? '—' : (d > 0 ? '+' : '') + d.toFixed(2) + '%'}</td><td className="text-center text-slate-400">{q ?? '—'}</td></tr> })}</tbody></table>
+      <div className="text-xs text-slate-500">הרמות מחושבות מ-QQQ ו-NDX (CBOE, עיכוב 15 דק') ומומרות ל-NQ לפי הבסיס. שכבה מבנית = פקיעות 1 עד 45 יום; 0DTE = הפקיעה הקרובה. מתעדכן כל 15 דק'; תדריך בטלגרם 15:30; התראה כשהמחיר במרחק 0.25% מרמה. הערכה מהנחות על גידור הדילרים, לא ספר אמיתי.</div>
+    </div>
+  )
+}
+
 export default function TabOrderFlow() {
   const [sym, setSym] = useState<string>('ETHUSDT')
   const [tf, setTf] = useState<number>(15)
@@ -104,6 +138,7 @@ export default function TabOrderFlow() {
         <div className="flex gap-1">{SYMS.map(([id, nm]) => <button key={id} onClick={() => setSym(id)} className={`px-3 py-1 rounded text-sm ${sym === id ? 'bg-blue-600 text-white' : 'bg-surface-border text-slate-300'}`}>{nm}</button>)}</div>
         <div className="flex gap-1">{TFS.map(([id, nm]) => <button key={id} onClick={() => setTf(id)} className={`px-3 py-1 rounded text-sm ${tf === id ? 'bg-blue-600 text-white' : 'bg-surface-border text-slate-300'}`}>{nm}</button>)}</div>
       </div>
+      <OptionsLevelsPanel />
       {error && <div className="text-red-400 text-sm">שגיאה: {error}</div>}
       {sum && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
