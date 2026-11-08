@@ -1,9 +1,6 @@
 //@version=6
 indicator("HTT Path Lab — מסלול המחיר אחרי כל סיגנל", "HTTP", overlay=true, max_labels_count=500, max_lines_count=50, max_boxes_count=50)
 // נגזר אוטומטית מ-htt_chart.pine על ידי backtest/stats/gen_pathlab_pine.py — לא לערוך ידנית
-// v57 (8.11.2026): קווי ה"חי" של הטווח/ההיפוך נמתחים עד 4500 נרות אחורה (f_live) — בלי זה בקריפטו 5m נופל:
-// "The requested historical offset (945) is beyond the historical buffer's limit (944)" (גם בשרת ההתראות = Calculation error)
-max_bars_back(time, 5000)
 
 // ─── מתגים ───────────────────────────────────────────────────────────────────
 gM = "מודולים"
@@ -71,7 +68,6 @@ kzNY = input.string("1400-1700", "קיל-זון ניו-יורק (שעון ישר
 gW = "חיבור"
 secret = input.string("dev-secret", "Secret", group=gW)
 sendWH = input.bool(false, "Webhook", group=gW)
-sendLegacy = input.bool(false, "Webhook: גם אירועי הבלוק הישן (event htt) — כבוי = רק htt_setup ו-htt_near", group=gW)
 asset2Mode = input.string("אוטומטי", "נכס מתואם (SMT)", options=["אוטומטי", "ידני"], group=gW)
 asset2Man = input.symbol("BINANCE:BTCUSDT", "נכס ידני (רק במצב ידני)", group=gW)
 
