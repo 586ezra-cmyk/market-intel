@@ -1,5 +1,8 @@
 //@version=6
 indicator("HTT גרף — המשקפיים של חי טל", "HTTC", overlay=true, max_lines_count=500, max_labels_count=500, max_boxes_count=300)
+// v57 (8.11.2026): קווי ה"חי" של הטווח/ההיפוך נמתחים עד 4500 נרות אחורה (f_live) — בלי זה בקריפטו 5m נופל:
+// "The requested historical offset (945) is beyond the historical buffer's limit (944)" (גם בשרת ההתראות = Calculation error)
+max_bars_back(time, 5000)
 
 // ─── מתגים ───────────────────────────────────────────────────────────────────
 gM = "מודולים"
@@ -67,6 +70,7 @@ kzNY = input.string("1400-1700", "קיל-זון ניו-יורק (שעון ישר
 gW = "חיבור"
 secret = input.string("dev-secret", "Secret", group=gW)
 sendWH = input.bool(false, "Webhook", group=gW)
+sendLegacy = input.bool(false, "Webhook: גם אירועי הבלוק הישן (event htt) — כבוי = רק htt_setup ו-htt_near", group=gW)
 asset2Mode = input.string("אוטומטי", "נכס מתואם (SMT)", options=["אוטומטי", "ידני"], group=gW)
 asset2Man = input.symbol("BINANCE:BTCUSDT", "נכס ידני (רק במצב ידני)", group=gW)
 
@@ -1674,7 +1678,7 @@ f_mark(sStar and starBear, "⭐", "⭐ קונפלואנס שורט: " + str.tost
 allOK = armDir != 0 and ckTest and ckZone and ckRRok and (armDir == 1 ? msDir >= 0 : msDir <= 0)
 f_mark(sFlag and allOK and not allOK[1], "🚩", tipFlag, color.new(color.yellow, 0), false, size.small)
 whMsg(string trig, string dir, float stopPx) => '{"secret":"' + secret + '","event":"htt","symbol":"' + syminfo.ticker + '","tf":"' + timeframe.period + '","trigger":"' + trig + '","direction":"' + dir + '","phase":"' + phName + '","session":"' + sesName + '","day":"' + dayName + '","amd":"' + amdPh + '","price":' + str.tostring(close) + ',"stop":' + str.tostring(stopPx) + ',"premium":' + (inPrem ? "true" : "false") + ',"clues":' + str.tostring(clues) + ',"rsi":' + str.tostring(rsiV, "#.#") + ',"time":' + str.tostring(math.round(time)) + '}'
-if sendWH and barstate.isconfirmed
+if sendWH and sendLegacy and barstate.isconfirmed
     if flyLong or flyShort
         alert(whMsg("flight", flyLong ? "long" : "short", fS), alert.freq_once_per_bar_close)
     if wingLong or wingShort
@@ -1948,7 +1952,10 @@ nearFire = nearFire0 and not (nearKind == nearLastKind and not na(nearLastBar) a
 if nearFire
     nearLastKind := nearKind
     nearLastBar := bar_index
-    alert("מתקרב ל" + nearKind + " " + str.tostring(nearLvl, format.mintick) + " (" + str.tostring(nearPct, "#.##") + "% מהמחיר) · " + syminfo.ticker + " " + timeframe.period, alert.freq_once_per_bar_close)
+    nearTxt = "מתקרב ל" + nearKind + " " + str.tostring(nearLvl, format.mintick) + " (" + str.tostring(nearPct, "#.##") + "% מהמחיר) · " + syminfo.ticker + " " + timeframe.period
+    // v57: כש-Webhook פעיל ההודעה היא JSON (event htt_near) כדי שהשרת יקבל אותה (טקסט חופשי החזיר 401); בלי Webhook — טקסט לקריאה
+    nearJ = "{\"secret\":\"" + secret + "\",\"event\":\"htt_near\",\"symbol\":\"" + syminfo.ticker + "\",\"timeframe\":\"" + timeframe.period + "\",\"time\":" + str.tostring(time) + ",\"kind\":\"" + nearKind + "\",\"level\":" + str.tostring(nearLvl) + ",\"pct\":" + str.tostring(nearPct, "#.##") + ",\"price\":" + str.tostring(close) + ",\"direction\":\"" + (goUp ? "up" : "down") + "\",\"text\":\"" + nearTxt + "\"}"
+    alert(sendWH ? nearJ : nearTxt, alert.freq_once_per_bar_close)
     if nearLbl and not cleanMode
         array.push(nearLbs, label.new(bar_index, goUp ? high : low, "→ " + nearKind, xloc=xloc.bar_index, yloc=goUp ? yloc.abovebar : yloc.belowbar, style=label.style_label_center, color=color.new(color.teal, 30), textcolor=color.white, size=size.tiny))
         if array.size(nearLbs) > 4

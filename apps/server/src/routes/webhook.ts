@@ -175,8 +175,24 @@ const HttSetupSchema = BaseSchema.extend({
   rsi: z.number().nullable().optional(),
 })
 
+// HTT Master v57: "מתקרב לרמה" — מאושר (200) ונשמר ביומן ה-Webhook בלבד; בלי כרטיס ובלי טלגרם (לשימוש עתידי)
+const HttNearSchema = BaseSchema.extend({
+  event: z.literal('htt_near'),
+  kind: z.string().optional(),
+  level: z.number().nullable().optional(),
+  pct: z.number().nullable().optional(),
+  price: z.number().optional(),
+  direction: z.string().optional(),
+  text: z.string().optional(),
+})
+
+// הבלוק הישן של HTT Master (event "htt", שדה tf): מאושר ומתעלמים — ההתראות שנוצרו לפני v57 עדיין שולחות אותו
+const HttLegacySchema = z.object({ event: z.literal('htt'), secret: z.string().optional() }).passthrough()
+
 const AnyEventSchema = z.discriminatedUnion('event', [
   HttSetupSchema,
+  HttNearSchema,
+  HttLegacySchema,
   RangeSchema,
   StructureSchema,
   FVGSchema,
@@ -233,6 +249,11 @@ router.post('/tradingview', async (req: Request, res: Response) => {
   }
 
   const data = parsed.data
+  // אירועי עזר של HTT Master: לא נכנסים למנוע ההתראות (רק יומן ה-Webhook למעלה)
+  if (data.event === 'htt' || data.event === 'htt_near') {
+    res.json({ ok: true, ignored: data.event })
+    return
+  }
   let tf: Timeframe
   try {
     tf = parseTF(data.timeframe)
