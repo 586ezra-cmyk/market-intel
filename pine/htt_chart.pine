@@ -1289,7 +1289,8 @@ if phChanged and (phase == 5 or phase == 0) and not na(phBox)
     phBox := box(na)
 if mWyk and sBgPhase and phase > 0 and phase < 5 and not na(rHi)
     if phChanged or na(phBox)
-        bxLeft = phase == 3 and phase[1] != 3 and not na(cStartBar) ? math.max(cStartBar, 0) : bar_index
+        // v57.1: כל קואורדינטת x של ציור מוגבלת ל-500 נרות אחורה (מעבר למאגר ההיסטוריה = Calculation error בשרת ההתראות)
+        bxLeft = phase == 3 and phase[1] != 3 and not na(cStartBar) ? math.max(cStartBar, bar_index - 500) : bar_index
         if not na(phBox)
             box.set_right(phBox, math.max(bxLeft - 1, box.get_left(phBox)))
             array.push(phHist, phBox)
@@ -1330,9 +1331,9 @@ tipWing = "קו הכנף: התמיכה העולה של התיקון (מחבר ש
 var line wingLnU = na
 if mWing and sWingLn and not na(wingUp) and not na(prevPLi)
     if na(wingLnU)
-        wingLnU := line.new(math.max(prevPLi, 0), prevPL, bar_index, wingUp, color=color.new(color.yellow, 25), width=1, style=line.style_dashed)
+        wingLnU := line.new(math.max(prevPLi, bar_index - 500), prevPL, bar_index, wingUp, color=color.new(color.yellow, 25), width=1, style=line.style_dashed)
     else
-        line.set_xy1(wingLnU, math.max(prevPLi, 0), prevPL)
+        line.set_xy1(wingLnU, math.max(prevPLi, bar_index - 500), prevPL)
         line.set_xy2(wingLnU, bar_index, wingUp)
 else if not na(wingLnU)
     line.delete(wingLnU)
@@ -1340,9 +1341,9 @@ else if not na(wingLnU)
 var line wingLnD = na
 if mWing and sWingLn and not na(wingDn) and not na(prevPHi)
     if na(wingLnD)
-        wingLnD := line.new(math.max(prevPHi, 0), prevPH, bar_index, wingDn, color=color.new(color.yellow, 45), width=1, style=line.style_dashed)
+        wingLnD := line.new(math.max(prevPHi, bar_index - 500), prevPH, bar_index, wingDn, color=color.new(color.yellow, 45), width=1, style=line.style_dashed)
     else
-        line.set_xy1(wingLnD, math.max(prevPHi, 0), prevPH)
+        line.set_xy1(wingLnD, math.max(prevPHi, bar_index - 500), prevPH)
         line.set_xy2(wingLnD, bar_index, wingDn)
 else if not na(wingLnD)
     line.delete(wingLnD)
@@ -1491,8 +1492,8 @@ var line orLnH = na
 var line orLnL = na
 orShow = mSes and sORln and tfMin < 60 and not cleanMode and not na(orStart) and not inOR and sesIdx != 3
 if orShow and inOR[1]
-    orLnH := line.new(orStart, orH, bar_index, orH, color=color.new(color.yellow, 50), style=line.style_dotted)
-    orLnL := line.new(orStart, orL, bar_index, orL, color=color.new(color.yellow, 50), style=line.style_dotted)
+    orLnH := line.new(math.max(orStart, bar_index - 500), orH, bar_index, orH, color=color.new(color.yellow, 50), style=line.style_dotted)
+    orLnL := line.new(math.max(orStart, bar_index - 500), orL, bar_index, orL, color=color.new(color.yellow, 50), style=line.style_dotted)
 if orShow and not na(orLnH)
     line.set_x2(orLnH, bar_index)
     line.set_x2(orLnL, bar_index)
