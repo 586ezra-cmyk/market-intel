@@ -5,7 +5,10 @@ import { getDb } from '../db/client'
  * מקור: נרות דקה (klines) — השדה "taker buy base volume" = נפח הקונים התוקפים. דלתא = קונים תוקפים − מוכרים תוקפים.
  * נשמר בטבלה orderflow_1m (60 יום אחורה), מתעדכן כל דקה (REST, 5 נרות אחרונים לכל נכס), ומצטבר למסגרות לפי דרישה.
  */
-export const OF_SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT'] as const
+// נכסים שהשרת מושך בעצמו מ-Binance
+export const BINANCE_SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT'] as const
+// NQ (9.11.2026): נרות דקה נדחפים מתוסף Bookmap במחשב של המשתמש (POST /api/orderflow/ingest) — אותם שדות: vol + buy (קונים תוקפים)
+export const OF_SYMBOLS = [...BINANCE_SYMBOLS, 'NQ'] as const
 export const OF_TFS = [1, 5, 15, 60, 240] as const
 const BACKFILL_DAYS = Number(process.env.ORDERFLOW_DAYS ?? 60)
 const MIN_MS = 60_000
@@ -72,19 +75,28 @@ export async function backfill(symbol: string): Promise<number> {
 let timer: NodeJS.Timeout | null = null
 export function startOrderflow(): void {
   void (async () => {
-    for (const s of OF_SYMBOLS) {
+    for (const s of BINANCE_SYMBOLS) {
       try { await backfill(s) } catch (e) { console.warn('[orderflow] backfill failed', s, String(e).slice(0, 120)) }
     }
   })()
   timer = setInterval(() => {
     void (async () => {
-      for (const s of OF_SYMBOLS) {
+      for (const s of BINANCE_SYMBOLS) {
         try { upsert(s, await fetchKlines(s, Date.now() - 4 * MIN_MS, 5)) } catch { /* הניסיון הבא בעוד דקה */ }
       }
     })()
   }, MIN_MS)
 }
 export function stopOrderflow(): void { if (timer) clearInterval(timer); timer = null }
+
+/** קליטת נרות דקה ממקור חיצוני (תוסף Bookmap ל-NQ). מחזיר כמה נרות נשמרו. */
+export function ingestBars(symbol: string, rows: Row1m[]): number {
+  const clean = rows.filter(r => Number.isFinite(r.t) && r.t > 1_600_000_000_000 && [r.o, r.h, r.l, r.c, r.vol, r.buy].every(Number.isFinite) && r.vol >= 0 && r.buy >= 0 && r.buy <= r.vol + 1e-9)
+    .map(r => ({ ...r, t: Math.floor(r.t / MIN_MS) * MIN_MS }))
+  upsert(symbol, clean)
+  return clean.length
+}
+export function lastBarTime(symbol: string): number | null { return lastT(symbol) }
 
 export function getOrderflow(symbol: string, tfMin: number, limit: number): OfBar[] {
   const span = tfMin * MIN_MS

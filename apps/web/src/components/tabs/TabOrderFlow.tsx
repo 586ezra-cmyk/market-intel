@@ -14,7 +14,7 @@ interface OfBar {
   cvd: number; cvdO: number; cvdH: number; cvdL: number; cvdDay: number
   absorb: -1 | 0 | 1; div: -1 | 0 | 1
 }
-const SYMS = [['BTCUSDT', 'BTC'], ['ETHUSDT', 'ETH'], ['SOLUSDT', 'SOL']] as const
+const SYMS = [['NQ', 'NQ'], ['BTCUSDT', 'BTC'], ['ETHUSDT', 'ETH'], ['SOLUSDT', 'SOL']] as const
 const TFS = [[1, '1 דק׳'], [5, '5 דק׳'], [15, '15 דק׳'], [60, 'שעה'], [240, '4 שעות']] as const
 const fmt = (v: number) => (Math.abs(v) >= 1000 ? (v / 1000).toFixed(1) + 'K' : v.toFixed(0))
 const sgn = (v: number) => (v > 0 ? '+' : '') + fmt(v)

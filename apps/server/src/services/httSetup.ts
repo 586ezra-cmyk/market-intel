@@ -83,7 +83,8 @@ const sgn = (v: number | null) => (v == null ? '—' : (v > 0 ? '+' : '') + Math
 export function buildHttContext(symbol: string, tf: string, price: number): HttContext {
   const lines: string[] = []
   const out: HttContext = { linesHe: lines }
-  const sym = symbol.toUpperCase()
+  // NQ1!/MNQ1!/NQZ2026 מ-TradingView → הסימול של Order Flow הוא NQ (מתוסף Bookmap)
+  const sym = /^(NQ|MNQ|NAS)/i.test(symbol) ? 'NQ' : symbol.toUpperCase()
   const tfMin = tf === '4h' ? 240 : tf === '1h' ? 60 : tf === '5m' ? 5 : tf === '1m' ? 1 : 15
   if ((OF_SYMBOLS as readonly string[]).includes(sym)) {
     try {
