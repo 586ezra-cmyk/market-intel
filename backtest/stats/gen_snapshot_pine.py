@@ -49,14 +49,14 @@ A('snapOn = input.bool(true, "לשלוח צילום מצב בכל סגירת נ�
 A('snA2c = smtOn ? request.security(smtSym, timeframe.period, close, lookahead=barmerge.lookahead_off) : na')
 A('''// האזורים הקרובים ביותר: FVG / iFVG שתומך מלמטה (ללונג) ושמתנגד מלמעלה (לשורט). מרחק 0 = המחיר בתוך האזור
 f_snZones() =>
-    float fLt = na
-    float fLb = na
-    float fSb = na
-    float fSt = na
-    float iLt = na
-    float iLb = na
-    float iSb = na
-    float iSt = na
+    float qfLt = na
+    float qfLb = na
+    float qfSb = na
+    float qfSt = na
+    float qiLt = na
+    float qiLb = na
+    float qiSb = na
+    float qiSt = na
     float dFL = 1e18
     float dFS = 1e18
     float dIL = 1e18
@@ -71,23 +71,23 @@ f_snZones() =>
                 d = math.max(0.0, close - zt)
                 if not zv and d < dFL
                     dFL := d
-                    fLt := zt
-                    fLb := zb
+                    qfLt := zt
+                    qfLb := zb
                 if zv and d < dIL
                     dIL := d
-                    iLt := zt
-                    iLb := zb
+                    qiLt := zt
+                    qiLb := zb
             if zd == -1 and close <= zt
                 d = math.max(0.0, zb - close)
                 if not zv and d < dFS
                     dFS := d
-                    fSb := zb
-                    fSt := zt
+                    qfSb := zb
+                    qfSt := zt
                 if zv and d < dIS
                     dIS := d
-                    iSb := zb
-                    iSt := zt
-    [fLt, fLb, fSb, fSt, iLt, iLb, iSb, iSt]
+                    qiSb := zb
+                    qiSt := zt
+    [qfLt, qfLb, qfSb, qfSt, qiLt, qiLb, qiSb, qiSt]
 [snFLt, snFLb, snFSb, snFSt, snILt, snILb, snISb, snISt] = f_snZones()''')
 A('snBrkL = (bosUp or chochUp) and (phase == 3 or phase == 5) and barstate.isconfirmed')
 A('snBrkS = (bosDn or chochDn) and (phase == 3 or phase == 5) and barstate.isconfirmed')
@@ -105,13 +105,17 @@ A('    string s = ""')
 for k, expr in LEVELS:
     A(f'    s += f_snK("{k}", {expr})')
 A('    str.length(s) > 0 ? str.substring(s, 0, str.length(s) - 1) : ""')
-A('''f_snMsg() =>
+A('''// המחרוזות נבנות בגוף הראשי ולא בתוך f_snMsg — מגבלת 254 "אלמנטים חיצוניים" לפונקציה
+snL = f_flags(true)
+snS = f_flags(false)
+snLv = f_snLv()
+f_snMsg() =>
     string j = "{\\"secret\\":\\"" + secret + "\\",\\"event\\":\\"htt_snapshot\\",\\"v\\":1,\\"symbol\\":\\"" + syminfo.ticker + "\\",\\"timeframe\\":\\"" + timeframe.period + "\\",\\"time\\":" + str.tostring(time) + ",\\"tc\\":" + str.tostring(time_close)
-    j += ",\\"price\\":" + f_snN(close) + ",\\"hi\\":" + f_snN(high) + ",\\"lo\\":" + f_snN(low) + ",\\"L\\":\\"" + f_flags(true) + "\\",\\"S\\":\\"" + f_flags(false) + "\\""
+    j += ",\\"price\\":" + f_snN(close) + ",\\"hi\\":" + f_snN(high) + ",\\"lo\\":" + f_snN(low) + ",\\"L\\":\\"" + snL + "\\",\\"S\\":\\"" + snS + "\\""
     j += ",\\"phase\\":" + str.tostring(phase) + ",\\"cBull\\":" + (cIsBull ? "1" : "0") + ",\\"ms\\":" + str.tostring(msDir) + ",\\"htfMs\\":" + str.tostring(nz(htfMs, 0)) + ",\\"htfPh\\":" + str.tostring(nz(htfPh, 0)) + ",\\"dq\\":" + str.tostring(dQ)
     j += ",\\"rsi\\":" + (na(rsiV) ? "null" : str.tostring(rsiV, "#.#")) + ",\\"atr\\":" + f_snN(atr) + ",\\"vix\\":" + (na(vixC) ? "null" : str.tostring(vixC, "#.##"))
     j += ",\\"trL\\":\\"" + snTrL + "\\",\\"trS\\":\\"" + snTrS + "\\",\\"stL\\":" + f_snN(snStL) + ",\\"stS\\":" + f_snN(snStS)
-    j += ",\\"lv\\":{" + f_snLv() + "}}"
+    j += ",\\"lv\\":{" + snLv + "}}"
     j
 if snapOn and barstate.isconfirmed
     alert(f_snMsg(), alert.freq_once_per_bar_close)
@@ -123,7 +127,7 @@ f_snCount(string s) =>
     c
 var table snTb = table.new(position.bottom_right, 1, 1)
 if barstate.islast
-    table.cell(snTb, 0, 0, "HTTS · " + timeframe.period + " · לונג " + str.tostring(f_snCount(f_flags(true))) + " · שורט " + str.tostring(f_snCount(f_flags(false))), text_color=color.white, bgcolor=color.new(color.teal, 40), text_size=size.small)
+    table.cell(snTb, 0, 0, "HTTS · " + timeframe.period + " · לונג " + str.tostring(f_snCount(snL)) + " · שורט " + str.tostring(f_snCount(snS)), text_color=color.white, bgcolor=color.new(color.teal, 40), text_size=size.small)
 plot(close, "מחיר", display=display.none)''')
 (ROOT / 'pine/htt_snapshot.pine').write_text('\n'.join(out) + '\n', encoding='utf-8')
 import sys, json
