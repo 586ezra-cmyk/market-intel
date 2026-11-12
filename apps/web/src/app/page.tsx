@@ -20,6 +20,7 @@ import TabLearning from '@/components/tabs/TabLearning'
 import TabConnections from '@/components/tabs/TabConnections'
 import TabHttBacktest from '@/components/tabs/TabHttBacktest'
 import TabOrderFlow from '@/components/tabs/TabOrderFlow'
+import TabLiveBoard from '@/components/tabs/TabLiveBoard'
 import { useWebSocket } from '@/hooks/useWebSocket'
 
 export type TabId =
@@ -27,11 +28,12 @@ export type TabId =
   | 'journal' | 'backtest' | 'watchlist' | 'matrix'
   | 'history-scan' | 'economic-calendar' | 'knowledge-base'
   | 'notes' | 'reports' | 'quick-confluence' | 'learning'
-  | 'connections' | 'htt-backtest' | 'orderflow'
+  | 'connections' | 'htt-backtest' | 'orderflow' | 'live-board'
 
 const TABS: Array<{ id: TabId; label: string; icon: string }> = [
   { id: 'connections',        label: 'חיבורים',          icon: '🔌' },
   { id: 'dashboard',         label: 'דשבורד',          icon: '📊' },
+  { id: 'live-board',        label: 'לוח החלטה',       icon: '🎛️' },
   { id: 'alerts',            label: 'התראות',           icon: '🔔' },
   { id: 'stats',             label: 'סטטיסטיקה',        icon: '📈' },
   { id: 'alert-settings',    label: 'ניהול התראות',     icon: '⚙️' },
@@ -52,12 +54,14 @@ const TABS: Array<{ id: TabId; label: string; icon: string }> = [
 
 export default function HomePage() {
   const [activeTab, setActiveTab] = useState<TabId>('dashboard')
+  const [solo, setSolo] = useState(false)   // /?tab=live-board&solo=1 — מסך נקי בלי כותרת וטאבים (למסך נפרד)
   useWebSocket()
 
   // קישור ישיר לטאב: /?tab=htt-backtest
   useEffect(() => {
     const t = new URLSearchParams(window.location.search).get('tab') as TabId | null
     if (t && TABS.some(x => x.id === t)) setActiveTab(t)
+    setSolo(new URLSearchParams(window.location.search).get('solo') === '1')
   }, [])
 
   // Allow tabs to switch programmatically (e.g. from Matrix click)
@@ -72,10 +76,10 @@ export default function HomePage() {
 
   return (
     <div className="flex flex-col h-screen overflow-hidden">
-      <Header />
+      {!solo && <Header />}
 
       {/* Tab Bar */}
-      <div className="flex items-center gap-0.5 bg-surface-raised border-b border-surface-border px-4 overflow-x-auto shrink-0">
+      <div className={`${solo ? 'hidden' : 'flex'} items-center gap-0.5 bg-surface-raised border-b border-surface-border px-4 overflow-x-auto shrink-0`}>
         {TABS.map(t => (
           <button
             key={t.id}
@@ -101,6 +105,7 @@ export default function HomePage() {
             {activeTab === 'backtest'          && <TabBacktest />}
             {activeTab === 'htt-backtest'      && <TabHttBacktest />}
             {activeTab === 'orderflow'         && <TabOrderFlow />}
+            {activeTab === 'live-board'        && <TabLiveBoard />}
             {activeTab === 'watchlist'         && <TabWatchlist />}
             {activeTab === 'matrix'            && <TabMatrix />}
             {activeTab === 'history-scan'      && <TabHistoryScan />}

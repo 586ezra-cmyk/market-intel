@@ -19,6 +19,7 @@ import statsRouter from './routes/stats'
 import notesRouter from './routes/notes'
 import orderflowRouter from './routes/orderflow'
 import optionsLevelsRouter from './routes/optionsLevels'
+import liveRouter from './routes/live'
 import { startOptionsLevels } from './services/optionsLevelsService'
 import { startOrderflow } from './services/orderflowService'
 import { initScheduler } from './services/scheduler'
@@ -74,6 +75,7 @@ app.use('/api/stats', statsRouter)
 app.use('/api/notes', notesRouter)
 app.use('/api/orderflow', orderflowRouter)
 app.use('/api/options-levels', optionsLevelsRouter)
+app.use('/api/live', liveRouter)
 
 // Health check (public, no details)
 app.get('/health', (_req, res) => {

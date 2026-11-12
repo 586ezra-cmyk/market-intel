@@ -1,6 +1,49 @@
 {
   "version": "0.0.1",
   "configurations": [
-    { "name": "web-dev", "runtimeExecutable": "npm", "runtimeArgs": ["run", "dev", "--prefix", "apps/web"], "port": 3005 }
+    {
+      "name": "web-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--prefix",
+        "apps/web"
+      ],
+      "port": 3005
+    },
+    {
+      "name": "m3-server",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "PORT=3011",
+        "NODE_ENV=test",
+        "TV_WEBHOOK_SECRET=dev-secret",
+        "ADMIN_TOKEN=",
+        "DB_PATH=data/m3-test.db",
+        "npm",
+        "run",
+        "dev",
+        "--prefix",
+        "apps/server"
+      ],
+      "port": 3011
+    },
+    {
+      "name": "m3-web",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "BACKEND_URL=http://localhost:3011",
+        "NEXT_PUBLIC_API_URL=http://localhost:3011",
+        "ADMIN_TOKEN=",
+        "SITE_PASSWORD=",
+        "npm",
+        "run",
+        "dev",
+        "--prefix",
+        "apps/web"
+      ],
+      "port": 3005
+    }
   ]
 }

@@ -16,6 +16,7 @@ import type { Direction, Timeframe } from '@market/shared'
 import { getSetting } from './settings'
 import { saveAlert, TOPIC_HIGH } from '../services/alertDispatcher'
 import { buildHttMessage, httFactors, buildHttContext } from '../services/httSetup'
+import { saveSnapshot } from '../services/liveBoard'
 
 const router = Router()
 
@@ -186,6 +187,29 @@ const HttNearSchema = BaseSchema.extend({
   text: z.string().optional(),
 })
 
+// מערכת 3 — HTT Snapshot: צילום מצב בכל סגירת נר (כל האישורים ללונג ולשורט + רמות). לא נכנס למנוע ההתראות ולא ליומן ה-Webhook
+const numOpt = z.number().nullable().optional()
+const HttSnapshotSchema = BaseSchema.extend({
+  event: z.literal('htt_snapshot'),
+  v: z.number().optional(),
+  tc: numOpt,
+  price: z.number().positive(),
+  hi: numOpt, lo: numOpt,
+  L: z.string().regex(/^[01]+$/).max(400),
+  S: z.string().regex(/^[01]+$/).max(400),
+  phase: z.number().int().min(0).max(5).default(0),
+  cBull: z.number().int().min(0).max(1).default(0),
+  ms: z.number().int().min(-1).max(1).default(0),
+  htfMs: z.number().int().min(-1).max(1).default(0),
+  htfPh: z.number().int().min(0).max(5).default(0),
+  dq: z.number().int().min(0).max(4).default(0),
+  rsi: numOpt, atr: numOpt, vix: numOpt,
+  trL: z.string().max(2).default(''),
+  trS: z.string().max(2).default(''),
+  stL: numOpt, stS: numOpt,
+  lv: z.record(z.string().max(12), z.number().nullable()).default({}),
+})
+
 // הבלוק הישן של HTT Master (event "htt", שדה tf): מאושר ומתעלמים — ההתראות שנוצרו לפני v57 עדיין שולחות אותו
 const HttLegacySchema = z.object({ event: z.literal('htt'), secret: z.string().optional() }).passthrough()
 
@@ -233,6 +257,25 @@ function verifySecret(req: Request, res: Response): boolean {
 
 router.post('/tradingview', async (req: Request, res: Response) => {
   if (!verifySecret(req, res)) return
+
+  // צילום מצב מגיע כל דקה מכל מסגרת — נשמר רק המצב האחרון (לא ביומן ה-Webhook, כדי שלא יתנפח)
+  if ((req.body as any)?.event === 'htt_snapshot') {
+    const snap = HttSnapshotSchema.safeParse(req.body)
+    if (!snap.success) {
+      console.warn('[Webhook] htt_snapshot validation failed:', JSON.stringify(snap.error.flatten()).slice(0, 400))
+      res.status(400).json({ error: 'Invalid payload', details: snap.error.flatten() })
+      return
+    }
+    try {
+      const d = snap.data
+      const tf = parseTF(d.timeframe)
+      const saved = saveSnapshot({ ...d, tf })
+      res.json({ ok: true, symbol: saved.symbol, tf })
+    } catch (e) {
+      res.status(400).json({ error: String((e as Error).message ?? e).slice(0, 200) })
+    }
+    return
+  }
 
   const db = getDb()
   const rawBody = JSON.stringify(req.body)
