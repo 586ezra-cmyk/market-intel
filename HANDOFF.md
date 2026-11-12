@@ -662,3 +662,18 @@
 - **ההחלטה:** תוסף Java Layer1 (ה-Python API לא תומך ב-BookmapData). נכתב `tools/bookmap-addon/src/htt/HttOrderFlowBridge.java`: onTrade → נרות דקה (o/h/l/c/vol/buy=isBidAggressor) → כל 10 שניות `POST /api/orderflow/ingest` עם הטוקן מ-`~/.config/market-intel/secrets.env`; רק שורש NQ, עותקי @Copy מתעלמים. `build.sh` (javac או ecj.jar) → `dist/htt-orderflow-bridge.jar`; התקנה: Bookmap ← Configure add-ons ← Add (המשתמש בוחר את הקובץ).
 - **שרת (פרוס):** `OF_SYMBOLS = [...BINANCE_SYMBOLS, 'NQ']`, `POST /api/orderflow/ingest` (אדמין, zod, ≤5000 נרות), `ingestBars`; `buildHttContext` ממפה NQ1!/MNQ → NQ. אתר: כפתור NQ בטאב Order Flow.
 - **חסום על:** קומפיילר Java — צריך אישור המשתמש להורדת `ecj.jar` (Eclipse compiler, ~3MB, Maven Central) או JDK. אחרי הבנייה: המשתמש מוסיף את ה-jar ב-Bookmap פעם אחת → בדיקה: יומן Bookmap "tracking NQZ6…", `/api/orderflow/NQ` מתמלא, טאב Order Flow ← NQ. מגבלה: עובד רק כש-Bookmap פתוח (24/7 = VM או ספק נתונים לשרת).
+
+## 🖱️ מסחר בלחיצת כפתור מ-TradingView (9.11.2026 ערב)
+- **הבקשה:** לחיצה → כניסה במרקט/לימיט, "סטופ של 300%", TP 1:2, שינוי תוך כדי תנועה. **מסמך:** `backtest/24_מסחר_בלחיצת_כפתור_9-11.md`.
+- **ממצאים:** TradingView+Tradovate נותנים היום כפתורי Buy/Sell + Instant orders + Shift+B/S (מרקט), Shift+Alt+B/S (לימיט), ברקט TP/SL
+  **בטיקים** כ-preset, גרירת TP/SL בגרף. אין TP כמכפלת סטופ ואין סטופ מחושב (ATR/מבנה) בלחיצה. Tradovate API סגור לחשבונות פרופ/מבחן →
+  סטופ מחושב רק דרך גשר (TradersPost/PickMyTrade ~50$/חודש) עם webhook מהשרת/האתר שלנו. MFFU: חצי-אוטומטי מותר בהשגחה — לאמת בכתב.
+- **חוסם:** מה זה "300%" (3×ATR? % מנר? 300 טיקים?) ובאיזה חשבון (MFFU/Tradovate או בורסת קריפטו). המלצה: מסלול א' (TV בלבד) מיד, ב' (פאנל עסקה באתר + גשר) אחרי התשובות.
+
+## 🟦 מערכת מסחר 3 — מסחר יומי בלייב (נפתחה 12.11.2026)
+- **מה זה:** סקאלפ על 1m/5m בסשן ניו יורק (נאסדק במיקרו MNQ + BTCUSDT), 300$ סיכון לעסקה, יעד 1:1/1:2, 3–5 עסקאות ביום; לוח החלטה באתר + גרף + חוקים/מנטלי. **עדיין לא נבנה כלום באתר/ב-Pine.**
+- **מסמכים (backtest/):** `25` ההקלטה · `26` התבנית + בדיקת הנתונים · `27` רשימת המשימות (M3-x.y, כולל מצב שלב 0 וההחלטות) · `28` כל האישורים ביעד 1:1/1:2 (נתוני השנה) · `29` כללי המדידה · `30` תוצאות בקטסט הקונספט.
+- **קוד:** `backtest/stats/m3/` — engine.py (אזור 15m/1H + טריגר 1m/5m, שורט על סדרה הפוכה), analyze.py, fetch_yahoo.py; נתונים ב-`m3/data/` (Yahoo: NQ/ES 1m = 30 יום בלבד).
+- **ממצאים עד כה:** סטופ הקורס ב-NQ 5m חציון 97 נק' (0.3% ≤30); ביעד קבוע הכול ≈49%/33%; בקטסט הקונספט: BTC שנה = 50%/30% ברוטו, עמלות הורגות; NQ 22 ימים — רמז ל"שינוי מבנה" ו-SMT, מדגם קטן.
+- **בעיות פתוחות (שלב 1 ב-27):** סשן ניו יורק ב-HTT מתחיל ב-18:00 ישראל (צ"ל 16:30, לפי America/New_York) · אפס-גמא שגוי + משטר NDX/QQQ סותר · המנוע הישן (Yahoo, מעוכב 10 דק') · דלתא NQ בטיפול המשתמש.
+- **הבא:** M3-2.6א — שנה של נרות דקה ל-NQ/ES מ-TradingView (Replay) → הרצה חוזרת → החלטה על הקונספט (יעד קבוע מול גרירה).
