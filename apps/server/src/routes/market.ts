@@ -103,6 +103,10 @@ router.get('/:symbol/analyze', async (req: Request, res: Response) => {
       return res.json(cached)
     }
     const result = await analyzeSymbol(symbol)
+    // בלי נרות אין ניתוח: לא מחזירים "ציון 0, אין סטאפ" שנראה כמו תשובה אמיתית, ולא שומרים במטמון.
+    if (!result.timeframes.length || !(result.currentPrice > 0)) {
+      return res.status(503).json({ error: 'no_data', message: `אין נתוני נרות ל-${symbol} כרגע — הניתוח לא רץ` })
+    }
     analysisCache.set(symbol, result)
     res.json(result)
   } catch (err: any) {

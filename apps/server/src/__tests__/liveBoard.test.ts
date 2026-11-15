@@ -5,7 +5,7 @@ vi.mock('../db/client', () => {
   return { getDb: () => fakeDb }
 })
 
-import { saveSnapshot, buildBoard, clearLive, normSymbol, type SnapshotInput } from '../services/liveBoard'
+import { saveSnapshot, buildBoard, clearLive, normSymbol, getBars, getLevels, type SnapshotInput } from '../services/liveBoard'
 import { HTT_FLAG_KEYS } from '../services/httFlagKeys'
 
 const N = HTT_FLAG_KEYS.length
@@ -83,5 +83,43 @@ describe('liveBoard', () => {
     expect(b.options).toMatchObject({ regime: 'positive', ageMin: 10 })
     expect(b.options!.levels).toEqual([{ key: 'callWall', name: 'קיר קולים', price: 28888, dist: 388 }, { key: 'putWall', name: 'קיר פוטים', price: 28063, dist: -437 }])
     expect(N).toBe(84)
+  })
+
+  it('flags the regime as unstable when price sits on zero-gamma, and reports strength', () => {
+    saveSnapshot(snap({}), T0)
+    const b = buildBoard('NQ', { options: { ts: T0, nq: { zeroGamma: 28540, regime: 'negative', netGex: -5.06e9 } } }, T0)
+    expect(b.options).toMatchObject({ regime: 'negative', netGexB: -5.1, nearFlip: true })
+    const far = buildBoard('NQ', { options: { ts: T0, nq: { zeroGamma: 29200, regime: 'negative', netGex: -5.06e9 } } }, T0)
+    expect(far.options!.nearFlip).toBe(false)
+  })
+
+  it('builds real-time bars from snapshots, one per bar close, per timeframe', () => {
+    saveSnapshot(snap({ time: T0, price: 28500, op: 28490, hi: 28510, lo: 28485 }), T0 + 60_000)
+    saveSnapshot(snap({ time: T0 + 60_000, price: 28520, op: 28500, hi: 28525, lo: 28498 }), T0 + 120_000)
+    saveSnapshot(snap({ tf: '5m', time: T0, price: 28520, op: 28490, hi: 28525, lo: 28485 }), T0 + 300_000)
+    expect(getBars('NQ1!', '1m')).toEqual([
+      { time: T0 / 1000, open: 28490, high: 28510, low: 28485, close: 28500 },
+      { time: T0 / 1000 + 60, open: 28500, high: 28525, low: 28498, close: 28520 },
+    ])
+    expect(getBars('NQ', '5m')).toHaveLength(1)
+    expect(getBars('NQ', '15m')).toEqual([])
+  })
+
+  it('a repeated snapshot for the same bar replaces it, and a script without an open price uses the previous close', () => {
+    saveSnapshot(snap({ time: T0, price: 28500, op: 28490, hi: 28510, lo: 28485 }), T0)
+    saveSnapshot(snap({ time: T0, price: 28505, op: 28490, hi: 28512, lo: 28485 }), T0 + 1000)
+    saveSnapshot(snap({ time: T0 + 60_000, price: 28530, hi: 28531, lo: 28504 }), T0 + 60_000)          // בלי op
+    const bars = getBars('NQ', '1m')
+    expect(bars).toHaveLength(2)
+    expect(bars[0]).toMatchObject({ close: 28505, high: 28512 })
+    expect(bars[1]).toMatchObject({ open: 28505, high: 28531, low: 28504, close: 28530 })
+  })
+
+  it('serves chart levels for the requested timeframe and marks an old snapshot as stale', () => {
+    expect(getLevels('NQ', '5m', T0)).toMatchObject({ tf: null, stale: true, lv: {} })
+    saveSnapshot(snap({ tf: '5m', lv: { pH: 28560, fLt: 28480, fLb: 28470, bad: null } }), T0)
+    expect(getLevels('NQ1!', '5m', T0 + 30_000)).toMatchObject({ tf: '5m', exact: true, stale: false, ageSec: 30, lv: { pH: 28560, fLt: 28480, fLb: 28470 } })
+    expect(getLevels('NQ', '1m', T0 + 30_000)).toMatchObject({ tf: '5m', exact: false })                 // אין צילום דקה → הטרי ביותר
+    expect(getLevels('NQ', '5m', T0 + 3_600_000).stale).toBe(true)
   })
 })

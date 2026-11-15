@@ -28,6 +28,23 @@ function isCryptoSymbol(symbol: string): boolean {
   return CRYPTO_SUFFIX_REGEX.test(symbol)
 }
 
+// מראת הנתונים הציבורית של Binance נגישה מהשרת ב-Railway; api.binance.com מחזיר שם 451 (חסימה אזורית) — לכן היא ראשונה.
+export const BINANCE_HOSTS = ['https://data-api.binance.vision', 'https://api.binance.com'] as const
+
+/** GET לנתוני שוק ציבוריים של Binance, עם מעבר לכתובת הבאה כשהראשונה חסומה או נופלת. */
+export async function binanceGet(path: string, timeoutMs = 8000): Promise<unknown> {
+  let lastErr = 'no host'
+  for (const host of BINANCE_HOSTS) {
+    try {
+      const res = await fetch(host + path, { signal: AbortSignal.timeout(timeoutMs) })
+      if (res.ok) return await res.json()
+      lastErr = `${host} ${res.status}`
+      if (res.status === 400) break            // סימול לא קיים — אין טעם לנסות כתובת אחרת
+    } catch (e) { lastErr = `${host} ${String((e as Error).message ?? e).slice(0, 80)}` }
+  }
+  throw new Error(`Binance API error: ${lastErr}`)
+}
+
 export async function fetchCandles(
   symbol: string,
   tf: string,
@@ -43,15 +60,7 @@ export async function fetchCandles(
     throw new Error(`Unknown timeframe: ${tf}`)
   }
 
-  const url = `https://api.binance.com/api/v3/klines?symbol=${encodeURIComponent(symbol.toUpperCase())}&interval=${interval}&limit=${limit}`
-
-  const res = await fetch(url)
-  if (!res.ok) {
-    const text = await res.text()
-    throw new Error(`Binance API error ${res.status}: ${text}`)
-  }
-
-  const raw = (await res.json()) as any[][]
+  const raw = (await binanceGet(`/api/v3/klines?symbol=${encodeURIComponent(symbol.toUpperCase())}&interval=${interval}&limit=${limit}`)) as any[][]
 
   return raw.map(k => ({
     time:   Math.floor(Number(k[0]) / 1000),

@@ -22,7 +22,7 @@ interface Board {
   symbol: string; serverTs: number; price: number | null; priceAgeSec: number | null
   tfs: TfRow[]; summary: { long: Side; short: Side }; near: NearItem[]
   card: { riskUsd: number; long: { tf: string; options: CardOpt[] } | null; short: { tf: string; options: CardOpt[] } | null }
-  options: { ageMin: number; regime: string; levels: Array<{ key: string; name: string; price: number; dist: number | null }> } | null
+  options: { ageMin: number; regime: string; netGexB?: number | null; nearFlip?: boolean; levels: Array<{ key: string; name: string; price: number; dist: number | null }> } | null
   orderflow: Record<string, OfSum | null>
   session: { ny: string; il: string; inRth: boolean; minutesToOpen: number | null; minutesToClose: number | null }
   news: { title: string; inMin: number } | null
@@ -228,7 +228,9 @@ export default function TabLiveBoard() {
               <>
                 <div className={`text-sm font-bold mt-1 ${board.options.regime === 'positive' ? 'text-emerald-400' : board.options.regime === 'negative' ? 'text-red-400' : 'text-slate-400'}`}>
                   {board.options.regime === 'positive' ? 'גמא חיובית — השוק נוטה לבלום ולחזור לממוצע' : board.options.regime === 'negative' ? 'גמא שלילית — השוק נוטה להאיץ תנועות' : 'משטר הגמא לא ידוע'}
+                  {board.options.netGexB != null && <span className="text-slate-400 font-normal"> · עוצמה {board.options.netGexB > 0 ? '+' : ''}{board.options.netGexB} מיליארד $ ל-1%</span>}
                 </div>
+                {board.options.nearFlip && <div className="text-xs text-amber-300 mt-1">⚠️ המחיר קרוב לאפס-גמא (פחות מ-0.3%) — המשטר יכול להתהפך בתנועה קטנה</div>}
                 <div className="flex flex-wrap gap-x-5 gap-y-1 mt-2 text-sm">
                   {[...board.options.levels].sort((a, b) => b.price - a.price).map(l => (
                     <div key={l.key}><span className="text-slate-400">{l.name} </span><b className="text-white tabular-nums">{num(l.price)}</b>{l.dist != null && <span className={`tabular-nums ${Math.abs(l.dist) <= 40 ? 'text-amber-300 font-bold' : 'text-slate-500'}`}> ({l.dist > 0 ? '+' : ''}{num(l.dist, 0)} נק׳)</span>}</div>

@@ -22,7 +22,7 @@ const INSTRUMENT: Record<string, { micro: string; pointUsd: number; maxContracts
 
 export interface SnapshotInput {
   symbol: string; tf: string; time: number; tc?: number | null
-  price: number; hi?: number | null; lo?: number | null
+  price: number; op?: number | null; hi?: number | null; lo?: number | null
   L: string; S: string
   phase: number; cBull: number; ms: number; htfMs: number; htfPh: number; dq: number
   rsi?: number | null; atr?: number | null; vix?: number | null
@@ -71,10 +71,63 @@ export function saveSnapshot(input: SnapshotInput, now = Date.now()): StoredSnap
     getDb().prepare(`INSERT INTO live_snapshots (symbol, tf, received_at, json) VALUES (?, ?, ?, ?)
       ON CONFLICT(symbol, tf) DO UPDATE SET received_at = excluded.received_at, json = excluded.json`).run(symbol, input.tf, now, JSON.stringify(snap))
   } catch { /* הזיכרון הוא המקור החי; כתיבה שנכשלה לא עוצרת את הלוח */ }
+  saveBar(symbol, input.tf, input)
   return snap
 }
+
+// ─── נרות חיים: כל צילום מצב הוא גם נר סגור (פתיחה/גבוה/נמוך/סגירה) מ-TradingView בזמן אמת ───
+export interface LiveBar { time: number; open: number; high: number; low: number; close: number }
+const BARS_KEEP = 3000
+const barMem = new Map<string, LiveBar[]>()          // symbol|tf → נרות ממוינים לפי זמן
+function barsOf(symbol: string, tf: string): LiveBar[] {
+  const key = `${symbol}|${tf}`
+  let arr = barMem.get(key)
+  if (arr) return arr
+  arr = []
+  try {
+    const rows = getDb().prepare('SELECT time, o, h, l, c FROM live_bars WHERE symbol = ? AND tf = ? ORDER BY time DESC LIMIT ?').all(symbol, tf, BARS_KEEP) as Array<{ time: number; o: number; h: number; l: number; c: number }>
+    arr = (rows ?? []).reverse().map(r => ({ time: r.time, open: r.o, high: r.h, low: r.l, close: r.c }))
+  } catch { /* אין טבלה (בדיקות) */ }
+  barMem.set(key, arr)
+  return arr
+}
+function saveBar(symbol: string, tf: string, s: SnapshotInput): void {
+  const time = Math.floor(s.time / 1000)
+  if (!Number.isFinite(time) || time <= 0) return
+  const arr = barsOf(symbol, tf)
+  const prev = arr.length && arr[arr.length - 1].time < time ? arr[arr.length - 1] : null
+  // גרסה ישנה של הסקריפט לא שולחת פתיחה — אז הפתיחה היא הסגירה של הנר הקודם (בחוזה רציף זה אותו מחיר)
+  const open = s.op ?? prev?.close ?? s.price
+  const bar: LiveBar = { time, open, high: Math.max(s.hi ?? s.price, open, s.price), low: Math.min(s.lo ?? s.price, open, s.price), close: s.price }
+  const i = arr.findIndex(b => b.time === time)
+  if (i >= 0) arr[i] = bar
+  else { arr.push(bar); if (arr.length > 1 && arr[arr.length - 2].time > time) arr.sort((a, b) => a.time - b.time) }
+  if (arr.length > BARS_KEEP) arr.splice(0, arr.length - BARS_KEEP)
+  try {
+    const db = getDb()
+    db.prepare(`INSERT INTO live_bars (symbol, tf, time, o, h, l, c) VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(symbol, tf, time) DO UPDATE SET o = excluded.o, h = excluded.h, l = excluded.l, c = excluded.c`).run(symbol, tf, time, bar.open, bar.high, bar.low, bar.close)
+    if (arr.length === BARS_KEEP) db.prepare('DELETE FROM live_bars WHERE symbol = ? AND tf = ? AND time < ?').run(symbol, tf, arr[0].time)
+  } catch { /* הזיכרון מספיק לגרף */ }
+}
+/** הנרות החיים של (נכס, מסגרת), מהישן לחדש. */
+export function getBars(symbolRaw: string, tf: string, limit = 500): LiveBar[] {
+  ensureLoaded()
+  return barsOf(normSymbol(symbolRaw), tf).slice(-Math.max(1, Math.min(limit, BARS_KEEP)))
+}
+
+/** רמות HTT לגרף: הצילום של המסגרת המבוקשת, ואם אין — של מסגרת הביצוע הטרייה ביותר. */
+export function getLevels(symbolRaw: string, tf: string, now = Date.now()) {
+  ensureLoaded()
+  const symbol = normSymbol(symbolRaw)
+  const snaps = mem.get(symbol)
+  const pick = snaps?.get(tf) ?? [...(snaps?.values() ?? [])].sort((a, b) => b.receivedAt - a.receivedAt)[0] ?? null
+  if (!pick) return { symbol, tf: null, exact: false, ageSec: null, stale: true, price: null, lv: {}, names: LEVEL_HE }
+  const ageSec = Math.round((now - pick.receivedAt) / 1000)
+  return { symbol, tf: pick.tf, exact: pick.tf === tf, ageSec, stale: ageSec > (TF_MIN[pick.tf] ?? 1) * 60 * 2 + 90, price: pick.price, lv: pick.lv, names: LEVEL_HE }
+}
 export function liveSymbols(): string[] { ensureLoaded(); return [...mem.keys()].sort() }
-export function clearLive(): void { mem.clear(); loaded = true }      // לבדיקות
+export function clearLive(): void { mem.clear(); barMem.clear(); loaded = true }      // לבדיקות
 
 // ─── "כמה חסר": לכל אישור — לאיזו רמה המחיר צריך להגיע, ומאיזה כיוון ───
 type How = 'up' | 'down'
@@ -109,6 +162,7 @@ const LEVEL_HE: Record<string, string> = {
   fLt: 'FVG תומך', fSb: 'FVG מתנגד', iLt: 'iFVG תומך', iSb: 'iFVG מתנגד', obL: 'אורדר בלוק לונג (עומק 21%)', obS: 'אורדר בלוק שורט (עומק 21%)',
   rLo: 'אייס (תחתית הטווח)', rHi: 'קריק (תקרת הטווח)', jac: 'קו הקפיצה (קריק/אייס)', h4L: 'שפל 4H', h4H: 'שיא 4H', dL: 'שפל יומי', dH: 'שיא יומי', wL: 'שפל שבועי', wH: 'שיא שבועי',
   sesL: 'שפל הסשן הקודם', sesH: 'שיא הסשן הקודם', asL: 'שפל אסיה', asH: 'שיא אסיה', orH: 'שיא טווח הפתיחה', orL: 'שפל טווח הפתיחה', bbU: 'בולינגר עליון', bbL: 'בולינגר תחתון',
+  fLb: 'תחתית FVG תומך', fSt: 'תקרת FVG מתנגד', iLb: 'תחתית iFVG תומך', iSt: 'תקרת iFVG מתנגד', obLs: 'קצה אורדר בלוק לונג', obSs: 'קצה אורדר בלוק שורט', avW: 'AVWAP שבועי', ema: 'EMA 12',
   poc: 'POC של היום', avD: 'AVWAP יומי', avT: 'AVWAP מ-True Day Open', val: 'תחתית אזור הערך', vah: 'תקרת אזור הערך', wgD: 'קו הכנף היורד', wgU: 'קו הכנף העולה',
 }
 const NAMES: Record<string, string> = { ...HTT_FLAG_NAMES, 'T:W': ENTRY_NAMES.W }
@@ -253,12 +307,15 @@ export function buildBoard(symbolRaw: string, extras: BoardExtras = {}, now = Da
   const card = { riskUsd, long: cardSide('long'), short: cardSide('short') }
 
   // ─── אופציות (גמא) ───
-  let options: null | { ageMin: number; regime: string; levels: Array<{ key: string; name: string; price: number; dist: number | null }> } = null
+  let options: null | { ageMin: number; regime: string; netGexB: number | null; nearFlip: boolean; levels: Array<{ key: string; name: string; price: number; dist: number | null }> } = null
   if (extras.options && symbol === 'NQ') {
     const o = extras.options.nq
     const defs: Array<[string, string]> = [['callWall', 'קיר קולים'], ['putWall', 'קיר פוטים'], ['zeroGamma', 'אפס-גמא'], ['magnet', 'מגנט (OI הגדול)'], ['zdte', '0DTE']]
     options = {
       ageMin: Math.round((now - extras.options.ts) / 60_000), regime: String(o['regime'] ?? 'unknown'),
+      netGexB: typeof o['netGex'] === 'number' ? +((o['netGex'] as number) / 1e9).toFixed(1) : null,
+      // קרוב לאפס-גמא (פחות מ-0.3%) = המשטר יכול להתהפך בתנועה קטנה; מציגים את זה במקום להעמיד פנים שהוא יציב
+      nearFlip: typeof o['zeroGamma'] === 'number' && price != null && Math.abs((o['zeroGamma'] as number) - price) / price < 0.003,
       levels: defs.filter(([k]) => typeof o[k] === 'number').map(([k, name]) => ({ key: k, name, price: o[k] as number, dist: price != null ? +((o[k] as number) - price).toFixed(2) : null })),
     }
   }

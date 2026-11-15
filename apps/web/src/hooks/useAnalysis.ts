@@ -149,10 +149,15 @@ export function useAnalysis() {
     setError(null)
     try {
       const res = await fetch(`${API}/api/market/${symbol}/analyze`)
-      if (!res.ok) throw new Error('שגיאה בניתוח')
+      if (!res.ok) {
+        // השרת מסביר למה אין ניתוח (למשל: אין נתוני נרות) — מציגים את ההסבר שלו ולא תוצאה ישנה
+        const body = await res.json().catch(() => null) as { message?: string } | null
+        throw new Error(body?.message ?? `שגיאה בניתוח (${res.status})`)
+      }
       const json = await res.json()
       setData(json)
     } catch (e: any) {
+      setData(null)
       setError(e.message)
     } finally {
       setLoading(false)

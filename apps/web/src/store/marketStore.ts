@@ -8,7 +8,7 @@ import type { DrawingTool, Drawing } from '@/types/drawing'
 export type LayerId =
   | 'structure' | 'liquidity' | 'fvg' | 'ifvg' | 'range' | 'killZone'
   | 'wyckoff' | 'smt' | 'ismt' | 'ob' | 'bollinger'
-  | 'inducement' | 'repricing' | 'session' | 'judas' | 'po3'
+  | 'inducement' | 'repricing' | 'session' | 'judas' | 'po3' | 'htt'
 
 export const LAYER_LABELS: Record<LayerId, string> = {
   structure:  'מבנה שוק (BOS/CHoCH)',
@@ -27,6 +27,7 @@ export const LAYER_LABELS: Record<LayerId, string> = {
   session:    'גבוה/נמוך סשן',
   judas:      'Judas Swing',
   po3:        'Power of 3 / Opening Range',
+  htt:        'רמות HTT (חי מ-TradingView)',
 }
 
 export const LAYER_COLORS: Record<LayerId, string> = {
@@ -46,6 +47,7 @@ export const LAYER_COLORS: Record<LayerId, string> = {
   session:    '#64748b',
   judas:      '#0d9488',
   po3:        '#0ea5e9',
+  htt:        '#facc15',
 }
 
 // ─── Selected symbol + timeframe ──────────────────────────────────────────────
@@ -129,6 +131,7 @@ export const useMarketStore = create<MarketStore>()(
         session:    true,
         judas:      true,
         po3:        false,
+        htt:        true,
       },
       toggleLayer: (id) =>
         set((state) => ({
@@ -181,6 +184,11 @@ export const useMarketStore = create<MarketStore>()(
     }),
     {
       name: 'market-store',
+      // שכבה חדשה שעוד לא קיימת בהגדרות השמורות בדפדפן מקבלת את ברירת המחדל שלה (ולא נשארת כבויה)
+      merge: (persisted, current) => {
+        const p = (persisted ?? {}) as Partial<MarketStore>
+        return { ...current, ...p, layers: { ...current.layers, ...(p.layers ?? {}) } }
+      },
       partialize: (s) => ({
         symbol: s.symbol,
         timeframe: s.timeframe,

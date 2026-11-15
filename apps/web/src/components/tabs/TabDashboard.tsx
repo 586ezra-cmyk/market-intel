@@ -33,7 +33,7 @@ export default function TabDashboard() {
   const missed = alerts.slice(1, 5).filter(a => a.direction === lastAlert?.direction)
 
   const activeLayerCount = (Object.keys(LAYER_LABELS) as LayerId[])
-    .filter(id => layers[id]).length
+    .filter(id => id !== 'htt' && layers[id]).length      // שכבת HTT מציגה את המצב שלה בעצמה על הגרף
   const hasLayerData = !!state && (
     (state.structures?.length ?? 0) > 0 ||
     (state.fvgs?.length ?? 0) > 0 ||

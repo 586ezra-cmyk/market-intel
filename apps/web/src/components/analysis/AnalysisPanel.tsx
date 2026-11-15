@@ -2,9 +2,15 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useAnalysis, type TFAnalysis, type ScoreBreakdown } from '@/hooks/useAnalysis'
 import { useMarketStore } from '@/store/marketStore'
+import { API_BASE } from '@/lib/api'
+import HttBoardSummary, { type BoardLite } from './HttBoardSummary'
 
 const ASSETS = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT', 'ADAUSDT']
 const CUSTOM_ASSETS = ['NQ', 'ES', 'XAUUSD']
+// נכסים שהניתוח שלהם מגיע מ-HTT (צילום המצב מ-TradingView) ולא מהמנוע הישן, שאין לו נרות לחוזים עתידיים
+const HTT_ASSETS = new Set(['NQ', 'ES'])
+/** סימול הגרף → סימול החלונית: NQ1! → NQ */
+const panelSymbol = (s: string) => { const u = s.toUpperCase().replace(/\d?!$/, ''); return /^M?NQ/.test(u) ? 'NQ' : /^M?ES/.test(u) ? 'ES' : u }
 
 const fmt = (n: number | null | undefined) =>
   n != null ? `$${n.toLocaleString(undefined, { maximumFractionDigits: 2 })}` : '—'
@@ -26,6 +32,18 @@ export default function AnalysisPanel({ open, onClose }: { open: boolean; onClos
   const [expandedTF, setExpandedTF] = useState<string | null>(null)
   const [showBreakdown, setShowBreakdown] = useState(false)
   const setAnalysisLayers = useMarketStore(s => s.setAnalysisLayers)
+  const chartSymbol = useMarketStore(s => s.symbol)
+  const [board, setBoard] = useState<BoardLite | null>(null)
+  const [boardLoading, setBoardLoading] = useState(false)
+  const [boardError, setBoardError] = useState<string | null>(null)
+  const [mode, setMode] = useState<'engine' | 'htt' | null>(null)
+
+  // החלונית נפתחת על הנכס שמוצג בגרף
+  useEffect(() => {
+    if (!open) return
+    const s = panelSymbol(chartSymbol)
+    if ([...ASSETS, ...CUSTOM_ASSETS].includes(s)) { setSymbol(s); setCustomSymbol('') } else setCustomSymbol(s)
+  }, [open, chartSymbol])
 
   // Position size calculator state (persisted in localStorage)
   const [accountSize, setAccountSize] = useState<number>(() => {
@@ -55,9 +73,17 @@ export default function AnalysisPanel({ open, onClose }: { open: boolean; onClos
   }, [data, setAnalysisLayers])
 
   const handleAnalyze = () => {
-    const sym = customSymbol.trim().toUpperCase() || symbol
-    analyze(sym)
+    const sym = panelSymbol(customSymbol.trim() || symbol)
+    if (!HTT_ASSETS.has(sym)) { setMode('engine'); setBoard(null); setBoardError(null); analyze(sym); return }
+    setMode('htt'); setBoardLoading(true); setBoardError(null)
+    fetch(`${API_BASE}/api/live/${sym}`, { cache: 'no-store' })
+      .then(r => (r.ok ? r.json() : Promise.reject(new Error(`השרת החזיר ${r.status}`))))
+      .then((j: BoardLite) => setBoard(j))
+      .catch(e => { setBoard(null); setBoardError(`לא הצלחתי להביא את מצב האישורים: ${String(e.message ?? e)}`) })
+      .finally(() => setBoardLoading(false))
   }
+  const busy = loading || boardLoading
+  const shownError = mode === 'htt' ? boardError : error
 
   const directionColor = (dir: string) =>
     dir === 'bullish' ? 'text-green-400' : dir === 'bearish' ? 'text-red-400' : 'text-gray-400'
@@ -103,16 +129,21 @@ export default function AnalysisPanel({ open, onClose }: { open: boolean; onClos
           />
           <button
             onClick={handleAnalyze}
-            disabled={loading}
+            disabled={busy}
             className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold py-2 px-4 rounded flex items-center justify-center gap-2"
           >
-            {loading ? <><span className="animate-spin">⏳</span> מנתח...</> : <>🔍 בחן עכשיו</>}
+            {busy ? <><span className="animate-spin">⏳</span> מנתח...</> : <>🔍 בחן עכשיו</>}
           </button>
-          {error && <p className="text-red-400 text-sm text-center">{error}</p>}
+          {shownError && <p className="text-red-400 text-sm text-center">{shownError}</p>}
         </div>
 
+        {/* נאסדק / S&P: מצב האישורים של HTT */}
+        {mode === 'htt' && board && (
+          <HttBoardSummary board={board} onOpenBoard={() => { window.dispatchEvent(new CustomEvent('switch-tab', { detail: 'live-board' })); onClose() }} />
+        )}
+
         {/* Results */}
-        {data && (
+        {mode !== 'htt' && data && (
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
 
             {/* Feature 6: Bias Summary Line */}
@@ -317,7 +348,7 @@ export default function AnalysisPanel({ open, onClose }: { open: boolean; onClos
           </div>
         )}
 
-        {!data && !loading && (
+        {!(mode === 'htt' ? board : data) && !busy && (
           <div className="flex-1 flex items-center justify-center">
             <div className="text-center text-gray-500">
               <div className="text-4xl mb-3">🔍</div>

@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express'
-import { buildBoard, boardMeta, liveSymbols, normSymbol } from '../services/liveBoard'
+import { buildBoard, boardMeta, liveSymbols, normSymbol, getBars, getLevels, BOARD_TFS } from '../services/liveBoard'
 import { latestSnapshot } from '../services/optionsLevelsService'
 import { getSummary, OF_SYMBOLS } from '../services/orderflowService'
 import { getCachedCalendar } from '../services/forexFactory'
@@ -29,6 +29,20 @@ async function nextNews(now: number): Promise<{ title: string; inMin: number } |
 router.get('/meta', (_req: Request, res: Response) => { res.json(boardMeta()) })
 // GET /api/live — אילו נכסים שולחים צילום מצב
 router.get('/', (_req: Request, res: Response) => { res.json({ symbols: liveSymbols() }) })
+const tfOf = (req: Request): string | null => { const tf = String(req.query['tf'] ?? '1m'); return (BOARD_TFS as readonly string[]).includes(tf) ? tf : null }
+// GET /api/live/:symbol/bars?tf=1m&limit=500 — נרות בזמן אמת שנבנו מצילומי המצב (לגרף באתר)
+router.get('/:symbol/bars', (req: Request, res: Response) => {
+  const symbol = normSymbol(String(req.params['symbol'] ?? '')); const tf = tfOf(req)
+  if (!/^[A-Z0-9.]{1,20}$/.test(symbol) || !tf) return res.status(400).json({ error: 'bad symbol or tf' })
+  const limit = Math.min(Math.max(parseInt(String(req.query['limit'] ?? '500'), 10) || 500, 1), 3000)
+  res.json(getBars(symbol, tf, limit))
+})
+// GET /api/live/:symbol/levels?tf=5m — רמות HTT של המסגרת (לציור על הגרף באתר)
+router.get('/:symbol/levels', (req: Request, res: Response) => {
+  const symbol = normSymbol(String(req.params['symbol'] ?? '')); const tf = tfOf(req)
+  if (!/^[A-Z0-9.]{1,20}$/.test(symbol) || !tf) return res.status(400).json({ error: 'bad symbol or tf' })
+  res.json(getLevels(symbol, tf))
+})
 // GET /api/live/:symbol — הלוח המלא לנכס
 router.get('/:symbol', async (req: Request, res: Response) => {
   const symbol = normSymbol(String(req.params['symbol'] ?? ''))

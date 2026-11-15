@@ -20,9 +20,13 @@ import WyckoffLayer from './layers/WyckoffLayer'
 import ISMTLayer from './layers/ISMTLayer'
 import RepricingLayer from './layers/RepricingLayer'
 import OptionsLevelsLayer from './layers/OptionsLevelsLayer'
+import HttLevelsLayer from './layers/HttLevelsLayer'
 import DetailPanel from './DetailPanel'
 import DrawingToolbar from './DrawingToolbar'
 import ChartDrawingCanvas from './ChartDrawingCanvas'
+
+interface Bar { time: number; open: number; high: number; low: number; close: number }
+const toBar = (c: Bar) => ({ time: c.time as any, open: c.open, high: c.high, low: c.low, close: c.close })
 
 interface ChartState {
   chart: IChartApi
@@ -38,6 +42,7 @@ export default function TradingChart() {
   const [candlesLoading, setCandlesLoading] = useState(false)
   const [candleError, setCandleError]       = useState(false)
 
+  const [feed, setFeed] = useState<{ source: 'live' | 'delayed'; barTime: number; at: number } | null>(null)
   const [ohlc, setOhlc] = useState<{ o: number; h: number; l: number; c: number; time: string } | null>(null)
   const { symbol, timeframe, selectedAlertId, setSelectedAlert } = useMarketStore()
 
@@ -112,40 +117,70 @@ export default function TradingChart() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // ── Fetch candles when symbol / timeframe changes ──────────────────────────
+  // ── Fetch candles when symbol / timeframe changes, then keep them fresh ─────
+  // טעינה מלאה פעם אחת, ואחריה רענון קצר כל כמה שניות: הנר האחרון מתעדכן ונרות חדשים מתווספים בלי להזיז את התצוגה.
   useEffect(() => {
     if (!chartReady || !chartRef.current) return
 
-    const { candleSeries, chart } = chartRef.current
+    const { candleSeries } = chartRef.current
+    let alive = true
+    let lastTime = 0
     candleSeries.setData([])
     setCandlesLoading(true)
     setCandleError(false)
+    setFeed(null)
 
-    // /api/candles is a Next.js route that fetches from Binance directly
-    const url = `/api/candles/${encodeURIComponent(symbol)}/${timeframe}?limit=300`
+    // /api/candles is a Next.js route: Binance for crypto, Yahoo + real-time TradingView bars for NQ/ES
+    const base = `/api/candles/${encodeURIComponent(symbol)}/${timeframe}`
+    const get = (limit: number) => fetch(`${base}?limit=${limit}`, { cache: 'no-store' }).then(async r => {
+      if (!r.ok) throw new Error(`HTTP ${r.status}`)
+      return { candles: (await r.json()) as Bar[], source: r.headers.get('X-Candle-Source') }
+    })
+    const note = (candles: Bar[], source: string | null) => {
+      const last = candles[candles.length - 1]
+      if (last) setFeed({ source: source === 'delayed' ? 'delayed' : 'live', barTime: last.time, at: Date.now() })
+    }
 
-    fetch(url)
-      .then(r => r.ok ? r.json() : Promise.reject(`HTTP ${r.status}`))
-      .then((candles: Array<{ time: number; open: number; high: number; low: number; close: number }>) => {
-        if (!chartRef.current) return
-        chartRef.current.candleSeries.setData(
-          candles.map(c => ({
-            time:  c.time as any,
-            open:  c.open,
-            high:  c.high,
-            low:   c.low,
-            close: c.close,
-          }))
-        )
+    get(300)
+      .then(({ candles, source }) => {
+        if (!alive || !chartRef.current) return
+        chartRef.current.candleSeries.setData(candles.map(toBar))
+        lastTime = candles.length ? candles[candles.length - 1].time : 0
         // ✅ Scroll chart to show the latest candles
         chartRef.current.chart.timeScale().fitContent()
+        note(candles, source)
       })
       .catch((err) => {
         console.warn('candles fetch failed:', err)
-        setCandleError(true)
+        if (alive) setCandleError(true)
       })
-      .finally(() => setCandlesLoading(false))
+      .finally(() => { if (alive) setCandlesLoading(false) })
+
+    const everyMs = ['1m', '3m', '5m'].includes(timeframe) ? 5_000 : ['15m', '30m', '1h'].includes(timeframe) ? 15_000 : 60_000
+    const id = setInterval(() => {
+      if (document.hidden || !lastTime) return
+      get(20)
+        .then(({ candles, source }) => {
+          if (!alive || !chartRef.current) return
+          for (const c of candles) {
+            if (c.time < lastTime) continue              // update() מקבל רק את הנר האחרון או נר חדש יותר
+            chartRef.current.candleSeries.update(toBar(c))
+            lastTime = c.time
+          }
+          note(candles, source)
+          setCandleError(false)
+        })
+        .catch(() => { /* רענון שנכשל — מנסים שוב בסבב הבא */ })
+    }, everyMs)
+
+    return () => { alive = false; clearInterval(id) }
   }, [symbol, timeframe, chartReady])
+
+  // "לפני כמה זמן התעדכן" — מתקתק פעם בשנייה רק כדי שהתווית תהיה נכונה
+  const [, setTick] = useState(0)
+  useEffect(() => { const id = setInterval(() => setTick(t => t + 1), 1000); return () => clearInterval(id) }, [])
+  const feedAge = feed ? Math.max(0, Math.round((Date.now() - feed.at) / 1000)) : 0
+  const barAgeMin = feed ? Math.round((Date.now() / 1000 - feed.barTime) / 60) : 0
 
   const cs = chartReady ? chartRef.current : null
 
@@ -156,6 +191,16 @@ export default function TradingChart() {
 
       {/* Drawing toolbar — floats on left, z-30 so it's above chart */}
       <DrawingToolbar />
+
+      {/* מקור הנתונים ועדכניות: כדי שיהיה ברור אם הגרף חי או מעוכב */}
+      {feed && !candlesLoading && (
+        <div className={`absolute bottom-8 left-14 z-10 rounded-full border px-2.5 py-0.5 text-[10px] pointer-events-none
+                         ${feed.source === 'delayed' ? 'bg-amber-950/90 border-amber-700 text-amber-300' : 'bg-gray-900/90 border-gray-700 text-gray-300'}`}>
+          {feed.source === 'delayed'
+            ? `⚠️ מקור מעוכב (Yahoo) · הנר האחרון מלפני ${barAgeMin} דק׳ · זמן אמת יגיע כשהתראות HTT Snapshot יפעלו`
+            : `🟢 מתעדכן · נבדק לפני ${feedAge} שנ׳`}
+        </div>
+      )}
 
       {/* Loading indicator */}
       {candlesLoading && (
@@ -211,6 +256,7 @@ export default function TradingChart() {
           <ISMTLayer           chart={cs.chart} series={cs.candleSeries} />
           <RepricingLayer      chart={cs.chart} series={cs.candleSeries} />
           <OptionsLevelsLayer  chart={cs.chart} series={cs.candleSeries} />
+          <HttLevelsLayer      chart={cs.chart} series={cs.candleSeries} />
           <ChartDrawingCanvas  chart={cs.chart} series={cs.candleSeries} />
         </>
       )}

@@ -1,6 +1,6 @@
 import type Database from 'better-sqlite3'
+import { binanceGet } from './binanceService'
 
-const BINANCE_BASE   = 'https://api.binance.com/api/v3'
 const YAHOO_BASE     = 'https://query1.finance.yahoo.com/v8/finance/chart'
 const CHECK_INTERVAL_MS = 5 * 60 * 1000   // check every 5 minutes
 const EXPIRY_HOURS   = 72
@@ -22,12 +22,9 @@ function isBinanceSymbol(symbol: string): boolean {
 
 async function fetchBinancePrice(symbol: string): Promise<number | null> {
   try {
-    const res = await fetch(`${BINANCE_BASE}/ticker/price?symbol=${symbol.toUpperCase()}`, {
-      signal: AbortSignal.timeout(5000),
-    })
-    if (!res.ok) return null
-    const data = await res.json() as { price: string }
-    return parseFloat(data.price)
+    const data = await binanceGet(`/api/v3/ticker/price?symbol=${symbol.toUpperCase()}`, 5000) as { price: string }
+    const v = parseFloat(data.price)
+    return Number.isFinite(v) ? v : null
   } catch {
     return null
   }

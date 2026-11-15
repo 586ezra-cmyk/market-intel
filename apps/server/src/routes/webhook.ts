@@ -194,7 +194,7 @@ const HttSnapshotSchema = BaseSchema.extend({
   v: z.number().optional(),
   tc: numOpt,
   price: z.number().positive(),
-  hi: numOpt, lo: numOpt,
+  op: numOpt, hi: numOpt, lo: numOpt,
   L: z.string().regex(/^[01]+$/).max(400),
   S: z.string().regex(/^[01]+$/).max(400),
   phase: z.number().int().min(0).max(5).default(0),
