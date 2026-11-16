@@ -3,7 +3,7 @@ import { getDb } from '../db/client'
 /**
  * Order Flow (שלב 3): דלתא ו-CVD אמיתיים מ-Binance.
  * מקור: נרות דקה (klines) — השדה "taker buy base volume" = נפח הקונים התוקפים. דלתא = קונים תוקפים − מוכרים תוקפים.
- * נשמר בטבלה orderflow_1m (60 יום אחורה), מתעדכן כל דקה (REST, 5 נרות אחרונים לכל נכס), ומצטבר למסגרות לפי דרישה.
+ * נשמר בטבלה orderflow_1m (60 יום אחורה), מתעדכן כל 15 שניות (REST, 5 נרות אחרונים לכל נכס), ומצטבר למסגרות לפי דרישה.
  */
 // נכסים שהשרת מושך בעצמו מ-Binance
 export const BINANCE_SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT'] as const
@@ -72,20 +72,33 @@ export async function backfill(symbol: string): Promise<number> {
   return total
 }
 
+// מתי נמשך בהצלחה הנר האחרון של כל נכס (הנר שעוד נבנה מתעדכן בכל משיכה) — כדי לדעת בן כמה המחיר
+const polledAt = new Map<string, number>()
+const POLL_MS = 15_000
+
+/** המחיר האחרון של נכס מ-Binance (סגירת נר הדקה שנבנה עכשיו) ומתי הוא נמשך. משמש את לוח ההחלטה לקריפטו. */
+export function spotOf(symbol: string): { price: number; ts: number } | null {
+  const r = getDb().prepare('SELECT t, c FROM orderflow_1m WHERE symbol = ? ORDER BY t DESC LIMIT 1').get(symbol) as { t: number; c: number } | undefined
+  if (!r || !(r.c > 0)) return null
+  const p = polledAt.get(symbol)
+  // המשיכה מעדכנת את הנר הנוכחי; מעבר לסוף הנר לא מניחים שהמחיר טרי
+  return { price: r.c, ts: p != null && p >= r.t ? Math.min(p, r.t + MIN_MS) : r.t }
+}
+
 let timer: NodeJS.Timeout | null = null
 export function startOrderflow(): void {
   void (async () => {
     for (const s of BINANCE_SYMBOLS) {
-      try { await backfill(s) } catch (e) { console.warn('[orderflow] backfill failed', s, String(e).slice(0, 120)) }
+      try { if (await backfill(s) > 0) polledAt.set(s, Date.now()) } catch (e) { console.warn('[orderflow] backfill failed', s, String(e).slice(0, 120)) }
     }
   })()
   timer = setInterval(() => {
     void (async () => {
       for (const s of BINANCE_SYMBOLS) {
-        try { upsert(s, await fetchKlines(s, Date.now() - 4 * MIN_MS, 5)) } catch { /* הניסיון הבא בעוד דקה */ }
+        try { const rows = await fetchKlines(s, Date.now() - 4 * MIN_MS, 5); upsert(s, rows); if (rows.length) polledAt.set(s, Date.now()) } catch { /* הניסיון הבא בעוד רבע דקה */ }
       }
     })()
-  }, MIN_MS)
+  }, POLL_MS)
 }
 export function stopOrderflow(): void { if (timer) clearInterval(timer); timer = null }
 

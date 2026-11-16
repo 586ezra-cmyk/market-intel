@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { createChart, CandlestickSeries, type IChartApi, type ISeriesApi } from 'lightweight-charts'
 import { useMarketStore } from '@/store/marketStore'
+import { ilTimeOptions } from '@/lib/chartTime'
 import FVGLayer from './layers/FVGLayer'
 import StructureLayer from './layers/StructureLayer'
 import RangeLayer from './layers/RangeLayer'
@@ -45,12 +46,17 @@ export default function TradingChart() {
   const [feed, setFeed] = useState<{ source: 'live' | 'delayed'; barTime: number; at: number } | null>(null)
   const [ohlc, setOhlc] = useState<{ o: number; h: number; l: number; c: number; time: string } | null>(null)
   const { symbol, timeframe, selectedAlertId, setSelectedAlert } = useMarketStore()
+  // מסגרת הזמן הנוכחית, לתוויות הציר (הגרף נוצר פעם אחת)
+  const tfRef = useRef(timeframe)
+  tfRef.current = timeframe
 
   // ── Init chart once ────────────────────────────────────────────────────────
   useEffect(() => {
     if (!containerRef.current) return
 
     const el = containerRef.current
+    // שעון ישראל על הציר (ברירת המחדל של הספרייה היא UTC)
+    const ilTime = ilTimeOptions(() => !/[dDwWM]$/.test(tfRef.current))
     const chart = createChart(el, {
       layout: {
         background: { color: '#0f1117' },
@@ -62,10 +68,12 @@ export default function TradingChart() {
       },
       crosshair:       { mode: 1 },
       rightPriceScale: { borderColor: '#1e2533' },
+      localization: ilTime.localization,
       timeScale: {
         borderColor:    '#1e2533',
         timeVisible:    true,
         secondsVisible: false,
+        tickMarkFormatter: ilTime.tickMarkFormatter,
       },
       width:  el.clientWidth  || 800,
       height: el.clientHeight || 600,

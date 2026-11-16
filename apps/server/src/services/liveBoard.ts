@@ -207,7 +207,11 @@ export interface BoardExtras {
   orderflow?: Record<string, { updatedAt: number | null; lastDelta: number | null; cvdSlope5: number | null; cvdDay: number | null } | null>
   news?: { title: string; inMin: number } | null
   riskUsd?: number
+  /** מחיר חי ממקור אחר (Binance לקריפטו). משמש כשהוא טרי יותר מצילום המצב האחרון, או כשעוד אין צילום בכלל */
+  spot?: { price: number; ts: number } | null
 }
+/** קריפטו נסחר 24/7 — שעות הסשן של ניו יורק הן מידע, לא תנאי */
+export function isAllDay(symbol: string): boolean { return /(USDT|USDC|USD)$/.test(symbol) }
 
 export function buildBoard(symbolRaw: string, extras: BoardExtras = {}, now = Date.now()) {
   ensureLoaded()
@@ -217,8 +221,12 @@ export function buildBoard(symbolRaw: string, extras: BoardExtras = {}, now = Da
   // המחיר העדכני ביותר = הצילום האחרון שהגיע (בדרך כלל נר הדקה)
   let latest: StoredSnap | null = null
   for (const s of snaps.values()) if (!latest || s.receivedAt > latest.receivedAt) latest = s
-  const price = latest?.price ?? null
-  const priceAgeSec = latest ? Math.round((now - latest.receivedAt) / 1000) : null
+  let price = latest?.price ?? null
+  let priceTs = latest?.receivedAt ?? null
+  let priceSource: 'snapshot' | 'spot' | null = latest ? 'snapshot' : null
+  const spot = extras.spot
+  if (spot && spot.price > 0 && (priceTs == null || spot.ts > priceTs)) { price = spot.price; priceTs = spot.ts; priceSource = 'spot' }
+  const priceAgeSec = priceTs != null ? Math.max(0, Math.round((now - priceTs) / 1000)) : null
 
   const tfs = BOARD_TFS.map(tf => {
     const s = snaps.get(tf)
@@ -324,18 +332,21 @@ export function buildBoard(symbolRaw: string, extras: BoardExtras = {}, now = Da
   const ny = nyClock(now)
   const weekday = ny.weekday >= 1 && ny.weekday <= 5
   const inRth = weekday && ny.minutes >= 570 && ny.minutes < 960
+  const allDay = isAllDay(symbol)
   const session = {
-    ny: ny.hhmm, il: ilClock(now), inRth,
+    ny: ny.hhmm, il: ilClock(now), inRth, allDay,
     minutesToOpen: weekday && ny.minutes < 570 ? 570 - ny.minutes : null,
     minutesToClose: inRth ? 960 - ny.minutes : null,
   }
   const news = extras.news ?? null
   const guard = {
     live: priceAgeSec != null && priceAgeSec <= 150,
-    inSession: inRth,
+    // האישורים חיים רק כשיש צילום מצב טרי לפחות ממסגרת אחת (מחיר חי לבד לא מספיק)
+    snapshots: tfs.some(t => !t.missing && !t.stale),
+    inSession: allDay || inRth,
     newsClear: !news || Math.abs(news.inMin) > 5,
   }
-  return { symbol, serverTs: now, price, priceAgeSec, tfs, summary, near, card, options, orderflow: extras.orderflow ?? {}, session, news, guard }
+  return { symbol, serverTs: now, price, priceAgeSec, priceSource, tfs, summary, near, card, options, orderflow: extras.orderflow ?? {}, session, news, guard }
 }
 
 export function boardMeta() {

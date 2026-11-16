@@ -122,4 +122,25 @@ describe('liveBoard', () => {
     expect(getLevels('NQ', '1m', T0 + 30_000)).toMatchObject({ tf: '5m', exact: false })                 // אין צילום דקה → הטרי ביותר
     expect(getLevels('NQ', '5m', T0 + 3_600_000).stale).toBe(true)
   })
+
+  it('crypto without any snapshot: live price from the exchange, 24/7 session, confirmations not live yet', () => {
+    const night = Date.UTC(2026, 10, 15, 3, 0, 0)                      // יום ראשון בלילה — מחוץ לסשן ניו יורק
+    const b = buildBoard('BTCUSDT', { spot: { price: 64800, ts: night - 20_000 } }, night)
+    expect(b).toMatchObject({ price: 64800, priceAgeSec: 20, priceSource: 'spot' })
+    expect(b.guard).toMatchObject({ live: true, snapshots: false, inSession: true })
+    expect(b.session).toMatchObject({ allDay: true, inRth: false })
+    expect(b.summary.long.total).toBe(0); expect(b.near).toHaveLength(0)
+    expect(buildBoard('NQ', {}, night).guard.inSession).toBe(false)     // נאסדק נשאר תלוי בסשן
+  })
+
+  it('uses the exchange price only when it is newer than the last snapshot, and keeps distances on it', () => {
+    saveSnapshot(snap({ symbol: 'BTCUSDT', tf: '1m', price: 64000, lv: { pH: 64500 } }), T0)
+    const older = buildBoard('BTCUSDT', { spot: { price: 63900, ts: T0 - 5_000 } }, T0 + 10_000)
+    expect(older).toMatchObject({ price: 64000, priceSource: 'snapshot' })
+    const newer = buildBoard('BTCUSDT', { spot: { price: 64400, ts: T0 + 25_000 } }, T0 + 30_000)
+    expect(newer).toMatchObject({ price: 64400, priceSource: 'spot', priceAgeSec: 5 })
+    expect(newer.guard.snapshots).toBe(true)
+    const brk = newer.near.find(n => n.levelName && n.level === 64500)
+    expect(brk?.dist).toBe(100)                                           // 64,500 − 64,400, לא מהמחיר הישן של הצילום
+  })
 })

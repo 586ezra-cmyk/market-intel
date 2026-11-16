@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express'
 import { buildBoard, boardMeta, liveSymbols, normSymbol, getBars, getLevels, BOARD_TFS } from '../services/liveBoard'
 import { latestSnapshot } from '../services/optionsLevelsService'
-import { getSummary, OF_SYMBOLS } from '../services/orderflowService'
+import { getSummary, spotOf, OF_SYMBOLS, BINANCE_SYMBOLS } from '../services/orderflowService'
 import { getCachedCalendar } from '../services/forexFactory'
 import { getSetting } from './settings'
 
@@ -54,7 +54,10 @@ router.get('/:symbol', async (req: Request, res: Response) => {
   let options = null
   try { const o = latestSnapshot(); if (o) options = { ts: o.ts, nq: o.nq } } catch { /* אין חישוב עדיין */ }
   const riskUsd = Number(getSetting('m3_risk_usd', '300')) || 300
-  res.json(buildBoard(symbol, { options, orderflow, news: await nextNews(now), riskUsd }, now))
+  // קריפטו: המחיר החי מגיע מ-Binance גם בלי התראות ב-TradingView
+  let spot = null
+  if ((BINANCE_SYMBOLS as readonly string[]).includes(symbol)) { try { spot = spotOf(symbol) } catch { /* אין טבלה עדיין */ } }
+  res.json(buildBoard(symbol, { options, orderflow, news: await nextNews(now), riskUsd, spot }, now))
 })
 
 export default router

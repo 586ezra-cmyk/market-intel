@@ -19,19 +19,23 @@ interface CardOpt { label: string; stop: number; pts: number; contracts: number;
 interface Side { exec: number; context: number; total: number; entries: Array<{ tf: string; code: string; name: string }> }
 interface OfSum { updatedAt: number | null; lastDelta: number | null; cvdSlope5: number | null; cvdDay: number | null }
 interface Board {
-  symbol: string; serverTs: number; price: number | null; priceAgeSec: number | null
+  symbol: string; serverTs: number; price: number | null; priceAgeSec: number | null; priceSource?: 'snapshot' | 'spot' | null
   tfs: TfRow[]; summary: { long: Side; short: Side }; near: NearItem[]
   card: { riskUsd: number; long: { tf: string; options: CardOpt[] } | null; short: { tf: string; options: CardOpt[] } | null }
   options: { ageMin: number; regime: string; netGexB?: number | null; nearFlip?: boolean; levels: Array<{ key: string; name: string; price: number; dist: number | null }> } | null
   orderflow: Record<string, OfSum | null>
-  session: { ny: string; il: string; inRth: boolean; minutesToOpen: number | null; minutesToClose: number | null }
+  session: { ny: string; il: string; inRth: boolean; allDay?: boolean; minutesToOpen: number | null; minutesToClose: number | null }
   news: { title: string; inMin: number } | null
-  guard: { live: boolean; inSession: boolean; newsClear: boolean }
+  guard: { live: boolean; snapshots?: boolean; inSession: boolean; newsClear: boolean }
 }
 interface Meta { names: Record<string, string>; groups: Record<string, string>; groupOrder: string[]; entries: Record<string, string> }
 
 const TF_HE: Record<string, string> = { '1m': 'דקה', '5m': '5 דק׳', '15m': '15 דק׳', '1h': 'שעה', '4h': '4 שעות', '1D': 'יומי', '1W': 'שבועי' }
 const POINT_SYMBOLS = new Set(['NQ', 'ES'])
+// הנכסים שתמיד מופיעים בלוח. לקריפטו המחיר וה-Order Flow חיים מ-Binance גם לפני שיש התראות ב-TradingView
+const BASE_SYMBOLS = ['NQ', 'BTCUSDT', 'ETHUSDT', 'SOLUSDT']
+const SYMBOL_HE: Record<string, string> = { NQ: 'נאסדק', ES: 'S&P', BTCUSDT: 'ביטקוין', ETHUSDT: 'את׳ריום', SOLUSDT: 'סולנה' }
+const TV_SYMBOL: Record<string, string> = { NQ: 'NQ1!', ES: 'ES1!', BTCUSDT: 'BTCUSDT', ETHUSDT: 'ETHUSDT', SOLUSDT: 'SOLUSDT' }
 const num = (v: number, d = 2) => v.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: d })
 const age = (s: number) => (s < 90 ? `${s} שנ׳` : s < 5400 ? `${Math.round(s / 60)} דק׳` : `${Math.round(s / 3600)} שע׳`)
 
@@ -148,19 +152,23 @@ function CardSide({ dir, side, pointSym, price }: { dir: 'long' | 'short'; side:
 
 export default function TabLiveBoard() {
   const [symbol, setSymbol] = useState('NQ')
-  const [symbols, setSymbols] = useState<string[]>(['NQ'])
+  const [symbols, setSymbols] = useState<string[]>(BASE_SYMBOLS)
   const [meta, setMeta] = useState<Meta | null>(null)
   const [dirFilter, setDirFilter] = useState<'all' | 'long' | 'short'>('all')
   const { board, err } = useBoard(symbol)
   useEffect(() => {
     fetch(`${API_BASE}/api/live/meta`, { cache: 'no-store' }).then(r => (r.ok ? r.json() : null)).then(j => j && setMeta(j)).catch(() => {})
-    fetch(`${API_BASE}/api/live`, { cache: 'no-store' }).then(r => (r.ok ? r.json() : null)).then(j => { if (j?.symbols?.length) setSymbols([...new Set(['NQ', ...j.symbols as string[]])]) }).catch(() => {})
+    fetch(`${API_BASE}/api/live`, { cache: 'no-store' }).then(r => (r.ok ? r.json() : null)).then(j => { if (j?.symbols?.length) setSymbols([...new Set([...BASE_SYMBOLS, ...j.symbols as string[]])]) }).catch(() => {})
   }, [])
   const pointSym = POINT_SYMBOLS.has(symbol)
   const dist = (n: NearItem) => (n.inZone ? 'בתוך האזור' : pointSym ? `${num(n.dist)} נק׳` : `${n.pct.toFixed(2)}%`)
   const near = (board?.near ?? []).filter(n => dirFilter === 'all' || n.dir === dirFilter).slice(0, 14)
   const execTfs = (board?.tfs ?? []).filter(t => t.exec); const ctxTfs = (board?.tfs ?? []).filter(t => !t.exec)
   const noData = board && board.price == null
+  // האישורים מגיעים רק מצילומי המצב של TradingView; מחיר חי מ-Binance לבד לא ממלא אותם
+  const noSnap = !!board && board.tfs.every(t => t.missing)
+  const snapsLive = !!board && (board.guard.snapshots ?? (board.guard.live && !noSnap))
+  const name = SYMBOL_HE[symbol] ?? symbol
   const of1 = board?.orderflow?.['1'] ?? null; const of5 = board?.orderflow?.['5'] ?? null
   const ofLive = !!(of1?.updatedAt && board && board.serverTs - of1.updatedAt < 5 * 60_000)
 
@@ -168,22 +176,24 @@ export default function TabLiveBoard() {
     <div className="p-3 space-y-3 max-w-[1500px] mx-auto" dir="rtl">
       {/* ── שורת מצב ── */}
       <div className="card !p-3 flex flex-wrap items-center gap-x-5 gap-y-2">
-        <div className="flex gap-1">{symbols.map(s => <button key={s} onClick={() => setSymbol(s)} className={`px-3 py-1 rounded text-sm font-bold ${s === symbol ? 'bg-brand-600 text-white' : 'bg-surface text-slate-400 hover:text-white'}`}>{s}</button>)}</div>
+        <div className="flex gap-1">{symbols.map(s => <button key={s} onClick={() => setSymbol(s)} className={`px-3 py-1 rounded text-sm font-bold ${s === symbol ? 'bg-brand-600 text-white' : 'bg-surface text-slate-400 hover:text-white'}`}>{SYMBOL_HE[s] ?? s}</button>)}</div>
         <div className="text-3xl font-black text-white tabular-nums">{board?.price != null ? num(board.price) : '—'}</div>
         <div className={`flex items-center gap-1.5 text-sm font-bold ${board?.guard.live ? 'text-emerald-400' : 'text-red-400'}`}>
           <span className={`inline-block w-2.5 h-2.5 rounded-full ${board?.guard.live ? 'bg-emerald-400 animate-pulse' : 'bg-red-500'}`} />
-          {err ? `אין חיבור לשרת (${err})` : !board ? 'טוען…' : board.guard.live ? `חי · עודכן לפני ${age(board.priceAgeSec ?? 0)}` : noData ? 'עוד לא הגיע צילום מצב' : `לא מעודכן · ${age(board.priceAgeSec ?? 0)}`}
+          {err ? `אין חיבור לשרת (${err})` : !board ? 'טוען…' : board.guard.live ? `${board.priceSource === 'spot' ? 'מחיר חי מ-Binance' : 'חי'} · עודכן לפני ${age(board.priceAgeSec ?? 0)}` : noData ? 'עוד לא הגיע צילום מצב' : `לא מעודכן · ${age(board.priceAgeSec ?? 0)}`}
         </div>
+        {board && !noData && !snapsLive && <div className="text-sm font-bold text-amber-400">האישורים לא חיים — {noSnap ? 'אין עדיין התראות' : 'ההתראות לא שולחות'}</div>}
         {board && <div className="text-sm text-slate-300">ישראל <b className="text-white tabular-nums">{board.session.il}</b> · ניו יורק <b className="text-white tabular-nums">{board.session.ny}</b></div>}
         {board && <div className={`text-sm font-bold ${board.session.inRth ? 'text-emerald-400' : 'text-slate-400'}`}>
-          {board.session.inRth ? `סשן ניו יורק פתוח · עוד ${Math.floor((board.session.minutesToClose ?? 0) / 60)}:${String((board.session.minutesToClose ?? 0) % 60).padStart(2, '0')} לסגירה` : board.session.minutesToOpen != null ? `עוד ${Math.floor(board.session.minutesToOpen / 60)}:${String(board.session.minutesToOpen % 60).padStart(2, '0')} לפתיחת ניו יורק` : 'מחוץ לסשן ניו יורק'}
+          {board.session.allDay ? 'נסחר 24/7 · ' : ''}{board.session.inRth ? `סשן ניו יורק פתוח · עוד ${Math.floor((board.session.minutesToClose ?? 0) / 60)}:${String((board.session.minutesToClose ?? 0) % 60).padStart(2, '0')} לסגירה` : board.session.minutesToOpen != null ? `עוד ${Math.floor(board.session.minutesToOpen / 60)}:${String(board.session.minutesToOpen % 60).padStart(2, '0')} לפתיחת ניו יורק` : 'מחוץ לסשן ניו יורק'}
         </div>}
         {board?.news && <div className={`text-sm ${Math.abs(board.news.inMin) <= 5 ? 'text-red-400 font-bold' : board.news.inMin <= 30 ? 'text-amber-400' : 'text-slate-400'}`}>📰 {board.news.title} · {board.news.inMin >= 0 ? `בעוד ${board.news.inMin} דק׳` : `לפני ${-board.news.inMin} דק׳`}</div>}
       </div>
 
-      {noData && (
+      {noSnap && (
         <div className="card text-sm text-slate-300 leading-6">
-          עוד לא הגיע צילום מצב ל-{symbol}. כדי שהלוח יתמלא: מוסיפים לגרף ב-TradingView את הסקריפט <b className="text-white">HTT Snapshot</b>, ויוצרים לו התראה אחת לכל מסגרת זמן
+          {board?.price != null && <div className="text-white font-bold">המחיר וה-Order Flow של {name} חיים מ-Binance. האישורים, &quot;כמה חסר&quot; וכרטיס העסקה עוד ריקים.</div>}
+          עוד לא הגיע צילום מצב ל-{name}. כדי שהאישורים יתמלאו: מוסיפים לגרף <b className="text-white">{TV_SYMBOL[symbol] ?? symbol}</b> ב-TradingView את הסקריפט <b className="text-white">HTT Snapshot</b>, ויוצרים לו התראה אחת לכל מסגרת זמן
           (דקה, 5 דק׳, 15 דק׳, שעה, 4 שעות, יומי) עם &quot;Any alert() function call&quot; וכתובת ה-Webhook של השרת.
         </div>
       )}
@@ -254,7 +264,7 @@ export default function TabLiveBoard() {
       </div>
 
       {/* ── כל האישורים לפי מסגרת זמן ── */}
-      {board && !noData && (
+      {board && !noSnap && (
         <>
           <div className="text-sm font-bold text-slate-300 pt-1">מסגרות הביצוע</div>
           <div className="space-y-2">{execTfs.map(t => <TfBlock key={t.tf} t={t} meta={meta} />)}</div>

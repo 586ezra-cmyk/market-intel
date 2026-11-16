@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createChart, CandlestickSeries, HistogramSeries, createSeriesMarkers, type IChartApi, type UTCTimestamp, type SeriesMarker, type Time } from 'lightweight-charts'
 import { API_BASE } from '@/lib/api'
+import { ilTimeOptions } from '@/lib/chartTime'
 
 // ─── Order Flow (שלב 3): דלתא ו-CVD אמיתיים מ-Binance, לפי מסגרת, כמו ב-ATAS ───
 // השרת צובר נרות דקה עם נפח הקונים התוקפים (taker buy) ומחזיר לכל נר: קונים, מוכרים, דלתא, CVD (פתיחה/שיא/שפל/סגירה של ה-CVD בתוך הנר),
@@ -19,6 +20,9 @@ const TFS = [[1, '1 דק׳'], [5, '5 דק׳'], [15, '15 דק׳'], [60, 'שעה']
 const fmt = (v: number) => (Math.abs(v) >= 1000 ? (v / 1000).toFixed(1) + 'K' : v.toFixed(0))
 const sgn = (v: number) => (v > 0 ? '+' : '') + fmt(v)
 
+// כל המסגרות בטאב הזה תוך-יומיות; הציר בשעון ישראל
+const IL_TIME = ilTimeOptions(() => true)
+
 function useChart(height: number) {
   const ref = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
@@ -28,7 +32,8 @@ function useChart(height: number) {
     const chart = createChart(el, {
       height, layout: { background: { color: 'transparent' }, textColor: '#94a3b8', fontSize: 11 },
       grid: { vertLines: { color: 'rgba(148,163,184,0.08)' }, horzLines: { color: 'rgba(148,163,184,0.08)' } },
-      rightPriceScale: { borderColor: 'rgba(148,163,184,0.2)' }, timeScale: { borderColor: 'rgba(148,163,184,0.2)', timeVisible: true, secondsVisible: false },
+      rightPriceScale: { borderColor: 'rgba(148,163,184,0.2)', minimumWidth: 84 }, localization: IL_TIME.localization,
+      timeScale: { borderColor: 'rgba(148,163,184,0.2)', timeVisible: true, secondsVisible: false, tickMarkFormatter: IL_TIME.tickMarkFormatter },
       crosshair: { mode: 0 },
     })
     chartRef.current = chart
@@ -82,6 +87,7 @@ export default function TabOrderFlow() {
   const price = useChart(300)
   const cvd = useChart(200)
   const delta = useChart(140)
+  const fitKey = useRef('')
 
   useEffect(() => {
     let alive = true
@@ -114,9 +120,30 @@ export default function TabOrderFlow() {
     cvdS.setData(bars.map(b => ({ time: ts(b.t), open: b.cvdO, high: b.cvdH, low: b.cvdL, close: b.cvd })))
     const dS = dc.addSeries(HistogramSeries, { priceFormat: { type: 'volume' } })
     dS.setData(bars.map(b => ({ time: ts(b.t), value: b.delta, color: b.delta >= 0 ? 'rgba(38,166,154,0.8)' : 'rgba(239,83,80,0.8)' })))
-    pc.timeScale().fitContent(); cc.timeScale().fitContent(); dc.timeScale().fitContent()
+    // מתאימים את התצוגה רק כשמחליפים נכס או מסגרת. ברענון של 30 שניות לא נוגעים — אחרת כל גלילה של המשתמש מתאפסת
+    const key = `${sym}|${tf}`
+    if (fitKey.current !== key) { fitKey.current = key; pc.timeScale().fitContent(); cc.timeScale().fitContent(); dc.timeScale().fitContent() }
     return () => { try { pc.removeSeries(candles); cc.removeSeries(cvdS); dc.removeSeries(dS) } catch { /* הגרף כבר הוסר (StrictMode / החלפת טאב) */ } }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- sym/tf נקראים רק כדי לזהות החלפה; הנתונים עצמם מגיעים ב-bars
   }, [bars, price.chartRef, cvd.chartRef, delta.chartRef])
+
+  // שלושת הגרפים נעים יחד: גלילה או זום באחד מזיזים את שני האחרים לאותו טווח זמן
+  useEffect(() => {
+    const charts = [price.chartRef.current, cvd.chartRef.current, delta.chartRef.current].filter((c): c is IChartApi => !!c)
+    if (charts.length < 3) return
+    let busy = false
+    const offs = charts.map(src => {
+      const h = (range: { from: number; to: number } | null) => {
+        if (busy || !range) return
+        busy = true
+        for (const other of charts) if (other !== src) { try { other.timeScale().setVisibleLogicalRange(range) } catch { /* הגרף בלי נתונים עדיין */ } }
+        busy = false
+      }
+      src.timeScale().subscribeVisibleLogicalRangeChange(h)
+      return () => { try { src.timeScale().unsubscribeVisibleLogicalRangeChange(h) } catch { /* הגרף כבר הוסר */ } }
+    })
+    return () => offs.forEach(f => f())
+  }, [price.chartRef, cvd.chartRef, delta.chartRef])
 
   const sum = useMemo(() => {
     if (!bars.length) return null
