@@ -1,0 +1,5 @@
+ocr
+winlist
+__pycache__/
+*.pyc
+*.png

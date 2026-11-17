@@ -21,6 +21,7 @@ import TabConnections from '@/components/tabs/TabConnections'
 import TabHttBacktest from '@/components/tabs/TabHttBacktest'
 import TabOrderFlow from '@/components/tabs/TabOrderFlow'
 import TabLiveBoard from '@/components/tabs/TabLiveBoard'
+import TabEyes from '@/components/tabs/TabEyes'
 import { useWebSocket } from '@/hooks/useWebSocket'
 
 export type TabId =
@@ -28,12 +29,13 @@ export type TabId =
   | 'journal' | 'backtest' | 'watchlist' | 'matrix'
   | 'history-scan' | 'economic-calendar' | 'knowledge-base'
   | 'notes' | 'reports' | 'quick-confluence' | 'learning'
-  | 'connections' | 'htt-backtest' | 'orderflow' | 'live-board'
+  | 'connections' | 'htt-backtest' | 'orderflow' | 'live-board' | 'eyes'
 
 const TABS: Array<{ id: TabId; label: string; icon: string }> = [
   { id: 'connections',        label: 'חיבורים',          icon: '🔌' },
   { id: 'dashboard',         label: 'דשבורד',          icon: '📊' },
   { id: 'live-board',        label: 'לוח החלטה',       icon: '🎛️' },
+  { id: 'eyes',              label: 'עיניים',           icon: '👁' },
   { id: 'alerts',            label: 'התראות',           icon: '🔔' },
   { id: 'stats',             label: 'סטטיסטיקה',        icon: '📈' },
   { id: 'alert-settings',    label: 'ניהול התראות',     icon: '⚙️' },
@@ -106,6 +108,7 @@ export default function HomePage() {
             {activeTab === 'htt-backtest'      && <TabHttBacktest />}
             {activeTab === 'orderflow'         && <TabOrderFlow />}
             {activeTab === 'live-board'        && <TabLiveBoard />}
+            {activeTab === 'eyes'              && <TabEyes />}
             {activeTab === 'watchlist'         && <TabWatchlist />}
             {activeTab === 'matrix'            && <TabMatrix />}
             {activeTab === 'history-scan'      && <TabHistoryScan />}
