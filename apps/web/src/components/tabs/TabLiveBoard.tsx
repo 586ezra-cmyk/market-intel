@@ -34,7 +34,7 @@ const TF_HE: Record<string, string> = { '1m': 'דקה', '5m': '5 דק׳', '15m':
 const POINT_SYMBOLS = new Set(['NQ', 'ES'])
 // הנכסים שתמיד מופיעים בלוח. לקריפטו המחיר וה-Order Flow חיים מ-Binance גם לפני שיש התראות ב-TradingView
 const BASE_SYMBOLS = ['NQ', 'BTCUSDT', 'ETHUSDT', 'SOLUSDT']
-const SYMBOL_HE: Record<string, string> = { NQ: 'נאסדק', ES: 'S&P', BTCUSDT: 'ביטקוין', ETHUSDT: 'את׳ריום', SOLUSDT: 'סולנה' }
+export const SYMBOL_HE: Record<string, string> = { NQ: 'נאסדק', ES: 'S&P', BTCUSDT: 'ביטקוין', ETHUSDT: 'את׳ריום', SOLUSDT: 'סולנה' }
 const TV_SYMBOL: Record<string, string> = { NQ: 'NQ1!', ES: 'ES1!', BTCUSDT: 'BTCUSDT', ETHUSDT: 'ETHUSDT', SOLUSDT: 'SOLUSDT' }
 const num = (v: number, d = 2) => v.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: d })
 const age = (s: number) => (s < 90 ? `${s} שנ׳` : s < 5400 ? `${Math.round(s / 60)} דק׳` : `${Math.round(s / 3600)} שע׳`)

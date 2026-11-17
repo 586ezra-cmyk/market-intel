@@ -5,7 +5,7 @@ vi.mock('../db/client', () => {
   return { getDb: () => fakeDb }
 })
 
-import { saveSnapshot, buildBoard, clearLive, normSymbol, getBars, getLevels, type SnapshotInput } from '../services/liveBoard'
+import { saveSnapshot, buildBoard, clearLive, normSymbol, getBars, getLevels, liveHealth, marketState, type SnapshotInput } from '../services/liveBoard'
 import { HTT_FLAG_KEYS } from '../services/httFlagKeys'
 
 const N = HTT_FLAG_KEYS.length
@@ -21,6 +21,12 @@ describe('liveBoard', () => {
   it('normalizes futures symbols', () => {
     expect(normSymbol('NQ1!')).toBe('NQ'); expect(normSymbol('CME_MINI:MNQ1!')).toBe('NQ'); expect(normSymbol('NQZ2026')).toBe('NQ')
     expect(normSymbol('ES1!')).toBe('ES'); expect(normSymbol('BTCUSDT')).toBe('BTCUSDT'); expect(normSymbol('ETHUSDT')).toBe('ETHUSDT')
+  })
+
+  it('never keeps the webhook secret that arrives inside the payload', () => {
+    const saved = saveSnapshot({ ...snap({}), secret: 'top-secret' } as SnapshotInput, T0)
+    expect(JSON.stringify(saved)).not.toContain('top-secret')
+    expect('secret' in saved).toBe(false)
   })
 
   it('rejects a flags string of the wrong length', () => {
@@ -142,5 +148,45 @@ describe('liveBoard', () => {
     expect(newer.guard.snapshots).toBe(true)
     const brk = newer.near.find(n => n.levelName && n.level === 64500)
     expect(brk?.dist).toBe(100)                                           // 64,500 − 64,400, לא מהמחיר הישן של הצילום
+  })
+
+  it('health: nothing to report while snapshots and the exchange price keep arriving', () => {
+    saveSnapshot(snap({ tf: '1m' }), T0); saveSnapshot(snap({ tf: '5m' }), T0)
+    saveSnapshot(snap({ symbol: 'BTCUSDT', tf: '1m', price: 64000 }), T0)
+    const h = liveHealth(T0 + 60_000, { BTCUSDT: { price: 64010, ts: T0 + 20_000 } })
+    expect(h).toMatchObject({ ok: true, items: [] })
+  })
+
+  it('health: reports the timeframes that stopped, per asset, and since when', () => {
+    saveSnapshot(snap({ tf: '1m' }), T0); saveSnapshot(snap({ tf: '5m' }), T0 - 60_000); saveSnapshot(snap({ tf: '1h' }), T0)
+    const h = liveHealth(T0 + 4 * 60_000)                                // 4 דקות בלי נר דקה; 5 דק׳ ושעה עדיין בזמן
+    expect(h.ok).toBe(false)
+    expect(h.items).toEqual([{ symbol: 'NQ', kind: 'snapshots', tfs: ['1m'], since: T0, ageSec: 240 }])
+    const later = liveHealth(T0 + 13 * 60_000)
+    expect(later.items[0]).toMatchObject({ symbol: 'NQ', tfs: ['1m', '5m'], since: T0 })
+  })
+
+  it('health: the exchange price counts as stopped after two and a half minutes, or when there is none', () => {
+    const h = liveHealth(T0, { BTCUSDT: { price: 64000, ts: T0 - 200_000 }, ETHUSDT: null, SOLUSDT: { price: 70, ts: T0 - 30_000 } })
+    expect(h.items).toEqual([
+      { symbol: 'BTCUSDT', kind: 'price', tfs: [], since: T0 - 200_000, ageSec: 200 },
+      { symbol: 'ETHUSDT', kind: 'price', tfs: [], since: null, ageSec: null },
+    ])
+  })
+
+  it('health: futures are not reported during the daily break, the weekend, or right after the reopen', () => {
+    const lastBar = Date.UTC(2026, 10, 17, 21, 59, 0)                   // שלישי 16:59 בניו יורק — הנר האחרון לפני ההפסקה
+    saveSnapshot(snap({ tf: '1m' }), lastBar)
+    const at = (h: number, m: number, day = 17) => Date.UTC(2026, 10, day, h, m, 0)
+    expect(marketState('NQ', at(22, 30))).toMatchObject({ open: false })                       // 17:30 — בהפסקה
+    expect(liveHealth(at(22, 30)).ok).toBe(true)
+    expect(marketState('NQ', at(23, 2))).toEqual({ open: true, openedAt: at(23, 0) })           // 18:02 — נפתח ב-18:00
+    expect(liveHealth(at(23, 2)).ok).toBe(true)                                                 // עוד לא עברו שני נרות מהפתיחה
+    expect(liveHealth(at(23, 5)).items).toEqual([{ symbol: 'NQ', kind: 'snapshots', tfs: ['1m'], since: lastBar, ageSec: 3960 }])
+    expect(marketState('NQ', at(15, 0, 21)).open).toBe(false)                                   // שבת
+    expect(marketState('NQ', at(22, 30, 22)).open).toBe(false)                                  // ראשון 17:30 — לפני הפתיחה
+    expect(marketState('NQ', at(23, 30, 22)).open).toBe(true)                                   // ראשון 18:30
+    expect(marketState('NQ', at(22, 30, 20)).open).toBe(false)                                  // שישי אחרי 17:00
+    expect(marketState('BTCUSDT', at(15, 0, 21))).toEqual({ open: true, openedAt: null })       // קריפטו — תמיד
   })
 })

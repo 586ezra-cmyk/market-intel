@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express'
-import { buildBoard, boardMeta, liveSymbols, normSymbol, getBars, getLevels, BOARD_TFS } from '../services/liveBoard'
+import { buildBoard, boardMeta, liveSymbols, liveHealth, normSymbol, getBars, getLevels, BOARD_TFS } from '../services/liveBoard'
 import { latestSnapshot } from '../services/optionsLevelsService'
 import { getSummary, spotOf, OF_SYMBOLS, BINANCE_SYMBOLS } from '../services/orderflowService'
 import { getCachedCalendar } from '../services/forexFactory'
@@ -29,6 +29,12 @@ async function nextNews(now: number): Promise<{ title: string; inMin: number } |
 router.get('/meta', (_req: Request, res: Response) => { res.json(boardMeta()) })
 // GET /api/live — אילו נכסים שולחים צילום מצב
 router.get('/', (_req: Request, res: Response) => { res.json({ symbols: liveSymbols() }) })
+// GET /api/live/health — מה הפסיק להתעדכן (צילומי מצב מ-TradingView, מחיר מ-Binance). האתר מקפיץ לפיו חלון אזהרה
+router.get('/health', (_req: Request, res: Response) => {
+  const spots: Record<string, { price: number; ts: number } | null> = {}
+  for (const s of BINANCE_SYMBOLS) { try { spots[s] = spotOf(s) } catch { spots[s] = null } }
+  res.json(liveHealth(Date.now(), spots))
+})
 const tfOf = (req: Request): string | null => { const tf = String(req.query['tf'] ?? '1m'); return (BOARD_TFS as readonly string[]).includes(tf) ? tf : null }
 // GET /api/live/:symbol/bars?tf=1m&limit=500 — נרות בזמן אמת שנבנו מצילומי המצב (לגרף באתר)
 router.get('/:symbol/bars', (req: Request, res: Response) => {

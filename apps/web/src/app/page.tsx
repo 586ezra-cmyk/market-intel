@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Header from '@/components/layout/Header'
+import DataAlarm from '@/components/layout/DataAlarm'
 import TabDashboard from '@/components/tabs/TabDashboard'
 import TabAlerts from '@/components/tabs/TabAlerts'
 import TabStats from '@/components/tabs/TabStats'
@@ -78,6 +79,7 @@ export default function HomePage() {
 
   return (
     <div className="flex flex-col h-screen overflow-hidden">
+      <DataAlarm />
       {!solo && <Header />}
 
       {/* Tab Bar */}

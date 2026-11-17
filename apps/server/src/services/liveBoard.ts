@@ -64,7 +64,9 @@ export function saveSnapshot(input: SnapshotInput, now = Date.now()): StoredSnap
   const symbol = normSymbol(input.symbol)
   const lv: Record<string, number> = {}
   for (const [k, v] of Object.entries(input.lv ?? {})) if (typeof v === 'number' && Number.isFinite(v)) lv[k] = v
-  const snap: StoredSnap = { ...input, symbol, lv, receivedAt: now }
+  // הסוד של ה-Webhook מגיע בתוך ההודעה — לא שומרים אותו, לא בזיכרון ולא ב-DB
+  const { secret: _secret, ...clean } = input as SnapshotInput & { secret?: unknown }
+  const snap: StoredSnap = { ...clean, symbol, lv, receivedAt: now }
   if (!mem.has(symbol)) mem.set(symbol, new Map())
   mem.get(symbol)!.set(input.tf, snap)
   try {
@@ -212,6 +214,48 @@ export interface BoardExtras {
 }
 /** קריפטו נסחר 24/7 — שעות הסשן של ניו יורק הן מידע, לא תנאי */
 export function isAllDay(symbol: string): boolean { return /(USDT|USDC|USD)$/.test(symbol) }
+
+// ─── בריאות הנתונים: אילו נכסים הפסיקו לשלוח (לחלון הקופץ באתר) ───
+const HEALTH_TFS = ['1m', '5m', '15m', '1h'] as const
+const PRICE_STALE_MS = 150_000
+/**
+ * האם השוק של הנכס פתוח עכשיו, וממתי. קריפטו — תמיד. חוזים ב-CME: ראשון 18:00 עד שישי 17:00 (ניו יורק),
+ * עם הפסקה יומית 17:00–18:00. חגים לא מטופלים — ביום חג החלון יקפוץ פעם אחת והמשתמש יסגור אותו.
+ */
+export function marketState(symbol: string, now: number): { open: boolean; openedAt: number | null } {
+  if (isAllDay(symbol)) return { open: true, openedAt: null }
+  const { minutes: m, weekday: d } = nyClock(now)
+  const open = d === 6 ? false : d === 0 ? m >= 1080 : d === 5 ? m < 1020 : (m < 1020 || m >= 1080)
+  if (!open) return { open: false, openedAt: null }
+  const minsSinceOpen = m >= 1080 ? m - 1080 : m + 360
+  return { open: true, openedAt: Math.floor(now / 60_000) * 60_000 - minsSinceOpen * 60_000 }
+}
+
+export interface HealthItem { symbol: string; kind: 'snapshots' | 'price'; tfs: string[]; since: number | null; ageSec: number | null }
+/**
+ * מה נעצר: צילומי מצב שלא הגיעו שני נרות ברצף בזמן שהשוק פתוח (נמדד מפתיחת השוק, כדי שההפסקה היומית לא תיחשב),
+ * ומחיר Binance שלא התעדכן. spots: נכס → המחיר האחרון, או null כשאין בכלל.
+ */
+export function liveHealth(now = Date.now(), spots: Record<string, { price: number; ts: number } | null> = {}) {
+  ensureLoaded()
+  const items: HealthItem[] = []
+  for (const [symbol, snaps] of mem) {
+    const mk = marketState(symbol, now)
+    if (!mk.open) continue
+    const stopped: string[] = []; let since = 0
+    for (const tf of HEALTH_TFS) {
+      const s = snaps.get(tf)
+      if (!s) continue
+      if (now - Math.max(s.receivedAt, mk.openedAt ?? 0) > TF_MIN[tf] * 60_000 * 2 + 90_000) { stopped.push(tf); since = Math.max(since, s.receivedAt) }
+    }
+    if (stopped.length) items.push({ symbol, kind: 'snapshots', tfs: stopped, since, ageSec: Math.round((now - since) / 1000) })
+  }
+  for (const [symbol, spot] of Object.entries(spots)) {
+    if (spot && now - spot.ts <= PRICE_STALE_MS) continue
+    items.push({ symbol, kind: 'price', tfs: [], since: spot?.ts ?? null, ageSec: spot ? Math.round((now - spot.ts) / 1000) : null })
+  }
+  return { serverTs: now, ok: items.length === 0, items }
+}
 
 export function buildBoard(symbolRaw: string, extras: BoardExtras = {}, now = Date.now()) {
   ensureLoaded()
