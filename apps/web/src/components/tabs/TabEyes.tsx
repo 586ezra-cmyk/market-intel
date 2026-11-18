@@ -8,6 +8,8 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 
 const EYES = 'http://127.0.0.1:8770'
 const POLL_MS = 1000
+const LAUNCH_URL = 'htt-eyes://start'   // פותח את HTT Eyes.app במחשב (tools/eyes/app)
+const LAUNCH_WAIT_MS = 20000
 const STALE_S = 10
 
 type Pair = [number | string | null, number | string | null]
@@ -37,6 +39,8 @@ interface EyesState {
   run_s: number | null
   stop_reason: string | null
   settings: EyesSettings
+  app_mode?: boolean
+  exits_in_s?: number | null
   file_mode: boolean
   window: string | null
   fast: EyesFast | null
@@ -129,6 +133,9 @@ export default function TabEyes() {
   const [busy, setBusy] = useState(false)
   const [actionError, setActionError] = useState('')
   const inFlight = useRef(false)
+  const [launching, setLaunching] = useState(false)
+  const [launchFailed, setLaunchFailed] = useState(false)
+  const reachableRef = useRef(false)
 
   const poll = useCallback(async () => {
     if (inFlight.current) return
@@ -140,8 +147,10 @@ export default function TabEyes() {
       if (!r.ok) throw new Error(String(r.status))
       setState(await r.json() as EyesState)
       setReachable(true)
+      reachableRef.current = true
     } catch {
       setReachable(false)
+      reachableRef.current = false
     } finally {
       clearTimeout(timer)
       inFlight.current = false
@@ -153,6 +162,30 @@ export default function TabEyes() {
     const id = setInterval(poll, POLL_MS)
     return () => clearInterval(id)
   }, [poll])
+
+  // העוזר כבוי לגמרי: פותחים אותו דרך הקישור המיוחד, מחכים שיעלה, ואז מבקשים ממנו להתחיל.
+  const launchAndStart = async () => {
+    if (launching) return
+    setLaunching(true)
+    setLaunchFailed(false)
+    setActionError('')
+    try {
+      window.location.href = LAUNCH_URL
+      const t0 = Date.now()
+      while (Date.now() - t0 < LAUNCH_WAIT_MS && !reachableRef.current) {
+        await new Promise(res => setTimeout(res, 500))
+        await poll()
+      }
+      if (!reachableRef.current) { setLaunchFailed(true); return }
+      const r = await post('/start')
+      if (!r.ok) setActionError('העוזר המקומי סירב לבקשה (' + r.status + ')')
+      await poll()
+    } catch {
+      setLaunchFailed(true)
+    } finally {
+      setLaunching(false)
+    }
+  }
 
   const toggle = async () => {
     if (busy || !state) return
@@ -199,31 +232,43 @@ export default function TabEyes() {
       <div dir="rtl" className="max-w-2xl mx-auto p-4 space-y-4">
         {header}
         {reachable === null ? (
-          <div className="card text-sm text-slate-400">בודק אם העוזר המקומי רץ…</div>
+          <div className="card text-sm text-slate-400">בודק אם העיניים פועלות…</div>
         ) : (
-          <div className="card space-y-3 text-sm text-slate-300">
-            <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-red-500" />
-              <h3 className="font-semibold text-slate-100">העוזר המקומי לא רץ במחשב הזה</h3>
+          <>
+            <button
+              type="button"
+              onClick={launchAndStart}
+              disabled={launching}
+              className="w-full text-2xl font-bold py-5 rounded-xl text-white transition-colors disabled:opacity-60 bg-slate-600 hover:bg-slate-500"
+            >
+              {launching ? 'מעלה את העוזר…' : 'התחל עיניים'}
+            </button>
+            <div className="text-sm text-slate-400">
+              כבוי{state?.stop_reason ? ' · ' + state.stop_reason : ''} · העוזר במחשב סגור ולא מצלם כלום.
             </div>
-            <p>הטאב הזה מציג את &quot;עיניים&quot; — כלי שרץ על המחשב שלך וקורא את חלון Bookmap. כדי שהכפתור יעבוד, העוזר צריך לרוץ ברקע. שתי דרכים:</p>
-            <ol className="list-decimal pr-5 space-y-1">
-              <li>
-                <b>הפעלה אוטומטית</b> (פעם אחת): לחיצה כפולה על{' '}
-                <span dir="ltr" className="font-mono text-xs">tools/eyes/autostart/install_autostart.command</span>.
-                מעכשיו העוזר עולה לבד בכל כניסה למחשב, במצב כבוי, ולא מצלם כלום עד שלוחצים &quot;התחל עיניים&quot;.
-              </li>
-              <li>
-                <b>הפעלה ידנית</b>: לחיצה כפולה על{' '}
-                <span dir="ltr" className="font-mono text-xs">tools/eyes/start.command</span>.
-              </li>
-            </ol>
-            <p className="text-slate-400">
-              בפעם הראשונה הדפדפן עשוי לשאול אם לאפשר לאתר גישה לרשת המקומית / למכשירים ברשת המקומית — לבחור <b>Allow / אפשר</b>.
-              אם בחרת בטעות &quot;חסום&quot;, אפשר לשנות בהגדרות האתר בדפדפן (סמל המנעול ליד הכתובת). מומלץ Chrome.
-            </p>
-            <p className="text-slate-500 text-xs">הדף ממשיך לבדוק כל שנייה ויתחבר לבד ברגע שהעוזר יעלה.</p>
-          </div>
+            {launching && (
+              <div className="card text-sm text-slate-300">
+                אם Chrome שואל &quot;לפתוח את HTT Eyes?&quot; — לסמן &quot;תמיד לאפשר&quot; וללחוץ <b>פתח</b>.
+              </div>
+            )}
+            {launchFailed && (
+              <div className="card space-y-2 text-sm text-slate-300">
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full bg-red-500" />
+                  <h3 className="font-semibold text-slate-100">העוזר לא עלה</h3>
+                </div>
+                <ol className="list-decimal pr-5 space-y-1">
+                  <li>אם Chrome הציג שאלה &quot;לפתוח את HTT Eyes?&quot; — לאשר וללחוץ שוב על הכפתור.</li>
+                  <li>
+                    אם לא הופיעה שאלה, האפליקציה הקטנה לא מותקנת במחשב הזה: לחיצה כפולה על{' '}
+                    <span dir="ltr" className="font-mono text-xs">tools/eyes/app/install_app.command</span>.
+                  </li>
+                  <li>אם האתר חסום מגישה לרשת המקומית: סמל ההגדרות ליד הכתובת ← לאפשר.</li>
+                </ol>
+              </div>
+            )}
+            {actionError && <div className="text-sm text-red-400">{actionError}</div>}
+          </>
         )}
         {privacy}
       </div>

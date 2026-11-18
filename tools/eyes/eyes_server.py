@@ -10,6 +10,7 @@ Run:   python3 eyes_server.py [--port 8770] [--image test.png]   (or env HTT_EYE
 Data:  ~/.local/share/htt-eyes/  (logs/, tmp/)  — outside the repo.
 """
 import argparse
+import signal
 import base64
 import csv
 import datetime as dt
@@ -52,6 +53,13 @@ CHANGE_LOOKBACK_S = 60       # "מה השתנה" compares with ~this many second
 
 MAX_RUN_S = 5 * 3600         # auto-stop after 5 hours
 NO_WINDOW_STOP_S = 120       # auto-stop when Bookmap window missing this long
+# App mode ("HTT Eyes.app", launched by the site button through the htt-eyes:// link): the helper
+# only lives while the eyes are on. It exits by itself shortly after a stop, so nothing stays in the background.
+EXIT_WHEN_OFF = os.environ.get("HTT_EYES_EXIT_WHEN_OFF") == "1"
+EXIT_AFTER_LAUNCH_S = 120    # launched but nobody pressed start
+EXIT_AFTER_STOP_S = 4        # manual stop: just long enough for the page to read the final state
+EXIT_AFTER_AUTOSTOP_S = 60   # stopped by itself (e.g. Bookmap window gone): leave time to read the reason
+MANUAL_STOP = "נעצר ידנית"
 MODEL_TIMEOUT_S = 90
 # zoom / scale change: the Bookmap CVD gauge depends on the visible range, so it jumps on zoom
 CVD_JUMP_RESET = 500         # CVD change between two consecutive reads that counts as a zoom jump ...
@@ -104,12 +112,16 @@ def remove_frame():
 
 
 # ---------------- Bookmap window + capture (read-only) ----------------
+NO_SCREEN_PERMISSION = False
 def find_bookmap_window():
     try:
         p = subprocess.run([WINLIST_BIN], capture_output=True, text=True, timeout=5)
         wins = json.loads(p.stdout or "[]")
     except Exception:
         return None
+    global NO_SCREEN_PERMISSION
+    # without the macOS "screen recording" permission the window list comes back with empty titles
+    NO_SCREEN_PERMISSION = bool(wins) and not any((w.get("title") or "").strip() for w in wins)
     wins = [w for w in wins if w.get("layer", 0) == 0 and "bookmap" in w.get("title", "").lower()
             and "configure" not in w.get("title", "").lower() and w.get("w", 0) > 400]
     if not wins:
@@ -188,6 +200,7 @@ class Eyes:
         self.thread = None
         self.stop_evt = threading.Event()
         self.model_thread = None
+        self.exit_at = None      # app mode: when to quit if still off
         self.reset_state()
 
     def reset_state(self):
@@ -244,6 +257,7 @@ class Eyes:
                 return
             ensure_dirs()
             self.reset_state()
+            self.exit_at = None
             self.reader = FastReader()
             self.running = True
             self.since = time.time()
@@ -251,12 +265,14 @@ class Eyes:
             self.thread = threading.Thread(target=self._loop, daemon=True)
             self.thread.start()
 
-    def stop(self, reason="נעצר ידנית"):
+    def stop(self, reason=MANUAL_STOP):
         with self.lock:
             if not self.running:
                 return
             self.running = False
             self.stop_reason = reason
+            if EXIT_WHEN_OFF:
+                self.exit_at = time.time() + (EXIT_AFTER_STOP_S if reason == MANUAL_STOP else EXIT_AFTER_AUTOSTOP_S)
             self.stop_evt.set()
         t = self.thread
         if t and t is not threading.current_thread():
@@ -301,7 +317,8 @@ class Eyes:
                                      daemon=True).start()
                     return
                 with self.lock:
-                    self.err("חלון Bookmap לא נמצא (או שאין הרשאת הקלטת מסך)")
+                    self.err("אין הרשאת \"הקלטת מסך\": הגדרות המערכת ← פרטיות ואבטחה ← הקלטת מסך ← להדליק את HTT Eyes, ואז ללחוץ שוב התחל"
+                             if NO_SCREEN_PERMISSION else "חלון Bookmap לא נמצא על המסך (סגור, ממוזער או בשולחן עבודה אחר)")
             else:
                 missing_since = None
                 self._fast_tick()
@@ -468,6 +485,8 @@ class Eyes:
                     "since": dt.datetime.fromtimestamp(self.since).strftime("%H:%M:%S") if self.since else None,
                     "run_s": int(now - self.since) if (self.since and self.running) else None,
                     "stop_reason": self.stop_reason, "settings": dict(self.settings),
+                    "app_mode": EXIT_WHEN_OFF, "no_screen_permission": NO_SCREEN_PERMISSION,
+                    "exits_in_s": (max(0, int(self.exit_at - now)) if (self.exit_at and not self.running) else None),
                     "file_mode": bool(self.image),
                     "window": (self.window or {}).get("title"),
                     "fast": fast, "model": model, "model_busy": self.model_busy,
@@ -737,7 +756,22 @@ def main():
     ensure_dirs()
     EYES = Eyes(image=os.path.abspath(a.image) if a.image else None)
     srv = ThreadingHTTPServer(("127.0.0.1", a.port), Handler)
-    print("eyes: http://127.0.0.1:%d %s" % (a.port, "(file mode)" if a.image else ""), flush=True)
+    print("eyes: http://127.0.0.1:%d %s%s" % (a.port, "(file mode)" if a.image else "",
+                                              " (app mode: exits when off)" if EXIT_WHEN_OFF else ""), flush=True)
+    def on_term(signum, frame):   # closed from outside (the app quit): clean up like Ctrl-C
+        raise KeyboardInterrupt
+    signal.signal(signal.SIGTERM, on_term)
+    if EXIT_WHEN_OFF:
+        EYES.exit_at = time.time() + EXIT_AFTER_LAUNCH_S
+
+        def watchdog():
+            while True:
+                time.sleep(1)
+                if not EYES.running and EYES.exit_at and time.time() > EYES.exit_at:
+                    print("eyes: off -> exiting", flush=True)
+                    srv.shutdown()
+                    return
+        threading.Thread(target=watchdog, daemon=True).start()
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
