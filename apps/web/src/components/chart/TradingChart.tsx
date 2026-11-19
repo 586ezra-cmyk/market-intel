@@ -24,6 +24,8 @@ import OptionsLevelsLayer from './layers/OptionsLevelsLayer'
 import HttLevelsLayer from './layers/HttLevelsLayer'
 import GateLayer from './layers/GateLayer'
 import LineInfoPopup from './LineInfoPopup'
+import LiveCandleLayer from './layers/LiveCandleLayer'
+import { chartFeed } from './chartFeed'
 import DetailPanel from './DetailPanel'
 import DrawingToolbar from './DrawingToolbar'
 import ChartDrawingCanvas from './ChartDrawingCanvas'
@@ -136,6 +138,8 @@ export default function TradingChart() {
     let alive = true
     let lastTime = 0
     candleSeries.setData([])
+    chartFeed.lastRealTime = 0; chartFeed.lastRealClose = 0; chartFeed.formingTime = 0
+    const real = (c: Bar) => { chartFeed.lastRealTime = c.time; chartFeed.lastRealClose = c.close }
     setCandlesLoading(true)
     setCandleError(false)
     setFeed(null)
@@ -151,22 +155,26 @@ export default function TradingChart() {
       if (last) setFeed({ source: source === 'delayed' ? 'delayed' : 'live', barTime: last.time, at: Date.now() })
     }
 
-    get(300)
+    // טעינה מלאה. fit=false בטעינה חוזרת, כדי לא להזיז למשתמש את התצוגה
+    const loadAll = (fit: boolean) => get(300)
       .then(({ candles, source }) => {
         if (!alive || !chartRef.current) return
         chartRef.current.candleSeries.setData(candles.map(toBar))
+        chartFeed.formingTime = 0
         lastTime = candles.length ? candles[candles.length - 1].time : 0
+        if (candles.length) real(candles[candles.length - 1])
         // ✅ Scroll chart to show the latest candles
-        chartRef.current.chart.timeScale().fitContent()
+        if (fit) chartRef.current.chart.timeScale().fitContent()
         note(candles, source)
       })
+    loadAll(true)
       .catch((err) => {
         console.warn('candles fetch failed:', err)
         if (alive) setCandleError(true)
       })
       .finally(() => { if (alive) setCandlesLoading(false) })
 
-    const everyMs = ['1m', '3m', '5m'].includes(timeframe) ? 5_000 : ['15m', '30m', '1h'].includes(timeframe) ? 15_000 : 60_000
+    const everyMs = timeframe === '1m' ? 2_000 : ['3m', '5m'].includes(timeframe) ? 5_000 : ['15m', '30m', '1h'].includes(timeframe) ? 15_000 : 60_000
     const id = setInterval(() => {
       if (document.hidden || !lastTime) return
       get(20)
@@ -174,8 +182,14 @@ export default function TradingChart() {
           if (!alive || !chartRef.current) return
           for (const c of candles) {
             if (c.time < lastTime) continue              // update() מקבל רק את הנר האחרון או נר חדש יותר
+            // כשמצויר נר חי (מהעיניים), אי אפשר לעדכן נר ישן ממנו: אותו נר סגור מדלגים, ונר סגור חדש שהגיע באיחור = טעינה מלאה
+            if (chartFeed.formingTime && c.time < chartFeed.formingTime) {
+              if (c.time > lastTime) { void loadAll(false); return }
+              continue
+            }
             chartRef.current.candleSeries.update(toBar(c))
             lastTime = c.time
+            real(c)
           }
           note(candles, source)
           setCandleError(false)
@@ -269,6 +283,7 @@ export default function TradingChart() {
           <HttLevelsLayer      chart={cs.chart} series={cs.candleSeries} />
           <GateLayer           chart={cs.chart} series={cs.candleSeries} />
           <LineInfoPopup       chart={cs.chart} series={cs.candleSeries} />
+          <LiveCandleLayer     chart={cs.chart} series={cs.candleSeries} />
           <ChartDrawingCanvas  chart={cs.chart} series={cs.candleSeries} />
         </>
       )}

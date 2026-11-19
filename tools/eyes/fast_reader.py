@@ -16,6 +16,7 @@ OCR_BIN = os.path.join(HERE, "ocr")
 
 LAYOUT_TTL_S = 60          # re-run the full-frame pass at least this often
 PRICE_MAX_JUMP = 0.02      # price must be within +-2% of previous reading
+PRICE_UNMARKED_JUMP = 0.004  # ...and within 0.4% when the last-trade marker did not confirm the row
 ZOOM_SCALE_CHANGE = 0.15   # ladder px-per-point (or time-axis px-per-minute) change that counts as a zoom change
 ZOOM_CONFIRM_READS = 2     # a new ladder step / scale must repeat this many reads in a row before it counts
 CROP_SCALE = 3             # upscale factor for value crops
@@ -306,19 +307,25 @@ def read_price(all_items, L, prev, meta=None):
         return abs(a + b * i["v"] - i["cy"]) < 0.7 * hs
     off = [i for i in col if (not on_grid(i["v"]) or re.search(r"\.\d\d$", i["s"]))
            and abs(i["v"] * 4 - round(i["v"] * 4)) < 1e-6 and fits(i)]
-    # last-trade marker like "3(3)" left of the ladder
-    marks = [i for i in all_items if re.search(r"\d+\(\d+\)", i["s"]) and i["cx"] < L[0] + 20]
+    # last-trade marker like "3 (3)" left of the ladder: it sits only on the last-price row.
+    # The mouse crosshair draws its own off-grid price label on the ladder; without the marker the two are
+    # indistinguishable, so the marker row always wins (19.11.2026: price was stuck on the crosshair label).
+    marks = [i for i in all_items if re.search(r"\d+\s*\(\d+\)", i.get("t", i["s"])) and i["cx"] < L[0] + 20]
+    if marks:
+        near = [i for i in off if any(abs(i["cy"] - m["cy"]) < 0.8 * hs for m in marks)]
+        if len(near) == 1:
+            near[0]["marked"] = True
+            return near[0], None
+        cand = [i for i in grid if any(abs(i["cy"] - m["cy"]) < 0.6 * hs for m in marks) and fits(i)]
+        if len(cand) == 1:
+            cand[0]["marked"] = True
+            return cand[0], None
     if len(off) == 1:
         return off[0], None
     if len(off) > 1:
         if prev:
             return min(off, key=lambda i: abs(i["v"] - prev)), None
         return None, "מחיר לא חד-משמעי"
-    if marks:
-        m = marks[0]
-        cand = [i for i in grid if abs(i["cy"] - m["cy"]) < 0.6 * hs and fits(i)]
-        if len(cand) == 1:
-            return cand[0], None
     return None, "מחיר לא נקרא"
 
 
@@ -330,6 +337,7 @@ class FastReader:
     def __init__(self):
         self.layout = None
         self.prev_price = None
+        self.prev_ts = None
         self.sig = None          # accepted {"step", "px_per_pt"} of the price ladder
         self.sig_pending = None  # (candidate sig, consecutive count)
         self.prev_ppm = None     # time-axis px-per-minute from the last full-frame pass
@@ -379,7 +387,10 @@ class FastReader:
                 out["zoom"] = "קנה המידה של ציר הזמן השתנה"
             if ppm:
                 self.prev_ppm = ppm
-        crops = [lay["ladder"]] + [c for c in (lay["cvd"], lay["imb"]) if c]
+        lad = lay["ladder"]
+        # strip left of the ladder: the last-trade marker "N (N)" that identifies the last-price row
+        mark_strip = (max(0, lad[0] - 140), lad[1], 150, lad[3])     # narrower strips cut the parentheses and the marker is lost
+        crops = [lad, mark_strip] + [c for c in (lay["cvd"], lay["imb"]) if c]
         d = run_ocr(path, crops, scale=CROP_SCALE)
         items = d["items"]
         meta = {}
@@ -393,24 +404,35 @@ class FastReader:
             # authority: a tight crop of the highlighted box read at 3 scales; >=2 valid reads, all equal,
             # the value must be on the 0.25 tick and within 1 point of where the box was found
             h = box["h"]
-            r = (box["x"] - 0.4 * h, box["y"] - 0.5 * h, box["w"] + 2.2 * h, 2.0 * h)
-            chk = run_ocr(path, [r + (2,), r + (3,), r + (4,)])
-            reads = [float(i["s"]) for i in merge_split_decimals(chk["items"]) if _LADDER_RE.match(i["s"])]
-            if (len(reads) >= 2 and max(reads) - min(reads) < 1e-9 and abs(reads[0] * 4 - round(reads[0] * 4)) < 1e-9
-                    and abs(reads[0] - box["v"]) < 1.0):
-                price = reads[0]
-            else:
+            # second try with a wider crop: when the ladder crop cut the decimals (".75"), the box is found too narrow
+            for wmul in (2.2, 3.5):
+                r = (box["x"] - 0.4 * h, box["y"] - 0.5 * h, box["w"] + wmul * h, 2.0 * h)
+                chk = run_ocr(path, [r + (2,), r + (3,), r + (4,)])
+                reads = [float(i["s"]) for i in merge_split_decimals(chk["items"]) if _LADDER_RE.match(i["s"])]
+                if (len(reads) >= 2 and max(reads) - min(reads) < 1e-9 and abs(reads[0] * 4 - round(reads[0] * 4)) < 1e-9
+                        and abs(reads[0] - box["v"]) < 1.0):
+                    price = reads[0]
+                    break
+            if price is None:
                 pnote = "מחיר לא אושר בקריאה שנייה"
         if pnote:
             out["notes"].append(pnote)
         L = lay["ladder"]
-        if price is not None and self.prev_price and abs(price / self.prev_price - 1) > PRICE_MAX_JUMP:
+        # a price confirmed by the last-trade marker may move up to PRICE_MAX_JUMP; an unconfirmed one (it could be the
+        # crosshair label) only PRICE_UNMARKED_JUMP while the previous reading is fresh
+        marked = bool(box and box.get("marked"))
+        fresh = self.prev_ts is not None and time.time() - self.prev_ts < 20
+        limit = PRICE_MAX_JUMP if (marked or not fresh) else PRICE_UNMARKED_JUMP
+        if price is not None and self.prev_price and abs(price / self.prev_price - 1) > limit:
             out["notes"].append("מחיר נדחה (קפיצה חריגה)")
             price = None
+        if price is not None and not marked:
+            out["notes"].append("מחיר בלי סימון העסקה האחרונה")
         if price is not None and not (1000 <= price <= 200000):
             price = None
         if price is not None:
             self.prev_price = price
+            self.prev_ts = time.time()
         out["price"] = price
         gauge_items = [i for i in items if i["cx"] > L[0] + L[2]]
         cvd = _value_below_label(gauge_items, _is_cvd, _num)
