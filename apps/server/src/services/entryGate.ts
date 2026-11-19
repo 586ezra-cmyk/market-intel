@@ -311,8 +311,8 @@ export function onMinuteSnapshot(snap: StoredSnap, opts: { news?: News | null } 
     if (signals.some(s => s.symbol === snap.symbol && s.dir === dir && s.barTime === snap.time)) continue
     const long = dir === 'long'; const e = snap.price; const k = long ? 1 : -1
     const news = opts.news ?? null
-    const day = dayStatus(rules, now)
-    const blocked = news && Math.abs(news.inMin) <= rules.newsMin ? `חדשות: ${news.title}` : day.locked
+    // חוקי היום (נעילה, יעד יומי, צינון) לא חוסמים את המדידה: המשתמש רוצה שכל ירוק יירשם וייבדק גם כשהוא לא לוקח עסקאות (19.11.2026)
+    const blocked = news && Math.abs(news.inMin) <= rules.newsMin ? `חדשות: ${news.title}` : null
     const sig: GateSignal = {
       id: nextId++, symbol: snap.symbol, dir, barTime: snap.time, ts: now, validUntil: snap.time + 120_000,       // עד סוף הנר השני
       entry: e, stop: e - k * rules.stopPts, t1: e + k * rules.stopPts, t2: e + k * rules.stopPts * rules.rr,
@@ -466,7 +466,6 @@ export function buildGate(symbolRaw: string, extras: GateExtras = {}, now = Date
   if (!ses.ok) blocks.push({ key: 'time', text: ses.firstMinutes ? `5 הדקות הראשונות אחרי הפתיחה. מתחילים ב-${ses.startIl}.` : ses.waiting ? `הסשן של ניו יורק עוד לא נפתח. מתחילים ב-${ses.startIl}.` : 'הסשן של ניו יורק סגור.' })
   const news = extras.news ?? null
   if (news && Math.abs(news.inMin) <= rules.newsMin) blocks.push({ key: 'news', text: `חדשות: ${news.title} ${news.inMin >= 0 ? `בעוד ${news.inMin} דק׳` : `לפני ${-news.inMin} דק׳`}.` })
-  if (day.locked) blocks.push({ key: 'day', text: day.locked })
 
   if (!snap || dataAgeSec == null || dataAgeSec > STALE_SEC) {
     const open = marketState(symbol, now).open
@@ -494,6 +493,8 @@ export function buildGate(symbolRaw: string, extras: GateExtras = {}, now = Date
 
   // ─── אזהרות: לא חוסמות, אבל כדאי לדעת ───
   const warnings: string[] = []
+  // חוקי היום הם תזכורת בלבד: הרמזור ממשיך להראות ולמדוד ירוקים גם אחרי נעילה או יעד יומי
+  if (day.locked) warnings.push(`לפי חוקי היום שלך: ${day.locked} הרמזור ממשיך להראות ולמדוד בכל זאת.`)
   if (snap.atr != null && snap.atr > rules.stopPts) warnings.push(`יום תנודתי: נר דקה ממוצע כ-${f(Math.round(snap.atr))} נק׳, יותר מהסטופ (${rules.stopPts}). להוריד כמות חוזים.`)
   if (dir && flag(snap, otherDir, 'cvdDiv')) warnings.push(`דיברגנס CVD נגד ה${DIR_HE[dir]}: המחיר וה-CVD לא הולכים יחד.`)
 

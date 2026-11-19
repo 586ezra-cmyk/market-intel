@@ -205,7 +205,7 @@ export default function EntryGate({ gate, symbol, onChanged }: { gate: Gate | un
             <div><span className="text-slate-400">הפסדים </span><b className={g.day.losses >= g.day.maxLosses ? 'text-red-400' : 'text-white'}>{g.day.losses}/{g.day.maxLosses}</b></div>
             <div><span className="text-slate-400">תוצאה </span><b className={g.day.usd > 0 ? 'text-emerald-400' : g.day.usd < 0 ? 'text-red-400' : 'text-white'}>{signed(g.day.usd)}$</b></div>
           </div>
-          <div className="mt-2 text-xs text-slate-400">עסקה נסגרה? לסמן כאן, כדי שהנעילה היומית תעבוד:</div>
+          <div className="mt-2 text-xs text-slate-400">עסקה שלקחת נסגרה? לסמן כאן, ותקבל תזכורת לפי חוקי היום. הרמזור ממשיך להראות ולמדוד ירוקים בכל מקרה:</div>
           <div className="mt-1 flex flex-wrap gap-1.5">
             <button disabled={busy} onClick={() => mark('POST', 'win')} className="px-2.5 py-1 rounded text-xs font-bold bg-emerald-700 hover:bg-emerald-600 text-white disabled:opacity-50">✓ יעד (+{num(g.rules.rewardUsd, 0)}$)</button>
             <button disabled={busy} onClick={() => mark('POST', 'loss')} className="px-2.5 py-1 rounded text-xs font-bold bg-red-700 hover:bg-red-600 text-white disabled:opacity-50">✗ סטופ (−{num(g.rules.riskUsd, 0)}$)</button>

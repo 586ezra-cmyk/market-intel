@@ -144,7 +144,7 @@ describe('entryGate', () => {
     expect(g.log.recent[0]).toMatchObject({ status: 'expired', r: 0.5 })
   })
 
-  it('daily rules: lock after 2 losses, cooldown after a loss, stop at the daily target, undo', () => {
+  it('daily rules are a reminder only (lock after 2 losses, cooldown, daily target, undo): greens keep showing and being measured', () => {
     const rules = GATE_RULES['NQ']
     expect(addDayTrade('NQ', 'loss', 300, T0)).toMatchObject({ usd: -300, result: 'loss' })
     expect(dayStatus(rules, T0 + 2 * MIN).locked).toContain('צינון')
@@ -153,8 +153,10 @@ describe('entryGate', () => {
     const d = dayStatus(rules, T0 + 40 * MIN)
     expect(d).toMatchObject({ trades: 2, losses: 2, usd: -600 }); expect(d.locked).toContain('נעילה יומית')
     const { at, sig } = bar(45)
-    expect(sig!.blocked).toContain('נעילה יומית')                                              // נרשם, אבל לא כ"ירוק מלא"
-    expect((buildGate('NQ', {}, at + 2_000) as { state: string }).state).toBe('red')
+    expect(sig!.blocked).toBeNull()                                                            // חוקי היום לא חוסמים את המדידה: הירוק נרשם ונספר
+    const locked = buildGate('NQ', {}, at + 2_000) as { state: string; warnings: string[]; blocks: unknown[] }
+    expect(locked.state).toBe('green'); expect(locked.blocks).toEqual([])
+    expect(locked.warnings.some(w => w.includes('נעילה יומית') && w.includes('ממשיך'))).toBe(true)
     expect(undoDayTrade(T0 + 50 * MIN)).toMatchObject({ result: 'loss' })
     expect(dayStatus(rules, T0 + 50 * MIN).locked).toBeNull()
 
