@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import Header from '@/components/layout/Header'
 import DataAlarm from '@/components/layout/DataAlarm'
+import EyesFlowBridge from '@/components/live/EyesFlowBridge'
 import TabDashboard from '@/components/tabs/TabDashboard'
 import TabAlerts from '@/components/tabs/TabAlerts'
 import TabStats from '@/components/tabs/TabStats'
@@ -23,6 +24,7 @@ import TabHttBacktest from '@/components/tabs/TabHttBacktest'
 import TabOrderFlow from '@/components/tabs/TabOrderFlow'
 import TabLiveBoard from '@/components/tabs/TabLiveBoard'
 import TabEyes from '@/components/tabs/TabEyes'
+import TabGateScore from '@/components/tabs/TabGateScore'
 import { useWebSocket } from '@/hooks/useWebSocket'
 
 export type TabId =
@@ -30,13 +32,14 @@ export type TabId =
   | 'journal' | 'backtest' | 'watchlist' | 'matrix'
   | 'history-scan' | 'economic-calendar' | 'knowledge-base'
   | 'notes' | 'reports' | 'quick-confluence' | 'learning'
-  | 'connections' | 'htt-backtest' | 'orderflow' | 'live-board' | 'eyes'
+  | 'connections' | 'htt-backtest' | 'orderflow' | 'live-board' | 'eyes' | 'gate-score'
 
 const TABS: Array<{ id: TabId; label: string; icon: string }> = [
   { id: 'connections',        label: 'חיבורים',          icon: '🔌' },
   { id: 'dashboard',         label: 'דשבורד',          icon: '📊' },
   { id: 'live-board',        label: 'לוח החלטה',       icon: '🎛️' },
   { id: 'eyes',              label: 'עיניים',           icon: '👁' },
+  { id: 'gate-score',        label: 'מדד הרמזור',       icon: '🎯' },
   { id: 'alerts',            label: 'התראות',           icon: '🔔' },
   { id: 'stats',             label: 'סטטיסטיקה',        icon: '📈' },
   { id: 'alert-settings',    label: 'ניהול התראות',     icon: '⚙️' },
@@ -80,6 +83,7 @@ export default function HomePage() {
   return (
     <div className="flex flex-col h-screen overflow-hidden">
       <DataAlarm />
+      <EyesFlowBridge />
       {!solo && <Header />}
 
       {/* Tab Bar */}
@@ -111,6 +115,7 @@ export default function HomePage() {
             {activeTab === 'orderflow'         && <TabOrderFlow />}
             {activeTab === 'live-board'        && <TabLiveBoard />}
             {activeTab === 'eyes'              && <TabEyes />}
+            {activeTab === 'gate-score'        && <TabGateScore />}
             {activeTab === 'watchlist'         && <TabWatchlist />}
             {activeTab === 'matrix'            && <TabMatrix />}
             {activeTab === 'history-scan'      && <TabHistoryScan />}

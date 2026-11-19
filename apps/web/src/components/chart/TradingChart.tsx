@@ -168,11 +168,31 @@ export default function TradingChart() {
         note(candles, source)
       })
     loadAll(true)
+
       .catch((err) => {
         console.warn('candles fetch failed:', err)
         if (alive) setCandleError(true)
       })
       .finally(() => { if (alive) setCandlesLoading(false) })
+
+    // נר סגור אמיתי שהגיע כשכבר מצויר נר חי חדש יותר: update() לא יכול לגעת בנר ישן, אז בונים את הסדרה מחדש
+    // מהנרות שעל הגרף + הנרות האמיתיים שהגיעו, ומחזירים את הנר החי לסוף. בלי פנייה נוספת לשרת ובלי לזוז בתצוגה.
+    const patchOlder = (candles: Bar[]) => {
+      if (!chartRef.current) return
+      const series = chartRef.current.candleSeries
+      const cur = series.data() as unknown as Bar[]
+      const forming = cur.length && cur[cur.length - 1].time === chartFeed.formingTime ? cur[cur.length - 1] : null
+      const m = new Map<number, Bar>()
+      for (const b of cur) if (!forming || b.time < forming.time) m.set(b.time, b)
+      for (const c of candles) {
+        if (forming && c.time >= forming.time) continue
+        m.set(c.time, c)
+        if (c.time >= lastTime) { lastTime = c.time; real(c) }
+      }
+      const arr = [...m.values()].sort((a, b) => a.time - b.time)
+      if (forming) arr.push(forming)
+      series.setData(arr.map(toBar))
+    }
 
     const everyMs = timeframe === '1m' ? 2_000 : ['3m', '5m'].includes(timeframe) ? 5_000 : ['15m', '30m', '1h'].includes(timeframe) ? 15_000 : 60_000
     const id = setInterval(() => {
@@ -184,7 +204,7 @@ export default function TradingChart() {
             if (c.time < lastTime) continue              // update() מקבל רק את הנר האחרון או נר חדש יותר
             // כשמצויר נר חי (מהעיניים), אי אפשר לעדכן נר ישן ממנו: אותו נר סגור מדלגים, ונר סגור חדש שהגיע באיחור = טעינה מלאה
             if (chartFeed.formingTime && c.time < chartFeed.formingTime) {
-              if (c.time > lastTime) { void loadAll(false); return }
+              if (c.time > lastTime) { patchOlder(candles); break }
               continue
             }
             chartRef.current.candleSeries.update(toBar(c))

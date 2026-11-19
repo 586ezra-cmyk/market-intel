@@ -19,6 +19,8 @@ export default function GateLayer({ series }: Props) {
   const lines = useRef<IPriceLine[]>([])
   const marks = useRef<ISeriesMarkersPluginApi<Time> | null>(null)
   const [badge, setBadge] = useState<{ state: string; text: string } | null>(null)
+  const [gate, setGate] = useState<Extract<Gate, { supported: true }> | null>(null)
+  const [open, setOpen] = useState(false)
 
   useEffect(() => {
     const clearLines = () => { for (const l of lines.current) { try { series.removePriceLine(l) } catch { /* הסדרה הוסרה */ } } lines.current = [] }
@@ -33,6 +35,7 @@ export default function GateLayer({ series }: Props) {
         if (!alive || !g) return
         if (!g.supported) { clearLines(); clearMarks(); setBadge(null); report(0, []); sig = ''; return }
         const p = g.plan
+        setGate(g)
         setBadge({ state: g.state, text: g.state === 'green' ? g.headline : g.state === 'yellow' ? `${g.headline} · ${g.missing ?? ''}` : g.blocks.length ? `${g.headline} · ${g.blocks[0].text}` : g.headline })
         const tfSec = TF_SEC[timeframe]
         const today: GateSignalRow[] = tfSec ? g.log.today.filter(s => !s.blocked) : []
@@ -92,8 +95,31 @@ export default function GateLayer({ series }: Props) {
     : badge.state === 'red' ? 'bg-gray-900/90 border-red-700 text-red-200'
     : 'bg-gray-900/90 border-gray-700 text-gray-400'
   return (
-    <div dir="rtl" className={`absolute top-10 left-14 z-10 max-w-[70%] truncate rounded-full border px-3 py-0.5 text-[11px] font-bold pointer-events-none ${cls}`}>
-      🚦 {badge.text}
-    </div>
+    <>
+      <button dir="rtl" onClick={() => setOpen(v => !v)} title="לחיצה מציגה למה"
+              className={`absolute top-10 left-14 z-20 max-w-[70%] truncate rounded-full border px-3 py-0.5 text-[11px] font-bold ${cls}`}>
+        🚦 {badge.text} · למה?
+      </button>
+      {open && gate && (
+        <div dir="rtl" className="absolute top-[4.2rem] left-14 z-30 w-[340px] max-h-[70%] overflow-y-auto rounded-lg border border-slate-600 bg-gray-900 shadow-xl p-3 text-right text-xs">
+          <button onClick={() => setOpen(false)} className="absolute left-2 top-1.5 text-slate-400 hover:text-white text-sm" aria-label="סגור">✕</button>
+          <div className="font-bold text-white text-sm pl-5">{gate.headline}</div>
+          {gate.blocks.length > 0 && <div className="mt-1 text-red-300 font-bold">⛔ {gate.blocks.map(b => b.text).join(' · ')}</div>}
+          {gate.missing && <div className="mt-1 text-amber-200">{gate.missing}</div>}
+          <ul className="mt-2 space-y-1">
+            {gate.conditions.map(c => <li key={c.key} className={c.ok ? 'text-slate-200' : 'text-red-200'}>{c.ok ? '✓' : '✗'} <b>{c.name}</b>: {c.ok ? c.detail : (c.need ?? c.detail)}</li>)}
+          </ul>
+          {gate.plan && (
+            <div className="mt-2 text-slate-300 tabular-nums">
+              {gate.plan.estimated ? 'כניסה משוערת' : 'כניסה'} {gate.plan.entry.toLocaleString('en-US')} · סטופ {gate.plan.stop.toLocaleString('en-US')} · יעד {gate.plan.t2.toLocaleString('en-US')} · {gate.plan.contracts} {gate.plan.unit}
+            </div>
+          )}
+          {gate.warnings.map((w, i) => <div key={i} className="mt-1 text-amber-200">⚠️ {w}</div>)}
+          <div className="mt-2 text-[10px] text-slate-500">
+            {gate.flow?.source === 'bookmap' ? 'ה-CVD נבדק מול Bookmap.' : 'ה-CVD לפי הערכה של TradingView (העיניים כבויות).'} נבדק בכל סגירת נר דקה.
+          </div>
+        </div>
+      )}
+    </>
   )
 }

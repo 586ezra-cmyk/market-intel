@@ -194,7 +194,7 @@ class Eyes:
         self.image = image
         self.lock = threading.Lock()
         self.reader = FastReader()
-        self.settings = {"interval_s": 20, "fast_every_s": 2, "model": "haiku"}
+        self.settings = {"interval_s": 20, "fast_every_s": 1, "model": "haiku"}   # 1s: the site draws the live candle from these reads
         self._load_settings()
         self.running = False
         self.thread = None
@@ -481,7 +481,14 @@ class Eyes:
             if model:
                 model["age_s"] = round(now - model["ts"], 1)
             d = self.derived()
-            return {"running": self.running,
+            # CVD of the last 7 minutes (after the last zoom reset), one point per ~5s: the site computes the CVD direction from it
+            rz = self.cvd_reset_ts or 0
+            ch = [h for h in self.history if h.get("cvd") is not None and h["ts"] >= rz and now - h["ts"] <= 420]
+            step = max(1, len(ch) // 84)
+            cvd_hist = [[round(h["ts"], 1), h["cvd"]] for h in ch[::step]]
+            if ch and (not cvd_hist or cvd_hist[-1][0] != round(ch[-1]["ts"], 1)):
+                cvd_hist.append([round(ch[-1]["ts"], 1), ch[-1]["cvd"]])
+            return {"running": self.running, "cvd_hist": cvd_hist,
                     "since": dt.datetime.fromtimestamp(self.since).strftime("%H:%M:%S") if self.since else None,
                     "run_s": int(now - self.since) if (self.since and self.running) else None,
                     "stop_reason": self.stop_reason, "settings": dict(self.settings),

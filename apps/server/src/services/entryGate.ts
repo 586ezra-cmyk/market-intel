@@ -56,6 +56,18 @@ export async function nextNews(now: number): Promise<News | null> {
   } catch { return null }
 }
 
+// ─── כיוון ה-CVD ב-Bookmap ───
+// המחשב של המשתמש (האתר הפתוח + העיניים) שולח לכאן רק מילה אחת: ה-CVD עולה / יורד / לא ברור. בלי שום מספר מ-Bookmap.
+// כשהמילה טרייה, היא מחליפה את ה-CVD המשוער של TradingView בתנאי של הרמזור.
+export type FlowDir = 'up' | 'down' | 'flat'
+const FLOW_FRESH_MS = 20_000
+const flowMem = new Map<string, { cvd: FlowDir; ts: number }>()
+export function setFlow(symbolRaw: string, cvd: FlowDir, now = Date.now()): void { flowMem.set(normSymbol(symbolRaw), { cvd, ts: now }) }
+export function getFlow(symbolRaw: string, now = Date.now()): { cvd: FlowDir; ageSec: number } | null {
+  const f = flowMem.get(normSymbol(symbolRaw))
+  return f && now - f.ts <= FLOW_FRESH_MS ? { cvd: f.cvd, ageSec: Math.max(0, Math.round((now - f.ts) / 1000)) } : null
+}
+
 // ─── התנאים ───
 export interface GateCondition { key: string; name: string; ok: boolean; detail: string; need: string | null; level?: number | null }
 
@@ -75,7 +87,7 @@ function sessionClock(rules: GateRules, now: number) {
 }
 
 /** כל התנאים לכיוון אחד, לפי נר הדקה האחרון שנסגר. prevClose משמש רק כשהסקריפט לא שלח מחיר פתיחה. */
-export function evalConditions(snap: StoredSnap, dir: Dir, rules: GateRules, now: number, prevClose: number | null = null): GateCondition[] {
+export function evalConditions(snap: StoredSnap, dir: Dir, rules: GateRules, now: number, prevClose: number | null = null, flow: FlowDir | null = null): GateCondition[] {
   const long = dir === 'long'; const p = snap.price
   const vah = snap.lv['vah'] ?? null; const val = snap.lv['val'] ?? null; const ema = snap.lv['ema'] ?? null
   const out: GateCondition[] = []
@@ -132,12 +144,23 @@ export function evalConditions(snap: StoredSnap, dir: Dir, rules: GateRules, now
     need: candleOk ? null : `נר דקה ${color} שנסגר (הכניסה בנר שאחריו)`,
   })
 
-  const cvdOk = flag(snap, dir, 'cvdOk')
-  out.push({
-    key: 'cvd', name: 'CVD בכיוון (5 נרות דקה)', ok: cvdOk,
-    detail: cvdOk ? `ה-CVD ${long ? 'עולה' : 'יורד'}` : `ה-CVD לא ${long ? 'עולה' : 'יורד'}`,
-    need: cvdOk ? null : `ה-CVD צריך ${long ? 'לעלות' : 'לרדת'}`,
-  })
+  if (flow) {
+    // Bookmap מחובר: הכיוון האמיתי של ה-CVD (5 דקות אחרונות) קובע, לא ההערכה של TradingView
+    const cvdOk = flow === (long ? 'up' : 'down')
+    const now_ = flow === 'up' ? 'עולה' : flow === 'down' ? 'יורד' : 'לא זז לכיוון ברור'
+    out.push({
+      key: 'cvd', name: 'CVD בכיוון (Bookmap, 5 דק׳)', ok: cvdOk,
+      detail: `ה-CVD ב-Bookmap ${now_}`,
+      need: cvdOk ? null : `ה-CVD ב-Bookmap ${now_}, וצריך ${long ? 'לעלות' : 'לרדת'}`,
+    })
+  } else {
+    const cvdOk = flag(snap, dir, 'cvdOk')
+    out.push({
+      key: 'cvd', name: 'CVD בכיוון (TradingView בלבד, Bookmap לא מחובר)', ok: cvdOk,
+      detail: cvdOk ? `ה-CVD המשוער של TradingView ${long ? 'עולה' : 'יורד'} (5 נרות דקה)` : `ה-CVD המשוער של TradingView לא ${long ? 'עולה' : 'יורד'}`,
+      need: cvdOk ? null : `ה-CVD צריך ${long ? 'לעלות' : 'לרדת'}`,
+    })
+  }
   return out
 }
 
@@ -147,6 +170,8 @@ export interface GateSignal {
   entry: number; stop: number; t1: number; t2: number; blocked: string | null; atr: number | null
   status: 'open' | 'target' | 'stop' | 'expired'; hit1At: number | null; resolvedAt: number | null
   r: number | null; mfe: number; mae: number; ambiguous: boolean
+  why: string[]                          // התנאים והמספרים ברגע שנדלק הירוק
+  cvdSrc: 'bookmap' | 'tv'               // מאיפה נבדק ה-CVD
 }
 export interface DayTrade { id: number; day: string; symbol: string; ts: number; result: 'win' | 'loss' | 'be'; usd: number }
 const KEEP = 2000
@@ -156,6 +181,7 @@ const dayTrades: DayTrade[] = []
 let loaded = false
 let nextId = 1
 
+function parseWhy(v: unknown): string[] { try { const a = JSON.parse(String(v ?? '[]')); return Array.isArray(a) ? a.map(String) : [] } catch { return [] } }
 function ensureLoaded(): void {
   if (loaded) return
   loaded = true
@@ -168,6 +194,7 @@ function ensureLoaded(): void {
         entry: Number(r['entry']), stop: Number(r['stop']), t1: Number(r['t1']), t2: Number(r['t2']), blocked: (r['blocked'] as string | null) ?? null, atr: r['atr'] == null ? null : Number(r['atr']),
         status: (r['status'] as GateSignal['status']) ?? 'open', hit1At: r['hit1_at'] == null ? null : Number(r['hit1_at']), resolvedAt: r['resolved_at'] == null ? null : Number(r['resolved_at']),
         r: r['r'] == null ? null : Number(r['r']), mfe: Number(r['mfe'] ?? 0), mae: Number(r['mae'] ?? 0), ambiguous: !!r['ambiguous'],
+        why: parseWhy(r['why']), cvdSrc: r['cvd_src'] === 'bookmap' ? 'bookmap' : 'tv',
       })
     }
     const since = nyDay(Date.now() - 3 * 86_400_000)
@@ -176,7 +203,7 @@ function ensureLoaded(): void {
     nextId = Math.max(0, ...signals.map(s => s.id), ...dayTrades.map(t => t.id)) + 1
   } catch { /* אין טבלה (בדיקות) — עובדים מהזיכרון */ }
 }
-export function clearGate(): void { signals.length = 0; dayTrades.length = 0; armedMem.clear(); loaded = true; nextId = 1 }      // לבדיקות
+export function clearGate(): void { signals.length = 0; dayTrades.length = 0; armedMem.clear(); flowMem.clear(); loaded = true; nextId = 1 }      // לבדיקות
 
 function persistSignal(s: GateSignal): void {
   try {
@@ -265,8 +292,9 @@ export function onMinuteSnapshot(snap: StoredSnap, opts: { news?: News | null } 
 
   const bars = getBars(snap.symbol, '1m', 3)
   const prevBar = [...bars].reverse().find(b => b.time * 1000 === snap.time - 60_000) ?? null
-  const armed = (dir: Dir) => evalConditions(snap, dir, rules, now, prevBar?.close ?? null).every(c => c.ok)
-  const now_ = { long: armed('long'), short: armed('short') }
+  const flow = getFlow(snap.symbol, now)?.cvd ?? null
+  const conds = { long: evalConditions(snap, 'long', rules, now, prevBar?.close ?? null, flow), short: evalConditions(snap, 'short', rules, now, prevBar?.close ?? null, flow) }
+  const now_ = { long: conds.long.every(c => c.ok), short: conds.short.every(c => c.ok) }
   const prev = armedMem.get(snap.symbol)
   if (prev && prev.barTime === snap.time) return null                        // אותו נר הגיע פעמיים
   const wasArmed = (dir: Dir): boolean => {
@@ -289,10 +317,11 @@ export function onMinuteSnapshot(snap: StoredSnap, opts: { news?: News | null } 
       id: nextId++, symbol: snap.symbol, dir, barTime: snap.time, ts: now, validUntil: snap.time + 120_000,       // עד סוף הנר השני
       entry: e, stop: e - k * rules.stopPts, t1: e + k * rules.stopPts, t2: e + k * rules.stopPts * rules.rr,
       blocked: blocked ?? null, atr: snap.atr ?? null, status: 'open', hit1At: null, resolvedAt: null, r: null, mfe: 0, mae: 0, ambiguous: false,
+      why: conds[dir].map(c => `${c.name}: ${c.detail}`), cvdSrc: flow ? 'bookmap' : 'tv',
     }
     try {
-      const info = getDb().prepare(`INSERT INTO gate_signals (symbol, dir, bar_time, ts, valid_until, entry, stop, t1, t2, blocked, atr) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-        .run(sig.symbol, dir, sig.barTime, sig.ts, sig.validUntil, sig.entry, sig.stop, sig.t1, sig.t2, sig.blocked, sig.atr) as { lastInsertRowid?: number | bigint } | undefined
+      const info = getDb().prepare(`INSERT INTO gate_signals (symbol, dir, bar_time, ts, valid_until, entry, stop, t1, t2, blocked, atr, why, cvd_src) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .run(sig.symbol, dir, sig.barTime, sig.ts, sig.validUntil, sig.entry, sig.stop, sig.t1, sig.t2, sig.blocked, sig.atr, JSON.stringify(sig.why), sig.cvdSrc) as { lastInsertRowid?: number | bigint } | undefined
       const id = Number(info?.lastInsertRowid); if (id > 0) { sig.id = id; nextId = Math.max(nextId, id + 1) }
     } catch { /* נשאר בזיכרון */ }
     signals.push(sig)
@@ -315,14 +344,83 @@ export function gateTelegramText(sig: GateSignal, riskUsd = 300): string | null 
     `${sz.contracts} ${sz.unit} · סיכון ${f(sz.riskUsd)}$ · יעד ${f(sz.rewardUsd)}$`,
     `⏱ תקף לנר הזה בלבד, עד ${until}. אחריו לא רודפים.`,
     ...(sig.atr != null && sig.atr > rules.stopPts ? [`⚠️ יום תנודתי (נר דקה ממוצע כ-${f(Math.round(sig.atr))} נק׳): להוריד כמות חוזים.`] : []),
-    'לפי נתוני TradingView בלבד. עוד לא נבדק מול ה-CVD של Bookmap.',
+    sig.cvdSrc === 'bookmap' ? '✅ ה-CVD אושר ב-Bookmap.' : '⚠️ בלי אישור Bookmap (העיניים כבויות או האתר סגור): ה-CVD לפי הערכה של TradingView.',
+    'למה:',
+    ...sig.why.map(w => `• ${w}`),
     'הכללים מתקיימים עכשיו. זו לא הבטחה לרווח.',
   ].join('\n')
+}
+
+// ─── מדד הרמזור: כמה מהירוקים שנשלחו היו טובים וכמה לא ───
+// "טוב" = הגיע ליעד 1:2 לפני הסטופ. "לא טוב" = פגע בסטופ. "נסגר" = לא הוכרע עד סוף הסשן (לפי המחיר בסגירה).
+// הכניסה לפי מחיר הסגירה של נר האיתות, בלי עמלות והחלקה. ירוקים שנחסמו (חדשות / נעילה) לא נספרים.
+function tally(list: GateSignal[], riskUsd: number) {
+  const good = list.filter(s => s.status === 'target').length
+  const bad = list.filter(s => s.status === 'stop').length
+  const closed = list.filter(s => s.status === 'expired').length
+  const open = list.filter(s => s.status === 'open').length
+  const sumR = +list.reduce((a, s) => a + (s.r ?? 0), 0).toFixed(2)
+  return {
+    n: list.length, good, bad, closed, open,
+    winPct: good + bad > 0 ? Math.round(good / (good + bad) * 100) : null,
+    sumR, usd: Math.round(sumR * riskUsd),
+    // כמה נגעו ביעד 1:1 לפני הסטופ (אילו היעד היה 1:1)
+    hit1: list.filter(s => s.hit1At != null || s.status === 'target').length,
+  }
+}
+/** מה היה קורה ביום הזה אם לוקחים את הירוקים לפי חוקי היום: עסקה אחת בכל פעם, צינון אחרי הפסד, נעילה, מקסימום עסקאות, עצירה ביעד. */
+function simulateDay(day: GateSignal[], rules: GateRules, riskUsd: number) {
+  let busyUntil = 0; let losses = 0; let usd = 0; let lastLoss = 0
+  const taken: GateSignal[] = []
+  for (const s of [...day].sort((a, b) => a.ts - b.ts)) {
+    if (losses >= rules.maxLosses || taken.length >= rules.maxTrades || usd >= rules.dayTargetUsd) break
+    if (s.ts < busyUntil) continue                                   // עסקה קודמת עוד פתוחה
+    if (lastLoss && s.ts - lastLoss < rules.cooldownMin * 60_000) continue
+    taken.push(s)
+    busyUntil = s.resolvedAt ?? Number.MAX_SAFE_INTEGER
+    usd += Math.round((s.r ?? 0) * riskUsd)
+    if (s.status === 'stop') { losses++; lastLoss = s.resolvedAt ?? s.ts }
+  }
+  return { ...tally(taken, riskUsd), ids: taken.map(s => s.id) }
+}
+export function gateScore(symbolRaw: string, riskUsd = 300, now = Date.now()) {
+  const symbol = normSymbol(symbolRaw)
+  const rules = GATE_RULES[symbol]
+  if (!rules) return { supported: false as const, symbol }
+  ensureLoaded()
+  const sz = sizing(rules, riskUsd)
+  const mine = signals.filter(s => s.symbol === symbol)
+  const full = mine.filter(s => !s.blocked)
+  const group = <K extends string>(key: (s: GateSignal) => K) => {
+    const m = new Map<K, GateSignal[]>()
+    for (const s of full) { const k = key(s); if (!m.has(k)) m.set(k, []); m.get(k)!.push(s) }
+    return [...m.entries()].map(([k, l]) => ({ key: k, ...tally(l, sz.riskUsd) }))
+  }
+  const ilHour = (ts: number) => new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Jerusalem', hour12: false, hour: '2-digit' }).format(new Date(ts))
+  const days = new Map<string, GateSignal[]>()
+  for (const s of full) { const d = nyDay(s.ts); if (!days.has(d)) days.set(d, []); days.get(d)!.push(s) }
+  return {
+    supported: true as const, symbol, serverTs: now,
+    rules: { stopPts: rules.stopPts, rr: rules.rr, ...sz, maxTrades: rules.maxTrades, maxLosses: rules.maxLosses, cooldownMin: rules.cooldownMin, dayTargetUsd: rules.dayTargetUsd },
+    since: mine.length ? mine[0].ts : null,
+    total: tally(full, sz.riskUsd),
+    blocked: mine.length - full.length,
+    bySource: group(s => s.cvdSrc),
+    byDir: group(s => s.dir),
+    byVol: group(s => (s.atr != null && s.atr > rules.stopPts ? 'volatile' : 'calm')),
+    byHour: group(s => ilHour(s.ts)).sort((a, b) => a.key.localeCompare(b.key)),
+    byDay: [...days.entries()].sort((a, b) => b[0].localeCompare(a[0])).map(([day, l]) => ({ day, ...tally(l, sz.riskUsd), byRules: simulateDay(l, rules, sz.riskUsd) })),
+    list: full.slice(-300).reverse(),
+  }
 }
 
 // ─── מה שהאתר מציג ───
 export interface GateExtras { news?: News | null; riskUsd?: number; optionLevels?: Array<{ name: string; price: number }> }
 
+function bySrc(list: GateSignal[], src: GateSignal['cvdSrc']) {
+  const l = list.filter(s => s.cvdSrc === src)
+  return { n: l.length, target: l.filter(s => s.status === 'target').length, stop: l.filter(s => s.status === 'stop').length }
+}
 function logSummary(symbol: string, now: number) {
   const mine = signals.filter(s => s.symbol === symbol)
   const full = mine.filter(s => !s.blocked)
@@ -336,6 +434,7 @@ function logSummary(symbol: string, now: number) {
       winPct: target + stop > 0 ? Math.round(target / (target + stop) * 100) : null,
       sumR: +resolved.reduce((a, s) => a + (s.r ?? 0), 0).toFixed(2),
       since: mine.length ? mine[0].ts : null,
+      bookmap: bySrc(full, 'bookmap'), tv: bySrc(full, 'tv'),
     },
     recent: mine.slice(-15).reverse(),
     today: mine.filter(s => nyDay(s.ts) === today),
@@ -375,12 +474,14 @@ export function buildGate(symbolRaw: string, extras: GateExtras = {}, now = Date
       ...base, state: 'off' as const, dir: null, headline: open ? 'אין נתונים חיים' : 'השוק סגור',
       missing: !snap ? 'עוד לא הגיע צילום מצב של נר הדקה.' : open ? `צילום המצב האחרון של נר הדקה הגיע לפני ${Math.round(dataAgeSec! / 60)} דק׳. בלי נתון טרי אי אפשר לשפוט.` : null,
       blocks, warnings: [] as string[], conditions: [] as GateCondition[], other: null, plan: null, signal: null,
+      flow: { source: 'tv' as const, cvd: null, ageSec: null }, why: [] as string[],
     }
   }
 
   const bars = getBars(symbol, '1m', 3)
   const prevBar = [...bars].reverse().find(b => b.time * 1000 === snap.time - 60_000) ?? null
-  const conds = { long: evalConditions(snap, 'long', rules, now, prevBar?.close ?? null), short: evalConditions(snap, 'short', rules, now, prevBar?.close ?? null) }
+  const flow = getFlow(symbol, now)
+  const conds = { long: evalConditions(snap, 'long', rules, now, prevBar?.close ?? null, flow?.cvd ?? null), short: evalConditions(snap, 'short', rules, now, prevBar?.close ?? null, flow?.cvd ?? null) }
   const market = (cs: GateCondition[]) => cs.filter(c => c.key !== 'time')
   const okN = (cs: GateCondition[]) => market(cs).filter(c => c.ok).length
   const active = [...signals].reverse().find(s => s.symbol === symbol && s.barTime === snap.time && now <= s.validUntil) ?? null
@@ -431,6 +532,8 @@ export function buildGate(symbolRaw: string, extras: GateExtras = {}, now = Date
   }
   return {
     ...base, state, dir, headline, missing, blocks, warnings, conditions: dir ? shown : [], other, plan,
+    flow: flow ? { source: 'bookmap' as const, cvd: flow.cvd, ageSec: flow.ageSec } : { source: 'tv' as const, cvd: null, ageSec: null },
+    why: active ? active.why : [],
     signal: active ? { id: active.id, ts: active.ts, validUntil: active.validUntil, secLeft: Math.max(0, Math.round((active.validUntil - now) / 1000)), blocked: active.blocked } : null,
   }
 }

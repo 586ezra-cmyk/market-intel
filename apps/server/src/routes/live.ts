@@ -3,7 +3,7 @@ import { buildBoard, boardMeta, liveSymbols, liveHealth, normSymbol, getBars, ge
 import { latestSnapshot } from '../services/optionsLevelsService'
 import { getSummary, spotOf, OF_SYMBOLS, BINANCE_SYMBOLS } from '../services/orderflowService'
 import { getSetting } from './settings'
-import { buildGate, nextNews, addDayTrade, undoDayTrade } from '../services/entryGate'
+import { buildGate, nextNews, addDayTrade, undoDayTrade, setFlow, gateScore } from '../services/entryGate'
 
 const router = Router()
 
@@ -49,6 +49,12 @@ router.get('/:symbol/gate', async (req: Request, res: Response) => {
   const now = Date.now()
   res.json(buildGate(symbol, { news: await nextNews(now), riskUsd: riskOf(), optionLevels: optionLevels(symbol) }, now))
 })
+// GET /api/live/:symbol/gate-score — מדד הרמזור: כמה מהירוקים היו טובים וכמה לא, לפי יום / כיוון / מקור ה-CVD / שעה
+router.get('/:symbol/gate-score', (req: Request, res: Response) => {
+  const symbol = normSymbol(String(req.params['symbol'] ?? ''))
+  if (!/^[A-Z0-9.]{1,20}$/.test(symbol)) return res.status(400).json({ error: 'bad symbol' })
+  res.json(gateScore(symbol, riskOf()))
+})
 // POST /api/live/:symbol/day-trade { result: win | loss | be } — המשתמש מסמן עסקה שנסגרה (לחוקי היום). DELETE מבטל את האחרונה
 router.post('/:symbol/day-trade', (req: Request, res: Response) => {
   const symbol = normSymbol(String(req.params['symbol'] ?? ''))
@@ -57,6 +63,14 @@ router.post('/:symbol/day-trade', (req: Request, res: Response) => {
   const t = addDayTrade(symbol, result as 'win' | 'loss' | 'be', riskOf())
   if (!t) return res.status(400).json({ error: 'no rules for this symbol' })
   res.json({ ok: true, trade: t })
+})
+// POST /api/live/:symbol/flow { cvd: up | down | flat } — כיוון ה-CVD ב-Bookmap, מהמחשב של המשתמש (מילה אחת, בלי מספרים)
+router.post('/:symbol/flow', (req: Request, res: Response) => {
+  const symbol = normSymbol(String(req.params['symbol'] ?? ''))
+  const cvd = String((req.body as { cvd?: unknown } | undefined)?.cvd ?? '')
+  if (!/^[A-Z0-9.]{1,20}$/.test(symbol) || !['up', 'down', 'flat'].includes(cvd)) return res.status(400).json({ error: 'bad symbol or cvd' })
+  setFlow(symbol, cvd as 'up' | 'down' | 'flat')
+  res.json({ ok: true })
 })
 router.delete('/:symbol/day-trade', (_req: Request, res: Response) => { res.json({ ok: true, removed: undoDayTrade() }) })
 // GET /api/live/:symbol — הלוח המלא לנכס

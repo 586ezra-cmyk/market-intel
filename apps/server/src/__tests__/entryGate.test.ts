@@ -7,7 +7,7 @@ vi.mock('../db/client', () => {
 vi.mock('../services/forexFactory', () => ({ getCachedCalendar: async () => [] }))
 
 import { saveSnapshot, clearLive, type SnapshotInput } from '../services/liveBoard'
-import { buildGate, onMinuteSnapshot, clearGate, addDayTrade, undoDayTrade, dayStatus, gateTelegramText, GATE_RULES } from '../services/entryGate'
+import { buildGate, onMinuteSnapshot, clearGate, addDayTrade, undoDayTrade, dayStatus, gateTelegramText, setFlow, gateScore, GATE_RULES } from '../services/entryGate'
 import { HTT_FLAG_KEYS } from '../services/httFlagKeys'
 
 const bits = (on: string[]) => HTT_FLAG_KEYS.map(k => (on.includes(k) ? '1' : '0')).join('')
@@ -175,6 +175,48 @@ describe('entryGate', () => {
     clearLive(); clearGate()
     const blocked = bar(0, {}, { title: 'CPI', inMin: 2 }).sig!
     expect(gateTelegramText(blocked, 300)).toBeNull()
+  })
+
+  it('a fresh Bookmap CVD direction replaces the TradingView estimate: it can block a signal and it can allow one', () => {
+    // TradingView אומר שה-CVD עולה, Bookmap אומר שיורד → אין לונג
+    setFlow('NQ', 'down', T0 + MIN)
+    const blocked = bar(0)
+    expect(blocked.sig).toBeNull()
+    const g = buildGate('NQ', {}, blocked.at + 2_000) as { state: string; missing: string; flow: { source: string; cvd: string }; conditions: Array<{ key: string; ok: boolean; name: string }> }
+    expect(g.state).toBe('yellow'); expect(g.missing).toContain('Bookmap'); expect(g.flow).toMatchObject({ source: 'bookmap', cvd: 'down' })
+    expect(g.conditions.find(c => c.key === 'cvd')).toMatchObject({ ok: false })
+
+    // TradingView אומר שה-CVD לא עולה, Bookmap אומר שעולה → יש לונג, מסומן כמאושר ב-Bookmap
+    clearLive(); clearGate()
+    setFlow('NQ', 'up', T0 + MIN)
+    const ok = bar(0, { L: bits(['ema12Ok', 'ema12Side']) })
+    expect(ok.sig).toMatchObject({ dir: 'long', cvdSrc: 'bookmap' })
+    expect(ok.sig!.why.some(w => w.includes('Bookmap') && w.includes('עולה'))).toBe(true)
+    expect(gateTelegramText(ok.sig!, 300)).toContain('אושר ב-Bookmap')
+
+    // כיוון ישן (יותר מ-20 שניות) לא נחשב: חוזרים ל-TradingView, וההודעה אומרת את זה
+    clearLive(); clearGate()
+    setFlow('NQ', 'down', T0 - MIN)
+    const stale = bar(0)
+    expect(stale.sig).toMatchObject({ dir: 'long', cvdSrc: 'tv' })
+    expect(gateTelegramText(stale.sig!, 300)).toContain('בלי אישור Bookmap')
+    expect(stale.sig!.why).toHaveLength(6)
+  })
+
+  it('score: counts good and bad greens, and what the day gives when taken by the daily rules', () => {
+    bar(0)                                                                // ירוק 1: כניסה 28500
+    bar(1, { price: 28465, op: 28500, hi: 28501, lo: 28460 })             // ← סטופ. הנר אדום = תיקון
+    bar(2, { price: 28503, op: 28465, hi: 28504, lo: 28464 })             // ירוק 2 (בתוך הצינון של 10 דק'): כניסה 28503
+    bar(3, { price: 28570, op: 28503, hi: 28575, lo: 28500 })             // ← יעד (28563). התנאים עדיין מתקיימים = אותו מהלך
+    bar(4, { price: 28560, op: 28570, hi: 28571, lo: 28556, lv: { vah: 28480, val: 28300, ema: 28545 } })   // תיקון
+    bar(5, { price: 28572, op: 28560, hi: 28573, lo: 28559, lv: { vah: 28480, val: 28300, ema: 28550 } })   // ירוק 3: כניסה 28572, עוד פתוח
+    const sc = gateScore('NQ', 300, T0 + 7 * MIN) as { total: Record<string, number | null>; byDay: Array<{ day: string; n: number; byRules: Record<string, unknown> }>; byDir: Array<{ key: string; n: number }>; list: unknown[] }
+    expect(sc.total).toMatchObject({ n: 3, good: 1, bad: 1, open: 1, winPct: 50, sumR: 1, usd: 300 })
+    expect(sc.byDir).toEqual([expect.objectContaining({ key: 'long', n: 3 })])
+    expect(sc.list).toHaveLength(3)
+    // לפי החוקים: הראשון נלקח ונגמר בסטופ; השני והשלישי בתוך 10 דקות הצינון שאחרי ההפסד, ולכן מדלגים עליהם
+    expect(sc.byDay[0].byRules).toMatchObject({ n: 1, bad: 1, good: 0, usd: -300 })
+    expect(gateScore('BTCUSDT')).toEqual({ supported: false, symbol: 'BTCUSDT' })
   })
 
   it('stale data never shows a colour', () => {

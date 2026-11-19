@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { API_BASE } from '@/lib/api'
+import { useEyesFlow } from './eyesFlow'
 
 // ─── רמזור הכניסה ───
 // שורה אחת שאומרת מה המצב עכשיו: אין עסקה / מתקרב / עכשיו. מתחתיה: מה חסר, רשימת התנאים, מה אסור, חוקי היום, ויומן של כל "ירוק".
@@ -13,6 +14,7 @@ export interface GatePlan { dir: 'long' | 'short'; entry: number; stop: number; 
 export interface GateSignalRow {
   id: number; dir: 'long' | 'short'; barTime: number; ts: number; entry: number; stop: number; t1: number; t2: number; blocked: string | null
   status: 'open' | 'target' | 'stop' | 'expired'; r: number | null; hit1At: number | null; ambiguous: boolean; mfe: number; mae: number
+  why?: string[]; cvdSrc?: 'bookmap' | 'tv'
 }
 export interface GateOn {
   supported: true; symbol: string; serverTs: number; dataAgeSec: number | null
@@ -21,10 +23,13 @@ export interface GateOn {
   other: { dir: 'long' | 'short'; ok: number; total: number } | null
   plan: GatePlan | null
   signal: { id: number; ts: number; validUntil: number; secLeft: number; blocked: string | null } | null
+  flow?: { source: 'bookmap' | 'tv'; cvd: 'up' | 'down' | 'flat' | null; ageSec: number | null }
+  why?: string[]
   day: { date: string; trades: number; wins: number; losses: number; usd: number; maxTrades: number; maxLosses: number; dayTargetUsd: number; cooldownLeftMin: number; locked: string | null }
   rules: { stopPts: number; rr: number; startIl: string; newsMin: number; maxEmaDistPts: number; cooldownMin: number; contracts: number; unit: string; riskUsd: number; rewardUsd: number }
   log: {
-    stats: { n: number; target: number; stop: number; expired: number; open: number; blocked: number; winPct: number | null; sumR: number; since: number | null }
+    stats: { n: number; target: number; stop: number; expired: number; open: number; blocked: number; winPct: number | null; sumR: number; since: number | null
+      bookmap?: { n: number; target: number; stop: number }; tv?: { n: number; target: number; stop: number } }
     recent: GateSignalRow[]; today: GateSignalRow[]
   }
 }
@@ -85,6 +90,9 @@ export default function EntryGate({ gate, symbol, onChanged }: { gate: Gate | un
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [sound, setSound] = useState(true)
+  const [showWhy, setShowWhy] = useState(false)
+  const [openRow, setOpenRow] = useState<number | null>(null)
+  const eyes = useEyesFlow()
   const lastGreen = useRef<number | null>(null)
   useEffect(() => { try { if (localStorage.getItem(SOUND_KEY) === 'off') setSound(false) } catch { /* אין אחסון */ } }, [])
   // צליל פעם אחת לכל ירוק חדש (לפי מספר האיתות), לא בכל רענון
@@ -121,7 +129,9 @@ export default function EntryGate({ gate, symbol, onChanged }: { gate: Gate | un
         <Lamp state={g.state} />
         <div className="flex-1 min-w-0">
           <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-            <div className={`text-3xl font-black ${tone.text}`}>{g.headline}</div>
+            <button onClick={() => setShowWhy(v => !v)} title="לחיצה מציגה למה" className={`text-3xl font-black text-right ${tone.text} hover:opacity-80`}>
+              {g.headline} <span className="text-sm font-bold underline decoration-dotted opacity-80">{showWhy ? 'הסתר' : 'למה?'}</span>
+            </button>
             {g.state === 'green' && g.signal && <div className="text-sm font-bold text-emerald-200">תקף עוד {g.signal.secLeft} שנ׳ (הנר הזה בלבד)</div>}
             {g.other && g.state !== 'green' && <div className="text-xs text-slate-400">הכיוון השני ({DIR_HE[g.other.dir]}): {g.other.ok} מתוך {g.other.total} תנאים</div>}
             <button onClick={toggleSound} title="צליל ברגע שנדלק ירוק" className={`mr-auto px-2 py-0.5 rounded text-xs ${sound ? 'bg-black/30 text-white' : 'bg-black/20 text-slate-500'}`}>{sound ? '🔔 צליל דולק' : '🔕 צליל כבוי'}</button>
@@ -132,6 +142,17 @@ export default function EntryGate({ gate, symbol, onChanged }: { gate: Gate | un
             </div>
           )}
           {g.missing && <div className="mt-2 text-lg text-white leading-7">{g.missing}</div>}
+          {showWhy && (
+            <div className="mt-2 rounded-md bg-black/40 p-2.5 text-sm">
+              <div className="font-bold text-white mb-1">{g.state === 'green' ? `למה ${g.dir ? DIR_HE[g.dir] : ''} עכשיו` : g.dir ? `מה מתקיים ומה לא, ל${DIR_HE[g.dir]}` : 'אין כיוון כרגע'}</div>
+              {g.state === 'green' && (g.why?.length ?? 0) > 0
+                ? <ul className="space-y-0.5 text-slate-200">{g.why!.map((w, i) => <li key={i}>✓ {w}</li>)}</ul>
+                : <ul className="space-y-0.5">{g.conditions.map(c => <li key={c.key} className={c.ok ? 'text-slate-200' : 'text-red-200'}>{c.ok ? '✓' : '✗'} {c.name}: {c.ok ? c.detail : (c.need ?? c.detail)}</li>)}</ul>}
+              <div className="mt-1.5 text-[11px] text-slate-400">
+                {g.flow?.source === 'bookmap' ? 'ה-CVD נבדק מול Bookmap (כיוון 5 דקות).' : 'ה-CVD לפי הערכה של TradingView, כי העיניים כבויות או שעוד אין להן 2 דקות של נתונים.'}
+              </div>
+            </div>
+          )}
           {p && (
             <div className="mt-3 flex flex-wrap gap-x-6 gap-y-1 text-sm">
               <div><span className="text-slate-400">{p.estimated ? 'כניסה משוערת ' : 'כניסה '}</span><b className="text-white tabular-nums text-base">{num(p.entry)}</b></div>
@@ -165,6 +186,12 @@ export default function EntryGate({ gate, symbol, onChanged }: { gate: Gate | un
                 ))}
               </ul>
             )}
+          <div className={`mt-2 rounded px-2 py-1 text-xs ${eyes.running && eyes.dir ? 'bg-sky-950/60 text-sky-100' : 'bg-surface text-slate-400'}`}>
+            {!eyes.running ? '👁 העיניים כבויות: ה-CVD ברמזור לפי הערכה של TradingView. להדליק בלשונית "עיניים" כדי לבדוק מול Bookmap.'
+              : eyes.symbol !== 'NQ' ? '👁 העיניים דלוקות, אבל חלון Bookmap של נאסד״ק לא נמצא כרגע על המסך. ה-CVD ברמזור לפי TradingView.'
+              : !eyes.dir ? `👁 Bookmap: אוספים נתונים. צריך לפחות 2 דקות של CVD כדי לקבוע כיוון${eyes.refAgeS != null ? ` (יש ${eyes.refAgeS} שנ׳)` : ''}.`
+              : <>👁 Bookmap (רק במחשב הזה): CVD עכשיו <b className="tabular-nums">{signed(eyes.cvd ?? 0)}</b> · לפני {Math.round((eyes.refAgeS ?? 0) / 60)} דק׳ <b className="tabular-nums">{signed(eyes.ref ?? 0)}</b> · <b>{eyes.dir === 'up' ? 'עולה ↑' : eyes.dir === 'down' ? 'יורד ↓' : 'לא זז לכיוון ברור'}</b>{eyes.sent ? ' · הכיוון נשלח לרמזור ✓' : ' · הכיוון עוד לא הגיע לשרת'}</>}
+          </div>
           <div className="mt-2 text-[11px] text-slate-500 leading-4">
             נבדק בכל סגירת נר דקה, מנתוני TradingView{g.dataAgeSec != null ? ` · עודכן לפני ${g.dataAgeSec} שנ׳` : ''}. ירוק = הכללים מתקיימים עכשיו, לא הבטחה לרווח.
           </div>
@@ -207,6 +234,7 @@ export default function EntryGate({ gate, symbol, onChanged }: { gate: Gate | un
               <span><span className="text-slate-400">סה״כ </span><b className={s.sumR > 0 ? 'text-emerald-400' : s.sumR < 0 ? 'text-red-400' : 'text-white'}>{signed(s.sumR)}R</b></span>
             </>
           )}
+          {s.bookmap && s.tv && s.n > 0 && <span className="text-slate-400 text-xs">עם Bookmap: {s.bookmap.n} ({s.bookmap.target} יעד, {s.bookmap.stop} סטופ) · TV בלבד: {s.tv.n} ({s.tv.target} יעד, {s.tv.stop} סטופ)</span>}
           {s.blocked > 0 && <span className="text-slate-500">({s.blocked} נחסמו ולא נספרים)</span>}
           <span className="mr-auto text-xs text-slate-500">{showLog ? 'הסתר ▲' : 'הצג ▼'}</span>
         </button>
@@ -215,15 +243,23 @@ export default function EntryGate({ gate, symbol, onChanged }: { gate: Gate | un
             {g.log.recent.length === 0 ? <div className="text-sm text-slate-500">כשהרמזור יידלק ירוק, זה יירשם כאן יחד עם מה שקרה אחר כך.</div> : (
               <table className="w-full text-sm">
                 <thead><tr className="text-slate-400 text-xs border-b border-surface-border"><th className="text-right py-1 font-normal">מתי</th><th className="font-normal">כיוון</th><th className="font-normal">כניסה</th><th className="font-normal">סטופ</th><th className="font-normal">יעד</th><th className="text-right font-normal">מה קרה</th></tr></thead>
-                <tbody>{g.log.recent.map(r => { const st = statusText(r); return (
-                  <tr key={r.id} className={`border-b border-surface-border ${r.blocked ? 'opacity-60' : ''}`}>
-                    <td className="py-1 text-right tabular-nums text-slate-300">{timeFmt.format(new Date(r.ts))}</td>
+                <tbody>{g.log.recent.map(r => { const st = statusText(r); return [
+                  <tr key={r.id} onClick={() => setOpenRow(openRow === r.id ? null : r.id)} title="לחיצה מציגה למה נדלק" className={`border-b border-surface-border cursor-pointer hover:bg-surface ${r.blocked ? 'opacity-60' : ''}`}>
+                    <td className="py-1 text-right tabular-nums text-slate-300">{timeFmt.format(new Date(r.ts))} <span className={`text-[10px] ${r.cvdSrc === 'bookmap' ? 'text-sky-300' : 'text-slate-500'}`}>{r.cvdSrc === 'bookmap' ? 'Bookmap ✓' : 'TV בלבד'}</span></td>
                     <td className={`text-center font-bold ${r.dir === 'long' ? 'text-emerald-400' : 'text-red-400'}`}>{DIR_HE[r.dir]}</td>
                     <td className="text-center tabular-nums">{num(r.entry)}</td>
                     <td className="text-center tabular-nums text-slate-400">{num(r.stop)}</td>
                     <td className="text-center tabular-nums text-slate-400">{num(r.t2)}</td>
                     <td className={`text-right ${st.cls}`}>{st.text}</td>
-                  </tr>) })}
+                  </tr>,
+                  openRow === r.id && (
+                    <tr key={`${r.id}-why`} className="border-b border-surface-border bg-black/30">
+                      <td colSpan={6} className="py-1.5 px-2 text-right text-xs text-slate-300 leading-5">
+                        {(r.why?.length ?? 0) > 0 ? r.why!.map((w, i) => <div key={i}>✓ {w}</div>) : 'לאיתות הזה לא נשמר הסבר (נרשם לפני שהתוספת עלתה).'}
+                        <div className="text-slate-500">הכי רחוק לטובה: {num(r.mfe)} נק׳ · הכי רחוק נגד: {num(r.mae)} נק׳</div>
+                      </td>
+                    </tr>),
+                ] })}
                 </tbody>
               </table>
             )}
