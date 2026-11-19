@@ -14,9 +14,10 @@ import { evaluateConfluence } from '../services/confluenceEngine'
 import { parseTF } from '../utils/timeframe'
 import type { Direction, Timeframe } from '@market/shared'
 import { getSetting } from './settings'
-import { saveAlert, TOPIC_HIGH } from '../services/alertDispatcher'
+import { saveAlert, sendTelegram, TOPIC_HIGH } from '../services/alertDispatcher'
 import { buildHttMessage, httFactors, buildHttContext } from '../services/httSetup'
 import { saveSnapshot } from '../services/liveBoard'
+import { onMinuteSnapshot, nextNews, gateTelegramText } from '../services/entryGate'
 
 const router = Router()
 
@@ -271,6 +272,14 @@ router.post('/tradingview', async (req: Request, res: Response) => {
       const tf = parseTF(d.timeframe)
       const saved = saveSnapshot({ ...d, tf })
       res.json({ ok: true, symbol: saved.symbol, tf })
+      // רמזור הכניסה: נבדק בכל סגירת נר דקה, אחרי שכבר ענינו ל-TradingView (שלא יחכה לנו)
+      if (tf === '1m') void nextNews(Date.now()).then(async news => {
+        const sig = onMinuteSnapshot(saved, { news })
+        // ירוק מלא → הודעה אחת לטלגרם (אפשר לכבות: הגדרה gate_telegram = false; הנושא: gate_telegram_topic)
+        if (!sig || getSetting('gate_telegram', 'true') === 'false') return
+        const text = gateTelegramText(sig, Number(getSetting('m3_risk_usd', '300')) || 300)
+        if (text) await sendTelegram(text, 0, undefined, getSetting('gate_telegram_topic', TOPIC_HIGH) || TOPIC_HIGH)
+      }).catch(e => console.warn('[Gate]', String((e as Error)?.message ?? e).slice(0, 200)))
     } catch (e) {
       res.status(400).json({ error: String((e as Error).message ?? e).slice(0, 200) })
     }

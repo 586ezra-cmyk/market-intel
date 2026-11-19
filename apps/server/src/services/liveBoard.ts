@@ -128,6 +128,8 @@ export function getLevels(symbolRaw: string, tf: string, now = Date.now()) {
   const ageSec = Math.round((now - pick.receivedAt) / 1000)
   return { symbol, tf: pick.tf, exact: pick.tf === tf, ageSec, stale: ageSec > (TF_MIN[pick.tf] ?? 1) * 60 * 2 + 90, price: pick.price, lv: pick.lv, names: LEVEL_HE }
 }
+/** הצילום האחרון של (נכס, מסגרת) — לרמזור הכניסה. */
+export function getSnap(symbolRaw: string, tf: string): StoredSnap | null { ensureLoaded(); return mem.get(normSymbol(symbolRaw))?.get(tf) ?? null }
 export function liveSymbols(): string[] { ensureLoaded(); return [...mem.keys()].sort() }
 export function clearLive(): void { mem.clear(); barMem.clear(); loaded = true }      // לבדיקות
 
@@ -194,13 +196,13 @@ function distFor(rule: DistRule, lv: Record<string, number>, price: number): { l
   return best
 }
 
-function nyClock(now: number): { hhmm: string; minutes: number; weekday: number } {
+export function nyClock(now: number): { hhmm: string; minutes: number; weekday: number } {
   const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour12: false, hour: '2-digit', minute: '2-digit', weekday: 'short' }).formatToParts(new Date(now))
   const get = (t: string) => parts.find(p => p.type === t)?.value ?? ''
   const h = parseInt(get('hour'), 10) % 24; const m = parseInt(get('minute'), 10)
   return { hhmm: `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`, minutes: h * 60 + m, weekday: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(get('weekday')) }
 }
-function ilClock(now: number): string {
+export function ilClock(now: number): string {
   return new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Jerusalem', hour12: false, hour: '2-digit', minute: '2-digit' }).format(new Date(now))
 }
 

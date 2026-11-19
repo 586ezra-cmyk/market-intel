@@ -8,7 +8,7 @@ import type { DrawingTool, Drawing } from '@/types/drawing'
 export type LayerId =
   | 'structure' | 'liquidity' | 'fvg' | 'ifvg' | 'range' | 'killZone'
   | 'wyckoff' | 'smt' | 'ismt' | 'ob' | 'bollinger'
-  | 'inducement' | 'repricing' | 'session' | 'judas' | 'po3' | 'htt'
+  | 'inducement' | 'repricing' | 'session' | 'judas' | 'po3' | 'htt' | 'gate'
 
 export const LAYER_LABELS: Record<LayerId, string> = {
   structure:  'מבנה שוק (BOS/CHoCH)',
@@ -28,6 +28,7 @@ export const LAYER_LABELS: Record<LayerId, string> = {
   judas:      'Judas Swing',
   po3:        'Power of 3 / Opening Range',
   htt:        'רמות HTT (חי מ-TradingView)',
+  gate:       'רמזור (כניסה / סטופ / יעד)',
 }
 
 export const LAYER_COLORS: Record<LayerId, string> = {
@@ -48,6 +49,7 @@ export const LAYER_COLORS: Record<LayerId, string> = {
   judas:      '#0d9488',
   po3:        '#0ea5e9',
   htt:        '#facc15',
+  gate:       '#34d399',
 }
 
 // ─── Selected symbol + timeframe ──────────────────────────────────────────────
@@ -132,6 +134,7 @@ export const useMarketStore = create<MarketStore>()(
         judas:      true,
         po3:        false,
         htt:        true,
+        gate:       true,
       },
       toggleLayer: (id) =>
         set((state) => ({

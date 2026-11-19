@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { API_BASE } from '@/lib/api'
+import EntryGate, { type Gate } from '@/components/live/EntryGate'
 
 // ─── מערכת 3 — לוח ההחלטה החי ───
 // HTT Snapshot (בגרף) שולח בכל סגירת נר את מצב כל האישורים לכל מסגרת זמן. כאן רואים במקום אחד:
@@ -27,6 +28,7 @@ interface Board {
   session: { ny: string; il: string; inRth: boolean; allDay?: boolean; minutesToOpen: number | null; minutesToClose: number | null }
   news: { title: string; inMin: number } | null
   guard: { live: boolean; snapshots?: boolean; inSession: boolean; newsClear: boolean }
+  gate?: Gate
 }
 interface Meta { names: Record<string, string>; groups: Record<string, string>; groupOrder: string[]; entries: Record<string, string> }
 
@@ -42,17 +44,18 @@ const age = (s: number) => (s < 90 ? `${s} שנ׳` : s < 5400 ? `${Math.round(s 
 function useBoard(symbol: string) {
   const [board, setBoard] = useState<Board | null>(null)
   const [err, setErr] = useState<string | null>(null)
+  const [tick, setTick] = useState(0)                    // רענון מיידי אחרי סימון עסקה
+  useEffect(() => { setBoard(null) }, [symbol])
   useEffect(() => {
     let alive = true
-    setBoard(null)
     const load = () => fetch(`${API_BASE}/api/live/${symbol}`, { cache: 'no-store' })
       .then(r => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
       .then(j => { if (alive) { setBoard(j); setErr(null) } })
       .catch(e => { if (alive) setErr(String(e.message ?? e)) })
     load(); const id = setInterval(load, 3000)
     return () => { alive = false; clearInterval(id) }
-  }, [symbol])
-  return { board, err }
+  }, [symbol, tick])
+  return { board, err, reload: () => setTick(t => t + 1) }
 }
 
 function SummaryCard({ dir, side }: { dir: 'long' | 'short'; side: Side }) {
@@ -155,7 +158,7 @@ export default function TabLiveBoard() {
   const [symbols, setSymbols] = useState<string[]>(BASE_SYMBOLS)
   const [meta, setMeta] = useState<Meta | null>(null)
   const [dirFilter, setDirFilter] = useState<'all' | 'long' | 'short'>('all')
-  const { board, err } = useBoard(symbol)
+  const { board, err, reload } = useBoard(symbol)
   useEffect(() => {
     fetch(`${API_BASE}/api/live/meta`, { cache: 'no-store' }).then(r => (r.ok ? r.json() : null)).then(j => j && setMeta(j)).catch(() => {})
     fetch(`${API_BASE}/api/live`, { cache: 'no-store' }).then(r => (r.ok ? r.json() : null)).then(j => { if (j?.symbols?.length) setSymbols([...new Set([...BASE_SYMBOLS, ...j.symbols as string[]])]) }).catch(() => {})
@@ -197,6 +200,9 @@ export default function TabLiveBoard() {
           (דקה, 5 דק׳, 15 דק׳, שעה, 4 שעות, יומי) עם &quot;Any alert() function call&quot; וכתובת ה-Webhook של השרת.
         </div>
       )}
+
+      {/* ── רמזור הכניסה: מתי בדיוק להיכנס ── */}
+      {board && <EntryGate gate={board.gate} symbol={symbol} onChanged={reload} />}
 
       {/* ── סיכום: כמה אישורים לכל כיוון ── */}
       {board && <div className="grid grid-cols-1 md:grid-cols-2 gap-3"><SummaryCard dir="long" side={board.summary.long} /><SummaryCard dir="short" side={board.summary.short} /></div>}

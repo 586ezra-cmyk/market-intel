@@ -22,6 +22,7 @@ import ISMTLayer from './layers/ISMTLayer'
 import RepricingLayer from './layers/RepricingLayer'
 import OptionsLevelsLayer from './layers/OptionsLevelsLayer'
 import HttLevelsLayer from './layers/HttLevelsLayer'
+import GateLayer from './layers/GateLayer'
 import DetailPanel from './DetailPanel'
 import DrawingToolbar from './DrawingToolbar'
 import ChartDrawingCanvas from './ChartDrawingCanvas'
@@ -265,6 +266,7 @@ export default function TradingChart() {
           <RepricingLayer      chart={cs.chart} series={cs.candleSeries} />
           <OptionsLevelsLayer  chart={cs.chart} series={cs.candleSeries} />
           <HttLevelsLayer      chart={cs.chart} series={cs.candleSeries} />
+          <GateLayer           chart={cs.chart} series={cs.candleSeries} />
           <ChartDrawingCanvas  chart={cs.chart} series={cs.candleSeries} />
         </>
       )}
