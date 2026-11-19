@@ -3,6 +3,7 @@
 import { useEffect, useRef } from 'react'
 import type { IChartApi, ISeriesApi } from 'lightweight-charts'
 import { useMarketStore } from '@/store/marketStore'
+import { asPrimitive } from './primitive'
 
 interface Props {
   chart: IChartApi
@@ -42,7 +43,7 @@ export default function RangeLayer({ chart, series }: Props) {
       hitTest() { return null },
     }
     try {
-      series.attachPrimitive(midlinePrim as any)
+      series.attachPrimitive(asPrimitive(midlinePrim, 'range') as any)
       primitivesRef.current.push(midlinePrim)
     } catch {}
 
@@ -71,7 +72,7 @@ export default function RangeLayer({ chart, series }: Props) {
     }
 
     try {
-      series.attachPrimitive(priceBand as any)
+      series.attachPrimitive(asPrimitive(priceBand, 'range') as any)
       primitivesRef.current.push(priceBand)
     } catch {}
 

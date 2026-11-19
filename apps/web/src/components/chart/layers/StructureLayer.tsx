@@ -3,6 +3,7 @@
 import { useEffect, useRef } from 'react'
 import type { IChartApi, ISeriesApi } from 'lightweight-charts'
 import { useMarketStore } from '@/store/marketStore'
+import { asPrimitive } from './primitive'
 
 interface Props {
   chart: IChartApi
@@ -72,7 +73,7 @@ export default function StructureLayer({ chart, series }: Props) {
         const color = st.direction === 'bullish' ? '#22c55e' : '#ef4444'
         const label = st.type === 'BOS' ? 'BOS' : 'CHoCH'
         const prim = makeHorizontalLine(series, st.price, color, label)
-        series.attachPrimitive(prim as any)
+        series.attachPrimitive(asPrimitive(prim, 'structure') as any)
         primitivesRef.current.push(prim)
       } catch {}
     })

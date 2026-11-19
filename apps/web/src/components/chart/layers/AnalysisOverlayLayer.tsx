@@ -3,6 +3,7 @@
 import { useEffect, useRef } from 'react'
 import type { IChartApi, ISeriesApi } from 'lightweight-charts'
 import { useMarketStore } from '@/store/marketStore'
+import { asPrimitive } from './primitive'
 
 interface Props {
   chart: IChartApi
@@ -29,7 +30,7 @@ export default function AnalysisOverlayLayer({ chart, series }: Props) {
     if (!layer) return
 
     const attach = (prim: any) => {
-      try { series.attachPrimitive(prim); primitivesRef.current.push(prim) } catch {}
+      try { series.attachPrimitive(asPrimitive(prim, 'analysis') as any); primitivesRef.current.push(prim) } catch {}
     }
 
     // ── FVG Boxes ─────────────────────────────────────────────────────────────

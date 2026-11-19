@@ -4,6 +4,7 @@ import { useEffect, useRef } from 'react'
 import type { IChartApi, ISeriesApi } from 'lightweight-charts'
 import { useMarketStore } from '@/store/marketStore'
 import { useComputedLayers } from '@/hooks/useComputedLayers'
+import { asPrimitive } from './primitive'
 
 interface Props {
   chart: IChartApi
@@ -63,8 +64,8 @@ export default function SessionLayer({ chart: _chart, series }: Props) {
 
       const ph = makeHLine(s.high, true)
       const pl = makeHLine(s.low, false)
-      series.attachPrimitive(ph as any)
-      series.attachPrimitive(pl as any)
+      series.attachPrimitive(asPrimitive(ph, 'session') as any)
+      series.attachPrimitive(asPrimitive(pl, 'session') as any)
       primsRef.current.push(ph, pl)
     }
 

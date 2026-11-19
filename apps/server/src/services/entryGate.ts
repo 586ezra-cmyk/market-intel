@@ -315,6 +315,7 @@ export function gateTelegramText(sig: GateSignal, riskUsd = 300): string | null 
     `${sz.contracts} ${sz.unit} · סיכון ${f(sz.riskUsd)}$ · יעד ${f(sz.rewardUsd)}$`,
     `⏱ תקף לנר הזה בלבד, עד ${until}. אחריו לא רודפים.`,
     ...(sig.atr != null && sig.atr > rules.stopPts ? [`⚠️ יום תנודתי (נר דקה ממוצע כ-${f(Math.round(sig.atr))} נק׳): להוריד כמות חוזים.`] : []),
+    'לפי נתוני TradingView בלבד. עוד לא נבדק מול ה-CVD של Bookmap.',
     'הכללים מתקיימים עכשיו. זו לא הבטחה לרווח.',
   ].join('\n')
 }

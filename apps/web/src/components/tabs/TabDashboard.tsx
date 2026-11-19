@@ -6,6 +6,7 @@ import { useMarketStore, LAYER_LABELS, LAYER_COLORS, type LayerId } from '@/stor
 import { useApi } from '@/hooks/useApi'
 import { formatTime, formatPrice, scoreBadgeClass } from '@/lib/utils'
 import AnalysisPanel from '@/components/analysis/AnalysisPanel'
+import LayerList from '@/components/chart/LayerList'
 
 const TradingChart = dynamic(() => import('@/components/chart/TradingChart'), { ssr: false })
 
@@ -32,14 +33,10 @@ export default function TabDashboard() {
   // Missed entries: last 3 alerts in same direction
   const missed = alerts.slice(1, 5).filter(a => a.direction === lastAlert?.direction)
 
-  const activeLayerCount = (Object.keys(LAYER_LABELS) as LayerId[])
-    .filter(id => id !== 'htt' && layers[id]).length      // שכבת HTT מציגה את המצב שלה בעצמה על הגרף
-  const hasLayerData = !!state && (
-    (state.structures?.length ?? 0) > 0 ||
-    (state.fvgs?.length ?? 0) > 0 ||
-    (state.liquidity?.length ?? 0) > 0 ||
-    (state.smtSignals?.length ?? 0) > 0
-  )
+  // שכבות דלוקות שאף אחת מהן לא מציירת כלום — אז הגרף נראה "מקולקל", ואומרים למה
+  const layerDrawn = useMarketStore(s => s.layerDrawn)
+  const activeLayerCount = (Object.keys(LAYER_LABELS) as LayerId[]).filter(id => layers[id]).length
+  const hasLayerData = Object.values(layerDrawn).some(n => n > 0)
 
   // Premium/Discount context
   const range = activeRange ?? state?.range
@@ -132,9 +129,9 @@ export default function TabDashboard() {
             <div className="absolute bottom-3 right-3 z-10 max-w-[15rem] rounded-lg
                             bg-surface-raised/95 border border-surface-border px-3 py-2
                             text-[11px] text-slate-400 pointer-events-none">
-              <div className="font-semibold text-slate-200 mb-0.5">אין נתוני שכבות ל-{symbol}</div>
-              השכבות דלוקות אך לא התקבלו זיהויים לנכס הזה — צריך Alert פעיל
-              ב-TradingView על הגרף שלו.
+              <div className="font-semibold text-slate-200 mb-0.5">אין מה לצייר ל-{symbol}</div>
+              השכבות דלוקות, אבל לנכס הזה לא הגיעו נתונים טריים. צריך התראת HTT Snapshot
+              פעילה ב-TradingView על הגרף שלו.
             </div>
           )}
         </div>
@@ -179,22 +176,7 @@ export default function TabDashboard() {
           {/* ── Layers panel ── */}
           {rightPanel === 'layers' && (
             <div className="space-y-1">
-              {(Object.keys(LAYER_LABELS) as LayerId[]).map(id => (
-                <button
-                  key={id}
-                  onClick={() => toggleLayer(id)}
-                  className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs text-right transition-all ${
-                    layers[id] ? 'bg-surface text-white' : 'text-slate-500 hover:text-slate-300'
-                  }`}
-                >
-                  <span
-                    className="w-2 h-2 rounded-full shrink-0"
-                    style={{ background: layers[id] ? LAYER_COLORS[id] : '#2d3748' }}
-                  />
-                  <span className="flex-1 text-right text-[11px]">{LAYER_LABELS[id]}</span>
-                  <span className="text-slate-600 text-[10px]">{layers[id] ? '●' : '○'}</span>
-                </button>
-              ))}
+              <LayerList />
 
               {/* Active FVGs count */}
               {state?.fvgs && (

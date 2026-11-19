@@ -54,6 +54,8 @@ export default function BollingerLayer({ chart, series: _series }: Props) {
 
   // Set data when available
   useEffect(() => {
+    const has = visible && !!seriesRef.current && !!data?.bollinger?.length
+    useMarketStore.getState().setLayerDrawn('bollinger:series', has ? 1 : 0)
     if (!visible || !seriesRef.current || !data?.bollinger?.length) return
 
     const toSeries = (key: 'upper' | 'middle' | 'lower') =>

@@ -3,6 +3,7 @@
 import { useEffect, useRef } from 'react'
 import type { IChartApi, ISeriesApi } from 'lightweight-charts'
 import { useMarketStore } from '@/store/marketStore'
+import { asPrimitive } from './primitive'
 
 interface Props {
   chart: IChartApi
@@ -75,7 +76,7 @@ export default function LiquidityLayer({ chart, series }: Props) {
         // type is e.g. 'equal_highs' → 'EQH', 'equal_lows' → 'EQL'
         const label = liq.type.includes('high') ? 'EQH' : 'EQL'
         const prim = makeHorizontalLine(series, liq.price, color, label)
-        series.attachPrimitive(prim as any)
+        series.attachPrimitive(asPrimitive(prim, 'liquidity') as any)
         primitivesRef.current.set(liq.id, prim)
       } catch {}
     })

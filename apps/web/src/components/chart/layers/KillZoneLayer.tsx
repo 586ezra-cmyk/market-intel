@@ -3,6 +3,7 @@
 import { useEffect, useRef } from 'react'
 import type { IChartApi, ISeriesApi } from 'lightweight-charts'
 import { useMarketStore } from '@/store/marketStore'
+import { asPrimitive } from './primitive'
 
 interface Props {
   chart: IChartApi
@@ -74,7 +75,7 @@ export default function KillZoneLayer({ chart, series }: Props) {
       if (isInKillZone(kz, utcH)) {
         const prim = makeKillZonePrimitive(kz.color, kz.label)
         try {
-          series.attachPrimitive(prim as any)
+          series.attachPrimitive(asPrimitive(prim, 'killZone') as any)
           primitivesRef.current.push(prim)
         } catch {}
         break // Only one kill zone at a time

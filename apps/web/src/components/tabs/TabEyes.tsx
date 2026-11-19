@@ -283,7 +283,10 @@ export default function TabEyes() {
   const m = state.model
   const d = m?.data
   const fp = d?.footprint ?? {}
-  const lastErr = state.errors?.length ? state.errors[state.errors.length - 1].msg : null
+  // שגיאה מוצגת רק כשהיא טרייה (חצי דקה אחרונה). שגיאה ישנה שנשארה ברשימה לא אומרת שמשהו לא עובד עכשיו
+  const lastErrRow = state.errors?.length ? state.errors[state.errors.length - 1] : null
+  const lastErrAge = lastErrRow ? Date.now() - Date.parse(lastErrRow.ts) : null
+  const lastErr = lastErrRow && lastErrAge != null && lastErrAge < 30_000 ? lastErrRow.msg : null
 
   return (
     <div dir="rtl" className="max-w-3xl mx-auto p-4 space-y-4">

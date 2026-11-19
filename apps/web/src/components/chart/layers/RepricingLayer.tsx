@@ -4,6 +4,7 @@ import { useEffect, useRef } from 'react'
 import type { IChartApi, ISeriesApi } from 'lightweight-charts'
 import { useMarketStore } from '@/store/marketStore'
 import { useComputedLayers } from '@/hooks/useComputedLayers'
+import { asPrimitive } from './primitive'
 
 interface Props {
   chart: IChartApi
@@ -58,7 +59,7 @@ export default function RepricingLayer({ chart, series }: Props) {
         },
         hitTest() { return null },
       }
-      series.attachPrimitive(prim as any)
+      series.attachPrimitive(asPrimitive(prim, 'repricing') as any)
       primsRef.current.push(prim)
     }
 

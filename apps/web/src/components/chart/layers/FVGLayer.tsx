@@ -3,6 +3,7 @@
 import { useEffect, useRef } from 'react'
 import type { IChartApi, ISeriesApi } from 'lightweight-charts'
 import { useMarketStore } from '@/store/marketStore'
+import { asPrimitive } from './primitive'
 
 interface Props {
   chart: IChartApi
@@ -57,7 +58,7 @@ export default function FVGLayer({ chart, series }: Props) {
       }
 
       try {
-        series.attachPrimitive(primitive as any)
+        series.attachPrimitive(asPrimitive(primitive, 'fvg') as any)
         primitivesRef.current.set(fvg.id, primitive)
       } catch {}
     })

@@ -3,6 +3,7 @@
 import { useEffect, useRef } from 'react'
 import type { IChartApi, ISeriesApi } from 'lightweight-charts'
 import { useMarketStore } from '@/store/marketStore'
+import { asPrimitive } from './primitive'
 
 interface Props {
   chart: IChartApi
@@ -80,7 +81,7 @@ export default function SMTLayer({ chart, series }: Props) {
         // Fix: bullish divergence → use asset1Price; bearish → use asset2Price
         const price = isBull ? smt.asset1Price : (smt.asset2Price ?? smt.asset1Price)
         const prim = makeSmtMarker(series, price, label, color)
-        series.attachPrimitive(prim as any)
+        series.attachPrimitive(asPrimitive(prim, 'smt') as any)
         primitivesRef.current.push(prim)
       } catch {}
     })
