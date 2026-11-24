@@ -71,4 +71,19 @@ describe('index feed → server engine', () => {
     await onLiveSnapshot(s.symbol, '5m', s.time, T0 + 300_000)
     expect(runRealtimeDetector).not.toHaveBeenCalled()
   })
+  it('the bar volume travels with the candle, and a 30m candle sums its two 15m halves', async () => {
+    const a = saveSnapshot(snap({ tf: '15m', time: T0, vol: 1200 }), T0 + 900_000)
+    await onLiveSnapshot(a.symbol, '15m', a.time, T0 + 900_000)
+    const b = saveSnapshot(snap({ tf: '15m', time: T0 + 900_000, vol: 800 }), T0 + 1_800_000)
+    await onLiveSnapshot(b.symbol, '15m', b.time, T0 + 1_800_000)
+    const calls = vi.mocked(runRealtimeDetector).mock.calls.map(c => c[0])
+    expect(calls.filter(c => c.timeframe === '15m').map(c => c.volume)).toEqual([1200, 800])
+    expect(calls.find(c => c.timeframe === '30m')?.volume).toBe(2000)
+  })
+
+  it('a snapshot from the old script (no volume) becomes a candle with volume 0', async () => {
+    const s = saveSnapshot(snap({}), T0 + 300_000)
+    await onLiveSnapshot(s.symbol, '5m', s.time, T0 + 300_000)
+    expect(vi.mocked(runRealtimeDetector).mock.calls[0]?.[0].volume).toBe(0)
+  })
 })

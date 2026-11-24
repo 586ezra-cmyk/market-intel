@@ -22,7 +22,7 @@ const INSTRUMENT: Record<string, { micro: string; pointUsd: number; maxContracts
 
 export interface SnapshotInput {
   symbol: string; tf: string; time: number; tc?: number | null
-  price: number; op?: number | null; hi?: number | null; lo?: number | null
+  price: number; op?: number | null; hi?: number | null; lo?: number | null; vol?: number | null
   L: string; S: string
   phase: number; cBull: number; ms: number; htfMs: number; htfPh: number; dq: number
   rsi?: number | null; atr?: number | null; vix?: number | null
@@ -78,7 +78,7 @@ export function saveSnapshot(input: SnapshotInput, now = Date.now()): StoredSnap
 }
 
 // ─── נרות חיים: כל צילום מצב הוא גם נר סגור (פתיחה/גבוה/נמוך/סגירה) מ-TradingView בזמן אמת ───
-export interface LiveBar { time: number; open: number; high: number; low: number; close: number }
+export interface LiveBar { time: number; open: number; high: number; low: number; close: number; volume?: number }
 const BARS_KEEP = 3000
 const barMem = new Map<string, LiveBar[]>()          // symbol|tf → נרות ממוינים לפי זמן
 function barsOf(symbol: string, tf: string): LiveBar[] {
@@ -87,8 +87,8 @@ function barsOf(symbol: string, tf: string): LiveBar[] {
   if (arr) return arr
   arr = []
   try {
-    const rows = getDb().prepare('SELECT time, o, h, l, c FROM live_bars WHERE symbol = ? AND tf = ? ORDER BY time DESC LIMIT ?').all(symbol, tf, BARS_KEEP) as Array<{ time: number; o: number; h: number; l: number; c: number }>
-    arr = (rows ?? []).reverse().map(r => ({ time: r.time, open: r.o, high: r.h, low: r.l, close: r.c }))
+    const rows = getDb().prepare('SELECT time, o, h, l, c, v FROM live_bars WHERE symbol = ? AND tf = ? ORDER BY time DESC LIMIT ?').all(symbol, tf, BARS_KEEP) as Array<{ time: number; o: number; h: number; l: number; c: number; v: number | null }>
+    arr = (rows ?? []).reverse().map(r => ({ time: r.time, open: r.o, high: r.h, low: r.l, close: r.c, ...(r.v != null ? { volume: r.v } : {}) }))
   } catch { /* אין טבלה (בדיקות) */ }
   barMem.set(key, arr)
   return arr
@@ -100,15 +100,17 @@ function saveBar(symbol: string, tf: string, s: SnapshotInput): void {
   const prev = arr.length && arr[arr.length - 1].time < time ? arr[arr.length - 1] : null
   // גרסה ישנה של הסקריפט לא שולחת פתיחה — אז הפתיחה היא הסגירה של הנר הקודם (בחוזה רציף זה אותו מחיר)
   const open = s.op ?? prev?.close ?? s.price
-  const bar: LiveBar = { time, open, high: Math.max(s.hi ?? s.price, open, s.price), low: Math.min(s.lo ?? s.price, open, s.price), close: s.price }
+  // נפח: רק מגרסת הסקריפט ששולחת אותו (שדה vol). בלי נפח הנר נשמר בלעדיו, ולא כאפס
+  const vol = typeof s.vol === 'number' && Number.isFinite(s.vol) && s.vol >= 0 ? s.vol : null
+  const bar: LiveBar = { time, open, high: Math.max(s.hi ?? s.price, open, s.price), low: Math.min(s.lo ?? s.price, open, s.price), close: s.price, ...(vol != null ? { volume: vol } : {}) }
   const i = arr.findIndex(b => b.time === time)
   if (i >= 0) arr[i] = bar
   else { arr.push(bar); if (arr.length > 1 && arr[arr.length - 2].time > time) arr.sort((a, b) => a.time - b.time) }
   if (arr.length > BARS_KEEP) arr.splice(0, arr.length - BARS_KEEP)
   try {
     const db = getDb()
-    db.prepare(`INSERT INTO live_bars (symbol, tf, time, o, h, l, c) VALUES (?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(symbol, tf, time) DO UPDATE SET o = excluded.o, h = excluded.h, l = excluded.l, c = excluded.c`).run(symbol, tf, time, bar.open, bar.high, bar.low, bar.close)
+    db.prepare(`INSERT INTO live_bars (symbol, tf, time, o, h, l, c, v) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(symbol, tf, time) DO UPDATE SET o = excluded.o, h = excluded.h, l = excluded.l, c = excluded.c, v = excluded.v`).run(symbol, tf, time, bar.open, bar.high, bar.low, bar.close, vol)
     if (arr.length === BARS_KEEP) db.prepare('DELETE FROM live_bars WHERE symbol = ? AND tf = ? AND time < ?').run(symbol, tf, arr[0].time)
   } catch { /* הזיכרון מספיק לגרף */ }
 }

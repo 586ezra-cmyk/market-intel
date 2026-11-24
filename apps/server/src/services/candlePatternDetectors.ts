@@ -167,6 +167,10 @@ export function detectWyckoff(buf: KlineCandle[]): PatternResult | null {
   // Only meaningful inside a genuine range, not a trend
   if (height / last.close > 0.12) return null
 
+  // בלי נפח אמיתי אין Spring/UTAD: נרות חיים ישנים של נאסדק ו-S&P הגיעו בלי נפח (אפס),
+  // וממוצע שמעורבבים בו אפסים היה הופך כל נר רגיל ל"נפח גבוה"
+  if (!(last.volume > 0) || range.filter(c => !(c.volume > 0)).length > range.length * 0.2) return null
+
   const avgVol = range.reduce((s, c) => s + c.volume, 0) / range.length
   const highVolume = last.volume > avgVol * 1.5
 

@@ -190,3 +190,15 @@ describe('liveBoard', () => {
     expect(marketState('BTCUSDT', at(15, 0, 21))).toEqual({ open: true, openedAt: null })       // קריפטו — תמיד
   })
 })
+
+describe('live bars — volume', () => {
+  beforeEach(() => clearLive())
+  it('keeps the bar volume when the snapshot sends it, and leaves it out when it does not', () => {
+    const t = Date.UTC(2026, 10, 24, 15, 0, 0)
+    saveSnapshot(snap({ tf: '1m', time: t, vol: 431 }), t + 60_000)
+    saveSnapshot(snap({ tf: '1m', time: t + 60_000 }), t + 120_000)
+    const bars = getBars('NQ', '1m')
+    expect(bars[0]?.volume).toBe(431)
+    expect(bars[1]).not.toHaveProperty('volume')
+  })
+})

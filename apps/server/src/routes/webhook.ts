@@ -197,6 +197,7 @@ const HttSnapshotSchema = BaseSchema.extend({
   tc: numOpt,
   price: z.number().positive(),
   op: numOpt, hi: numOpt, lo: numOpt,
+  vol: z.number().nonnegative().nullable().optional(),   // נפח הנר (מגרסת הסקריפט שאחרי 24.11)
   L: z.string().regex(/^[01]+$/).max(400),
   S: z.string().regex(/^[01]+$/).max(400),
   phase: z.number().int().min(0).max(5).default(0),

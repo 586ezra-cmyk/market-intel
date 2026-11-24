@@ -19,6 +19,7 @@ const ALL_TFS = [
 
 // ─── Signal types ─────────────────────────────────────────────────────────────
 
+// רק סוגים שהסורק של השרת באמת מזהה. iFVG, פיתוי ותמחור מחדש הוסרו: אין להם זיהוי בסורק.
 const SIGNAL_GROUPS = [
   {
     label: '📐 מבנה שוק',
@@ -30,23 +31,20 @@ const SIGNAL_GROUPS = [
   {
     label: '💧 נזילות',
     signals: [
-      { id: 'liquidity',  label: 'Liquidity Sweep'       },
-      { id: 'inducement', label: 'Inducement — פיתוי'    },
+      { id: 'liquidity',  label: 'Liquidity Sweep — לקיחת נזילות' },
     ],
   },
   {
     label: '📦 FVG',
     signals: [
       { id: 'fvg',        label: 'FVG — פער הוגן'        },
-      { id: 'ifvg',       label: 'iFVG — הפוך'           },
-      { id: 'repricing',  label: 'Repricing — תמחור מחדש'},
     ],
   },
   {
-    label: '🔀 דיברגנס',
+    label: '🔀 דיברגנס בין נכסים',
     signals: [
-      { id: 'smt',        label: 'SMT (BTC דיברגנס)'    },
-      { id: 'ismt',       label: 'iSMT (2 נרות)'         },
+      { id: 'smt',        label: 'SMT — נאסדק מול S&P, ביטקוין מול את׳ריום' },
+      { id: 'ismt',       label: 'iSMT — אותו דבר בשני נרות' },
     ],
   },
   {
@@ -55,6 +53,7 @@ const SIGNAL_GROUPS = [
       { id: 'ob',         label: 'Order Block'            },
       { id: 'doubletop',  label: 'Double Top 🔴'          },
       { id: 'doublebottom', label: 'Double Bottom 🟢'    },
+      { id: 'wyckoff',    label: 'Wyckoff — Spring / UTAD' },
     ],
   },
   {
@@ -62,7 +61,6 @@ const SIGNAL_GROUPS = [
     signals: [
       { id: 'judas',      label: 'Judas Swing'            },
       { id: 'session',    label: 'Session H/L'            },
-      { id: 'wyckoff',    label: 'Wyckoff — פאזה'         },
     ],
   },
 ]
@@ -119,7 +117,7 @@ export default function TabAlertSettings() {
     setOldEngine(OLD_ENGINE_MODES.some(m => m.id === settings.old_engine_telegram) ? settings.old_engine_telegram : 'off')
     if (settings.htt_min_score !== undefined) setHttMin(Number(settings.htt_min_score))
     setHttMinTf({ '240': Number(settings.htt_min_240 ?? 3), '15': Number(settings.htt_min_15 ?? 4), '5': Number(settings.htt_min_5 ?? 3) })
-    if (settings.alert_signals)    setSignals(JSON.parse(settings.alert_signals))
+    if (settings.alert_signals)    setSignals((JSON.parse(settings.alert_signals) as string[]).filter(id => DEFAULT_SIGNALS.includes(id)))
     if (settings.alert_timeframes) setTimeframes(JSON.parse(settings.alert_timeframes))
   }, [settings])
 
@@ -172,35 +170,14 @@ export default function TabAlertSettings() {
         masterOn ? 'border-brand-500/40 bg-brand-900/10' : 'border-slate-700'
       }`}>
         <div>
-          <h3 className="font-bold text-base">🔔 התראות לטלגרם</h3>
+          <h3 className="font-bold text-base">📲 מתג ראשי — התראות מסחר לטלגרם</h3>
           <p className="text-xs text-slate-400 mt-0.5">
             {masterOn
-              ? `פעיל — ${activeSignalCount}/${totalSignalCount} איתותים, ${activeTimeframeCount} טווחי זמן`
-              : 'כבוי — לא ישלחו התראות'}
+              ? `פעיל — HTT (🎯) והרמזור נשלחים. הסורק של השרת: ${OLD_ENGINE_MODES.find(m => m.id === oldEngine)?.label ?? 'שקט'}.`
+              : 'כבוי — שום התראת מסחר לא יוצאת לטלגרם. הסקירה היומית והדוחות הכלכליים ממשיכים.'}
           </p>
         </div>
-        <Toggle on={masterOn} onChange={() => setMasterOn(v => !v)} label="הדלק/כבה התראות" size="lg" />
-      </div>
-
-      {/* ── Old engine → Telegram: off / crypto / all ── */}
-      <div className="card space-y-3">
-        <div>
-          <h3 className="font-semibold text-sm">🔔 הסורק של השרת — מה נשלח ממנו לטלגרם</h3>
-          <p className="text-xs text-slate-400 mt-0.5">הסורק של השרת (הודעות 🔔 עם מדליה) ממשיך לרשום כל התראה בלשונית ההתראות, בכל מצב. כאן בוחרים רק מה ממנו יוצא לטלגרם. ההתראות של HTT (🎯) והרמזור לא מושפעים.</p>
-        </div>
-        <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="מה הסורק של השרת שולח לטלגרם">
-          {OLD_ENGINE_MODES.map(m => {
-            const on = oldEngine === m.id
-            return (
-              <button key={m.id} role="radio" aria-checked={on} onClick={() => setOldEngine(m.id)}
-                className={`flex flex-col items-center gap-0.5 px-3 py-2 rounded-lg border transition-all ${on ? 'bg-brand-600/20 border-brand-500/50 text-white' : 'bg-surface border-slate-700 text-slate-500 hover:text-slate-300'}`}>
-                <span className="text-sm font-bold">{m.label}</span>
-                <span className="text-[11px]">{m.desc}</span>
-              </button>
-            )
-          })}
-        </div>
-        <p className="text-[11px] text-slate-500">השינוי נכנס לתוקף אחרי "שמור הגדרות".</p>
+        <Toggle on={masterOn} onChange={() => setMasterOn(v => !v)} label="הדלק/כבה את כל התראות המסחר לטלגרם" size="lg" />
       </div>
 
       {/* ── HTT: minimum confirmation level for Telegram ── */}
@@ -229,10 +206,31 @@ export default function TabAlertSettings() {
         <p className="text-[11px] text-slate-500">מהבקטסט: רמה 2 ומעלה חיובית בכל החיתוכים (כ-3 התראות בשבוע לנכס ב-15 דקות), רמה 3 ומעלה נדירה ואיכותית (כ-0.6 בשבוע). ההרצה המדויקת בטאב "סטטיסטיקת בקטסט HTT".</p>
       </div>
 
+      {/* ── Old engine → Telegram: off / crypto / all ── */}
+      <div className="card space-y-3">
+        <div>
+          <h3 className="font-semibold text-sm">🔔 הסורק של השרת — מה נשלח ממנו לטלגרם</h3>
+          <p className="text-xs text-slate-400 mt-0.5">הסורק של השרת (הודעות 🔔 עם מדליה) ממשיך לרשום כל התראה בלשונית ההתראות, בכל מצב. כאן בוחרים רק מה ממנו יוצא לטלגרם. ההתראות של HTT (🎯) והרמזור לא מושפעים.</p>
+        </div>
+        <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="מה הסורק של השרת שולח לטלגרם">
+          {OLD_ENGINE_MODES.map(m => {
+            const on = oldEngine === m.id
+            return (
+              <button key={m.id} role="radio" aria-checked={on} onClick={() => setOldEngine(m.id)}
+                className={`flex flex-col items-center gap-0.5 px-3 py-2 rounded-lg border transition-all ${on ? 'bg-brand-600/20 border-brand-500/50 text-white' : 'bg-surface border-slate-700 text-slate-500 hover:text-slate-300'}`}>
+                <span className="text-sm font-bold">{m.label}</span>
+                <span className="text-[11px]">{m.desc}</span>
+              </button>
+            )
+          })}
+        </div>
+        <p className="text-[11px] text-slate-500">השינוי נכנס לתוקף אחרי "שמור הגדרות".</p>
+      </div>
+
       {/* ── TF toggles ── */}
       <div className="card space-y-3">
         <div className="flex items-center justify-between">
-          <h3 className="font-semibold text-sm">⏱️ טווחי זמן</h3>
+          <div><h3 className="font-semibold text-sm">⏱️ הסורק של השרת — טווחי זמן</h3><p className="text-xs text-slate-400 mt-0.5">באילו גרפים הסורק מחפש ({activeTimeframeCount} מתוך {ALL_TFS.length}). גרף שלא מסומן לא נסרק בכלל, גם לא לאתר.</p></div>
           <div className="flex gap-2">
             <button onClick={() => setTimeframes(DEFAULT_TIMEFRAMES)} className="text-xs text-brand-400 hover:text-brand-300">הכל</button>
             <span className="text-slate-600">|</span>
@@ -263,7 +261,7 @@ export default function TabAlertSettings() {
       {/* ── Signal toggles ── */}
       <div className="card space-y-4">
         <div className="flex items-center justify-between">
-          <h3 className="font-semibold text-sm">🧩 סוגי איתות</h3>
+          <div><h3 className="font-semibold text-sm">🧩 הסורק של השרת — מה הוא מחפש</h3><p className="text-xs text-slate-400 mt-0.5">{activeSignalCount} מתוך {totalSignalCount} דלוקים. לא משפיע על ההתראות של HTT (🎯) ולא על הרמזור.</p></div>
           <div className="flex gap-2">
             <button onClick={() => setSignals(DEFAULT_SIGNALS)} className="text-xs text-brand-400 hover:text-brand-300">הכל</button>
             <span className="text-slate-600">|</span>
@@ -296,18 +294,19 @@ export default function TabAlertSettings() {
 
       {/* ── Telegram channels info ── */}
       <div className="card space-y-2">
-        <h3 className="font-semibold text-sm">📦 ערוצי טלגרם</h3>
+        <h3 className="font-semibold text-sm">📦 לאן כל הודעה מגיעה בטלגרם</h3>
         <div className="text-xs text-slate-500 space-y-1">
           {[
-            { emoji: '📅', name: 'מסחר יומי',     desc: '5m–1h' },
-            { emoji: '📈', name: 'מסחר שבועי',    desc: '4h, יומי, שבועי' },
-            { emoji: '⭐', name: 'דירוג 7+',       desc: 'כל ציון ≥ 7 אוטומטית' },
-            { emoji: '🌅', name: 'סקירה יומית',   desc: '08:00 + 23:00' },
-            { emoji: '📰', name: 'דוחות כלכליים', desc: 'FMP API' },
+            { emoji: '📅', name: 'מסחר יומי',     desc: 'התראות מגרף דקה עד שעה' },
+            { emoji: '📈', name: 'מסחר שבועי',    desc: 'התראות מגרף 4 שעות, יומי ושבועי' },
+            { emoji: '⏱️', name: 'נושא לכל גרף',  desc: 'כל התראה נשלחת גם לנושא של הגרף שלה (5 דק׳, 15 דק׳…)' },
+            { emoji: '⭐', name: 'דירוג 7+',       desc: 'כל התראה בציון 7 ומעלה, וגם ה"ירוק" של הרמזור' },
+            { emoji: '🌅', name: 'סקירה יומית',   desc: 'בוקר וערב (07:00 ו-22:00 בחורף, 08:00 ו-23:00 בקיץ) + רמות האופציות' },
+            { emoji: '📰', name: 'דוחות כלכליים', desc: 'לוח שבועי ביום שני + תזכורת לפני דוח חשוב' },
           ].map(ch => (
             <div key={ch.name} className="flex gap-2">
               <span>{ch.emoji}</span>
-              <span className="text-slate-300 font-medium w-28">{ch.name}</span>
+              <span className="text-slate-300 font-medium w-28 shrink-0">{ch.name}</span>
               <span className="text-slate-500">{ch.desc}</span>
             </div>
           ))}
@@ -320,7 +319,7 @@ export default function TabAlertSettings() {
           {saving ? 'שומר...' : saved ? '✅ נשמר!' : '💾 שמור הגדרות'}
         </button>
         <button onClick={sendTest} className="btn-ghost text-xs">
-          📨 שלח הודעת בדיקה
+          📨 שלח הודעת בדיקה לטלגרם (לנושא הכללי)
         </button>
       </div>
       {testResult && (

@@ -20,7 +20,7 @@ export const indexFeedStatus = { live: 0, yahoo: 0, dropped: 0, lastLiveAt: 0, l
 export function resetIndexFeed(): void { lastTime.clear(); liveAt.clear(); Object.assign(indexFeedStatus, { live: 0, yahoo: 0, dropped: 0, lastLiveAt: 0, lastLiveKey: null }) }   // לבדיקות
 
 const toCandle = (symbol: string, tf: string, b: LiveBar): KlineCandle =>
-  ({ symbol, timeframe: tf, time: b.time, open: b.open, high: b.high, low: b.low, close: b.close, volume: 0, isClosed: true })
+  ({ symbol, timeframe: tf, time: b.time, open: b.open, high: b.high, low: b.low, close: b.close, volume: b.volume ?? 0, isClosed: true })
 
 /** נר סגור אחד אל המנוע. מחזיר true אם נכנס. */
 export async function forwardCandle(c: KlineCandle, source: 'live' | 'yahoo', now = Date.now()): Promise<boolean> {
@@ -73,7 +73,7 @@ export function onLiveSnapshot(symbol: string, tf: string, timeMs: number, now =
     await forwardCandle(toCandle(symbol, tf, bar), 'live', now)
     if (tf === '15m' && (bar.time + 900) % 1800 === 0) {
       const prev = bars.find(b => b.time === bar.time - 900)
-      if (prev) await forwardCandle({ symbol, timeframe: '30m', time: prev.time, open: prev.open, high: Math.max(prev.high, bar.high), low: Math.min(prev.low, bar.low), close: bar.close, volume: 0, isClosed: true }, 'live', now)
+      if (prev) await forwardCandle({ symbol, timeframe: '30m', time: prev.time, open: prev.open, high: Math.max(prev.high, bar.high), low: Math.min(prev.low, bar.low), close: bar.close, volume: (prev.volume ?? 0) + (bar.volume ?? 0), isClosed: true }, 'live', now)
     }
   })().catch(e => { console.warn('[IndexFeed]', String((e as Error)?.message ?? e).slice(0, 200)) })
 }
