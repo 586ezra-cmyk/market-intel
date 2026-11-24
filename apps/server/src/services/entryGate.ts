@@ -7,14 +7,20 @@
  * אדום = אין עסקה / אסור להיכנס · צהוב = חסר תנאי אחד · ירוק = כל התנאים התקיימו יחד בסגירת נר הדקה האחרון.
  * ירוק תקף לנר אחד בלבד ("כניסה בנר השני"). אחריו לא רודפים: מחכים לתיקון ולנר מומנטום חדש.
  *
+ * מ-24.11.2026 (בקשת המשתמש) הבדיקה היא מלמעלה למטה, בשלושה שלבים:
+ *   1. גרף 15 דקות — מופיע שם לפחות אחד מהאישורים הרגילים של HTT (BOS, חטיפת נזילות, FVG, אורדר בלוק, SMT...). זה קובע את הכיוון.
+ *   ואחר כך האסטרטגיה:
+ *   2. גרף 5 דקות — יש שם לפחות תנאי אחד של האסטרטגיה באותו כיוון (יציאה מהאזור ההוגן / EMA 12 / CVD).
+ *   3. גרף דקה — האישור: כל תנאי הדקה מתקיימים באותו כיוון. רק אז נדלק ירוק ונשלחת התראה.
+ *
  * כל "ירוק" נרשם, ואחר כך נרשם מה קרה (יעד / סטופ / סוף הסשן), כדי לדעת אם הוא שווה משהו.
  * ירוק פירושו "הכללים מתקיימים" — לא "העסקה תרוויח". המערכת רק מציגה; היא לא שולחת פקודות.
  *
  * המספרים שאינם מהקורס אלא הגדרה שלנו מסומנים [הגדרה].
  */
 import { getDb } from '../db/client'
-import { HTT_FLAG_KEYS } from './httFlagKeys'
-import { getSnap, getBars, normSymbol, nyClock, ilClock, marketState, type StoredSnap } from './liveBoard'
+import { HTT_FLAG_KEYS, HTT_FLAG_NAMES } from './httFlagKeys'
+import { getSnap, getBars, normSymbol, nyClock, ilClock, marketState, ENTRY_NAMES, type StoredSnap } from './liveBoard'
 import { getCachedCalendar } from './forexFactory'
 
 export type Dir = 'long' | 'short'
@@ -26,9 +32,11 @@ export interface GateRules {
   maxEmaDistPts: number                                 // [הגדרה] "לא רחוק מה-EMA" = לא יותר מגודל הסטופ
   maxTrades: number; maxLosses: number; cooldownMin: number   // חוקי היום שאושרו (מסמך 27, M3-0.7)
   dayTargetUsd: number                                  // "עצירה ביעד" — המשתמש קבע 1,500$ (19.11.2026)
+  roomMin: number                                       // "יש מקום ליעד": היעד חייב להיות בתוך הטווח של כך וכך דקות אחרונות
+  reentryPts: number; reentryMin: number                // [הגדרה] "לא חוזרים לאותו מקום": אחרי סטופ, לא נכנסים שוב באותו כיוון בטווח הזה ובזמן הזה
 }
 export const GATE_RULES: Record<string, GateRules> = {
-  NQ: { stopPts: 30, rr: 2, pointUsd: 2, micro: 'MNQ', maxContracts: 5, openMin: 570, waitMin: 5, closeMin: 960, newsMin: 5, maxEmaDistPts: 30, maxTrades: 5, maxLosses: 2, cooldownMin: 10, dayTargetUsd: 1500 },
+  NQ: { stopPts: 30, rr: 2, pointUsd: 2, micro: 'MNQ', maxContracts: 5, openMin: 570, waitMin: 5, closeMin: 960, newsMin: 5, maxEmaDistPts: 30, maxTrades: 5, maxLosses: 2, cooldownMin: 10, dayTargetUsd: 1500, roomMin: 60, reentryPts: 45, reentryMin: 60 },
 }
 const STALE_SEC = 150
 const f = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 2 })
@@ -86,8 +94,71 @@ function sessionClock(rules: GateRules, now: number) {
   }
 }
 
-/** כל התנאים לכיוון אחד, לפי נר הדקה האחרון שנסגר. prevClose משמש רק כשהסקריפט לא שלח מחיר פתיחה. */
-export function evalConditions(snap: StoredSnap, dir: Dir, rules: GateRules, now: number, prevClose: number | null = null, flow: FlowDir | null = null): GateCondition[] {
+// ─── השלבים הגבוהים: מה רואים בגרף 15 דקות ובגרף 5 דקות ───
+export interface HtfSnaps { s15: StoredSnap | null; s5: StoredSnap | null; range?: { hi: number; lo: number; n: number } | null }
+const TF_NAME: Record<string, string> = { '15m': '15 דק׳', '5m': '5 דק׳' }
+const TF_MINUTES: Record<string, number> = { '15m': 15, '5m': 5 }
+/**
+ * "האישורים הרגילים" של HTT לשלב גרף 15 הדקות: דברים שקורים על הגרף (מבנה, נזילות, FVG, אורדר בלוק, SMT, וויקוף, ריטסטים).
+ * לא נכללים דגלי הקשר שדולקים כמעט תמיד (סשן, פאזה, VIX, "באיזה צד של...", תורת הרבעים) ולא תנאי האסטרטגיה עצמם (EMA 12, CVD, אזור הוגן),
+ * שנבדקים בשלבים הבאים. [הבחירה אילו אישורים נחשבים "רגילים" היא פירוש שלנו לבקשת המשתמש מ-24.11.2026.]
+ */
+export const REGULAR_CONFIRMATIONS: readonly string[] = [
+  'bos', 'choch', 'sweep', 'smt', 'ismt', 'ifvg', 'fvg', 'judas', 'tweezer', 'shake', 'volC', 'lps', 'gap', 'ob', 'wm', 'ddt', 'engulf', 'bb', 'rsi', 'climax',
+  'fvgAt', 'ifvgAt', 'atPool', 'orBrk', 'jac', 'crkRt', 'tso', 'qtJudas', 'pocRt', 'test',
+  'atEdge', 'atHtfLvl', 'atSesLvl', 'cTso', 'reacc', 'avwapRt', 'cvdDiv', 'avwTdoRt', 'avwSwRt', 'pocAt',
+]
+/** האישורים הרגילים שדולקים במסגרת הזאת לכיוון הזה בלבד (אישור שדולק לשני הכיוונים לא קובע כיוון), וגם סוג הכניסה של HTT אם יש. */
+function regularHits(s: StoredSnap, dir: Dir): string[] {
+  const other: Dir = dir === 'long' ? 'short' : 'long'
+  const hits = REGULAR_CONFIRMATIONS.filter(k => flag(s, dir, k) && !flag(s, other, k)).map(k => HTT_FLAG_NAMES[k] ?? k)
+  const entry = dir === 'long' ? s.trL : s.trS
+  if (entry) hits.unshift(ENTRY_NAMES[entry] ?? `כניסה ${entry}`)
+  return hits
+}
+/** אילו משלושת תנאי הכיוון של האסטרטגיה מתקיימים במסגרת הזאת, לכיוון הזה (לפי הנר האחרון שנסגר בה). */
+function tfHits(s: StoredSnap, dir: Dir): string[] {
+  const long = dir === 'long'; const hits: string[] = []
+  const edge = long ? s.lv['vah'] : s.lv['val']
+  if (edge != null && (long ? s.price > edge : s.price < edge)) hits.push(long ? 'המחיר מעל האזור ההוגן' : 'המחיר מתחת לאזור ההוגן')
+  if (flag(s, dir, 'ema12Ok')) hits.push(`EMA 12 ${long ? 'עולה והמחיר מעליו' : 'יורד והמחיר מתחתיו'}`)
+  if (flag(s, dir, 'cvdOk')) hits.push(`ה-CVD ${long ? 'עולה' : 'יורד'}`)
+  return hits
+}
+/**
+ * שלב של מסגרת גבוהה: מתקיים כשיש בה לפחות אחד בכיוון, ויותר בכיוון הזה מאשר בכיוון ההפוך.
+ * ב-15 דקות סופרים את האישורים הרגילים של HTT; ב-5 דקות את תנאי הכיוון של האסטרטגיה.
+ */
+export function tfStage(s: StoredSnap | null, tf: '15m' | '5m', dir: Dir, now: number): GateCondition {
+  const what = tf === '15m' ? 'אישור' : 'תנאי של האסטרטגיה'
+  const name = `גרף ${TF_NAME[tf]}: יש ${what} ל${DIR_HE[dir]}`
+  const key = tf === '15m' ? 'tf15' : 'tf5'
+  if (!s) return { key, name, ok: false, detail: `עוד לא הגיע נר ${TF_NAME[tf]}`, need: `מחכים לנר ${TF_NAME[tf]} הראשון` }
+  if (now - s.receivedAt > (TF_MINUTES[tf] * 2 * 60 + 90) * 1000) return { key, name, ok: false, detail: `הנתון של ${TF_NAME[tf]} ישן`, need: `אין נתון טרי מגרף ${TF_NAME[tf]}` }
+  const hitsOf = tf === '15m' ? regularHits : tfHits
+  const mineAll = hitsOf(s, dir); const otherAll = hitsOf(s, dir === 'long' ? 'short' : 'long')
+  const ok = mineAll.length >= 1 && mineAll.length > otherAll.length
+  const otherHe = DIR_HE[dir === 'long' ? 'short' : 'long']
+  const show = (l: string[]) => (l.length > 4 ? `${l.slice(0, 4).join(' · ')} ועוד ${l.length - 4}` : l.join(' · '))
+  const mine = show(mineAll); const other = show(otherAll)
+  return {
+    key, name, ok,
+    detail: ok ? `בנר ${TF_NAME[tf]} האחרון: ${mine}${otherAll.length ? ` (ל${otherHe} רק: ${other})` : ''}`
+      : mineAll.length ? `בנר ${TF_NAME[tf]} האחרון: ${mine}, אבל ל${otherHe} יש אותו מספר או יותר (${other})`
+      : otherAll.length ? `בנר ${TF_NAME[tf]} האחרון אין ${what} ל${DIR_HE[dir]}. יש ל${otherHe}: ${other}`
+      : `בנר ${TF_NAME[tf]} האחרון אין אף ${what}`,
+    need: ok ? null
+      : mineAll.length ? `בגרף ${TF_NAME[tf]} התמונה מעורבת: ${mine} מול ${other}`
+      : `בגרף ${TF_NAME[tf]} אין עדיין ${what} ל${DIR_HE[dir]}${otherAll.length ? ` (יש ל${otherHe}: ${other})` : ''}`,
+  }
+}
+/** הכיוון שגרף 15 הדקות מצביע עליו, אם יש */
+function dirOf15(s15: StoredSnap | null, now: number): Dir | null {
+  return tfStage(s15, '15m', 'long', now).ok ? 'long' : tfStage(s15, '15m', 'short', now).ok ? 'short' : null
+}
+
+/** כל התנאים לכיוון אחד: קודם 15 דק׳ ו-5 דק׳ (כשנמסרו), ואז נר הדקה האחרון שנסגר. prevClose משמש רק כשהסקריפט לא שלח מחיר פתיחה. */
+export function evalConditions(snap: StoredSnap, dir: Dir, rules: GateRules, now: number, prevClose: number | null = null, flow: FlowDir | null = null, htf: HtfSnaps | null = null): GateCondition[] {
   const long = dir === 'long'; const p = snap.price
   const vah = snap.lv['vah'] ?? null; const val = snap.lv['val'] ?? null; const ema = snap.lv['ema'] ?? null
   const out: GateCondition[] = []
@@ -98,12 +169,14 @@ export function evalConditions(snap: StoredSnap, dir: Dir, rules: GateRules, now
     detail: ses.ok ? 'בתוך שעות המסחר של ניו יורק' : ses.firstMinutes ? '5 הדקות הראשונות אחרי הפתיחה' : ses.waiting ? 'הסשן עוד לא נפתח' : 'הסשן של ניו יורק סגור',
     need: ses.ok ? null : ses.waiting ? `מחכים ל-${ses.startIl}` : 'הסשן של ניו יורק סגור',
   })
+  // מלמעלה למטה: 15 דקות, אחר כך 5 דקות, ורק אז האישור בנר הדקה
+  if (htf) { out.push(tfStage(htf.s15, '15m', dir, now)); out.push(tfStage(htf.s5, '5m', dir, now)) }
 
   const edge = long ? vah : val
   const valueOk = edge != null && (long ? p > edge : p < edge)
   const inside = vah != null && val != null && p <= vah && p >= val
   out.push({
-    key: 'value', name: 'יציאה מהאזור ההוגן', ok: valueOk, level: edge,
+    key: 'value', name: 'דקה: יציאה מהאזור ההוגן', ok: valueOk, level: edge,
     detail: edge == null ? 'עוד אין אזור הוגן להיום'
       : valueOk ? (long ? `המחיר מעל תקרת האזור ההוגן (${f(edge)})` : `המחיר מתחת לתחתית האזור ההוגן (${f(edge)})`)
       : inside ? `המחיר בתוך האזור ההוגן (${f(val!)} עד ${f(vah!)})`
@@ -117,7 +190,7 @@ export function evalConditions(snap: StoredSnap, dir: Dir, rules: GateRules, now
   const sideOk = ema != null ? (long ? p > ema : p < ema) : flag(snap, dir, 'ema12Side')
   const emaTxt = ema != null ? ` (${f(ema)})` : ''
   out.push({
-    key: 'ema', name: 'EMA 12 בכיוון', ok: emaOk, level: ema,
+    key: 'ema', name: 'דקה: EMA 12 בכיוון', ok: emaOk, level: ema,
     detail: emaOk ? (long ? `המחיר מעל EMA 12${emaTxt} וה-EMA עולה` : `המחיר מתחת ל-EMA 12${emaTxt} וה-EMA יורד`)
       : sideOk ? `המחיר בצד הנכון, אבל ה-EMA 12 עוד לא ${long ? 'עולה' : 'יורד'}`
       : long ? `המחיר מתחת ל-EMA 12${emaTxt}` : `המחיר מעל EMA 12${emaTxt}`,
@@ -129,7 +202,7 @@ export function evalConditions(snap: StoredSnap, dir: Dir, rules: GateRules, now
   const nearOk = dist != null && dist <= rules.maxEmaDistPts
   const pull = ema != null ? (long ? ema + rules.maxEmaDistPts : ema - rules.maxEmaDistPts) : null
   out.push({
-    key: 'emaNear', name: `קרוב ל-EMA (עד ${rules.maxEmaDistPts} נק׳)`, ok: nearOk, level: pull,
+    key: 'emaNear', name: `דקה: קרוב ל-EMA (עד ${rules.maxEmaDistPts} נק׳)`, ok: nearOk, level: pull,
     detail: dist == null ? 'אין ערך EMA בצילום' : `המרחק מה-EMA: ${f(dist)} נק׳`,
     need: nearOk ? null : dist == null ? 'אין ערך EMA בצילום'
       : `המחיר רחוק מה-EMA (${f(dist)} נק׳). מחכים לתיקון עד בערך ${f(pull!)}`,
@@ -139,7 +212,7 @@ export function evalConditions(snap: StoredSnap, dir: Dir, rules: GateRules, now
   const candleOk = open != null && (long ? p > open : p < open)
   const color = long ? 'ירוק' : 'אדום'
   out.push({
-    key: 'candle', name: 'נר מומנטום (נר הדקה האחרון בכיוון)', ok: candleOk,
+    key: 'candle', name: 'דקה: נר מומנטום (נר הדקה האחרון בכיוון)', ok: candleOk,
     detail: candleOk ? `נר הדקה האחרון נסגר ${color}` : `נר הדקה האחרון לא נסגר ${color}`,
     need: candleOk ? null : `נר דקה ${color} שנסגר (הכניסה בנר שאחריו)`,
   })
@@ -149,19 +222,54 @@ export function evalConditions(snap: StoredSnap, dir: Dir, rules: GateRules, now
     const cvdOk = flow === (long ? 'up' : 'down')
     const now_ = flow === 'up' ? 'עולה' : flow === 'down' ? 'יורד' : 'לא זז לכיוון ברור'
     out.push({
-      key: 'cvd', name: 'CVD בכיוון (Bookmap, 5 דק׳)', ok: cvdOk,
+      key: 'cvd', name: 'דקה: CVD בכיוון (Bookmap, 5 דק׳)', ok: cvdOk,
       detail: `ה-CVD ב-Bookmap ${now_}`,
       need: cvdOk ? null : `ה-CVD ב-Bookmap ${now_}, וצריך ${long ? 'לעלות' : 'לרדת'}`,
     })
   } else {
     const cvdOk = flag(snap, dir, 'cvdOk')
     out.push({
-      key: 'cvd', name: 'CVD בכיוון (TradingView בלבד, Bookmap לא מחובר)', ok: cvdOk,
+      key: 'cvd', name: 'דקה: CVD בכיוון (TradingView בלבד, Bookmap לא מחובר)', ok: cvdOk,
       detail: cvdOk ? `ה-CVD המשוער של TradingView ${long ? 'עולה' : 'יורד'} (5 נרות דקה)` : `ה-CVD המשוער של TradingView לא ${long ? 'עולה' : 'יורד'}`,
       need: cvdOk ? null : `ה-CVD צריך ${long ? 'לעלות' : 'לרדת'}`,
     })
   }
+  if (htf) {
+    // ── יש מקום ליעד: היעד חייב להיות בתוך הטווח של השעה האחרונה ──
+    // נוסף 24.11.2026 אחרי שלושה שורטים לתוך שפל שהחזיק. ב-32 הירוקים שנמדדו עד אז: כשהקצה של השעה האחרונה היה לפני היעד — 4 טובות מ-23; כשהיה מעבר ליעד — 3 מ-7.
+    const tgt = rules.stopPts * rules.rr
+    const r = htf.range
+    if (!r || r.n < rules.roomMin / 2) {
+      out.push({ key: 'room', name: 'דקה: יש מקום ליעד', ok: true, detail: 'אין מספיק נרות מהשעה האחרונה כדי לבדוק, ולכן לא נחסם', need: null })
+    } else {
+      const edge = long ? r.hi : r.lo
+      const d = long ? edge - p : p - edge
+      const what = long ? 'השיא' : 'השפל'
+      const ok = d >= tgt
+      out.push({
+        key: 'room', name: 'דקה: יש מקום ליעד', ok, level: edge,
+        detail: `${what} של ${rules.roomMin} הדקות האחרונות (${f(edge)}) נמצא ${f(d)} נק׳ מהמחיר${ok ? `, מעבר ליעד (${tgt} נק׳)` : `, לפני היעד (${tgt} נק׳)`}`,
+        need: ok ? null : `אין מקום ליעד: ${what} של השעה האחרונה (${f(edge)}) רק ${f(d)} נק׳ מהמחיר, והיעד ${tgt} נק׳`,
+      })
+    }
+    // ── לא חוזרים לאותו מקום אחרי סטופ ──
+    const failed = [...signals].reverse().find(x => x.symbol === snap.symbol && x.dir === dir && !x.blocked && x.status === 'stop'
+      && now - x.ts < rules.reentryMin * 60_000 && Math.abs(x.entry - p) <= rules.reentryPts)
+    out.push({
+      key: 'fresh', name: 'דקה: לא אותו מקום שכבר נכשל', ok: !failed,
+      detail: failed ? `כבר היה סטופ ל${DIR_HE[dir]} באזור הזה: כניסה ${f(failed.entry)} ב-${ilClock(failed.ts)}` : `לא היה סטופ ל${DIR_HE[dir]} באזור הזה בשעה האחרונה`,
+      need: failed ? `כבר היה סטופ ל${DIR_HE[dir]} באזור הזה (כניסה ${f(failed.entry)} ב-${ilClock(failed.ts)}). לא חוזרים לאותו מקום במשך ${rules.reentryMin} דק׳` : null,
+    })
+  }
   return out
+}
+
+/** הגבוה והנמוך של הדקות האחרונות (כולל נר הדקה האחרון שנסגר), לבדיקת "יש מקום ליעד" */
+function recentRange(symbol: string, snap: StoredSnap, minutes: number): { hi: number; lo: number; n: number } | null {
+  const to = Math.floor(snap.time / 1000); const from = to - (minutes - 1) * 60
+  const w = getBars(symbol, '1m', minutes + 5).filter(b => b.time >= from && b.time <= to)
+  if (!w.length) return null
+  return { hi: Math.max(...w.map(b => b.high)), lo: Math.min(...w.map(b => b.low)), n: w.length }
 }
 
 // ─── זיכרון: איתותים, מצב "דרוך" מהנר הקודם, עסקאות היום ───
@@ -172,6 +280,7 @@ export interface GateSignal {
   r: number | null; mfe: number; mae: number; ambiguous: boolean
   why: string[]                          // התנאים והמספרים ברגע שנדלק הירוק
   cvdSrc: 'bookmap' | 'tv'               // מאיפה נבדק ה-CVD
+  method: 'v1' | 'mtf'                   // v1 = נר דקה בלבד (עד 24.11.2026) · mtf = 15 דק׳ ← 5 דק׳ ← דקה
 }
 export interface DayTrade { id: number; day: string; symbol: string; ts: number; result: 'win' | 'loss' | 'be'; usd: number }
 const KEEP = 2000
@@ -194,7 +303,7 @@ function ensureLoaded(): void {
         entry: Number(r['entry']), stop: Number(r['stop']), t1: Number(r['t1']), t2: Number(r['t2']), blocked: (r['blocked'] as string | null) ?? null, atr: r['atr'] == null ? null : Number(r['atr']),
         status: (r['status'] as GateSignal['status']) ?? 'open', hit1At: r['hit1_at'] == null ? null : Number(r['hit1_at']), resolvedAt: r['resolved_at'] == null ? null : Number(r['resolved_at']),
         r: r['r'] == null ? null : Number(r['r']), mfe: Number(r['mfe'] ?? 0), mae: Number(r['mae'] ?? 0), ambiguous: !!r['ambiguous'],
-        why: parseWhy(r['why']), cvdSrc: r['cvd_src'] === 'bookmap' ? 'bookmap' : 'tv',
+        why: parseWhy(r['why']), cvdSrc: r['cvd_src'] === 'bookmap' ? 'bookmap' : 'tv', method: r['method'] === 'mtf' ? 'mtf' : 'v1',
       })
     }
     const since = nyDay(Date.now() - 3 * 86_400_000)
@@ -293,7 +402,8 @@ export function onMinuteSnapshot(snap: StoredSnap, opts: { news?: News | null } 
   const bars = getBars(snap.symbol, '1m', 3)
   const prevBar = [...bars].reverse().find(b => b.time * 1000 === snap.time - 60_000) ?? null
   const flow = getFlow(snap.symbol, now)?.cvd ?? null
-  const conds = { long: evalConditions(snap, 'long', rules, now, prevBar?.close ?? null, flow), short: evalConditions(snap, 'short', rules, now, prevBar?.close ?? null, flow) }
+  const htf: HtfSnaps = { s15: getSnap(snap.symbol, '15m'), s5: getSnap(snap.symbol, '5m'), range: recentRange(snap.symbol, snap, rules.roomMin) }
+  const conds = { long: evalConditions(snap, 'long', rules, now, prevBar?.close ?? null, flow, htf), short: evalConditions(snap, 'short', rules, now, prevBar?.close ?? null, flow, htf) }
   const now_ = { long: conds.long.every(c => c.ok), short: conds.short.every(c => c.ok) }
   const prev = armedMem.get(snap.symbol)
   if (prev && prev.barTime === snap.time) return null                        // אותו נר הגיע פעמיים
@@ -317,11 +427,11 @@ export function onMinuteSnapshot(snap: StoredSnap, opts: { news?: News | null } 
       id: nextId++, symbol: snap.symbol, dir, barTime: snap.time, ts: now, validUntil: snap.time + 120_000,       // עד סוף הנר השני
       entry: e, stop: e - k * rules.stopPts, t1: e + k * rules.stopPts, t2: e + k * rules.stopPts * rules.rr,
       blocked: blocked ?? null, atr: snap.atr ?? null, status: 'open', hit1At: null, resolvedAt: null, r: null, mfe: 0, mae: 0, ambiguous: false,
-      why: conds[dir].map(c => `${c.name}: ${c.detail}`), cvdSrc: flow ? 'bookmap' : 'tv',
+      why: conds[dir].map(c => `${c.name}: ${c.detail}`), cvdSrc: flow ? 'bookmap' : 'tv', method: 'mtf',
     }
     try {
-      const info = getDb().prepare(`INSERT INTO gate_signals (symbol, dir, bar_time, ts, valid_until, entry, stop, t1, t2, blocked, atr, why, cvd_src) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-        .run(sig.symbol, dir, sig.barTime, sig.ts, sig.validUntil, sig.entry, sig.stop, sig.t1, sig.t2, sig.blocked, sig.atr, JSON.stringify(sig.why), sig.cvdSrc) as { lastInsertRowid?: number | bigint } | undefined
+      const info = getDb().prepare(`INSERT INTO gate_signals (symbol, dir, bar_time, ts, valid_until, entry, stop, t1, t2, blocked, atr, why, cvd_src, method) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .run(sig.symbol, dir, sig.barTime, sig.ts, sig.validUntil, sig.entry, sig.stop, sig.t1, sig.t2, sig.blocked, sig.atr, JSON.stringify(sig.why), sig.cvdSrc, sig.method) as { lastInsertRowid?: number | bigint } | undefined
       const id = Number(info?.lastInsertRowid); if (id > 0) { sig.id = id; nextId = Math.max(nextId, id + 1) }
     } catch { /* נשאר בזיכרון */ }
     signals.push(sig)
@@ -339,7 +449,7 @@ export function gateTelegramText(sig: GateSignal, riskUsd = 300): string | null 
   const sz = sizing(rules, riskUsd)
   const until = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Jerusalem', hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(new Date(sig.validUntil))
   return [
-    `🟢 רמזור כניסה: ${sig.symbol === 'NQ' ? 'נאסד״ק' : sig.symbol} ${DIR_HE[sig.dir]}`,
+    `🟢 רמזור כניסה: ${sig.symbol === 'NQ' ? 'נאסד״ק' : sig.symbol} ${DIR_HE[sig.dir]}${sig.method === 'mtf' ? ' (15 דק׳ ← 5 דק׳ ← אישור בדקה)' : ''}`,
     `כניסה ${f(sig.entry)} · סטופ ${f(sig.stop)} (${rules.stopPts} נק׳) · יעד ${f(sig.t2)} (1:${rules.rr})`,
     `${sz.contracts} ${sz.unit} · סיכון ${f(sz.riskUsd)}$ · יעד ${f(sz.rewardUsd)}$`,
     `⏱ תקף לנר הזה בלבד, עד ${until}. אחריו לא רודפים.`,
@@ -406,6 +516,8 @@ export function gateScore(symbolRaw: string, riskUsd = 300, now = Date.now()) {
     total: tally(full, sz.riskUsd),
     blocked: mine.length - full.length,
     bySource: group(s => s.cvdSrc),
+    byMethod: group(s => s.method),
+    current: tally(full.filter(s => s.method === 'mtf'), sz.riskUsd),          // השיטה הנוכחית בלבד (15 ← 5 ← 1)
     byDir: group(s => s.dir),
     byVol: group(s => (s.atr != null && s.atr > rules.stopPts ? 'volatile' : 'calm')),
     byHour: group(s => ilHour(s.ts)).sort((a, b) => a.key.localeCompare(b.key)),
@@ -480,12 +592,14 @@ export function buildGate(symbolRaw: string, extras: GateExtras = {}, now = Date
   const bars = getBars(symbol, '1m', 3)
   const prevBar = [...bars].reverse().find(b => b.time * 1000 === snap.time - 60_000) ?? null
   const flow = getFlow(symbol, now)
-  const conds = { long: evalConditions(snap, 'long', rules, now, prevBar?.close ?? null, flow?.cvd ?? null), short: evalConditions(snap, 'short', rules, now, prevBar?.close ?? null, flow?.cvd ?? null) }
+  const htf: HtfSnaps = { s15: getSnap(symbol, '15m'), s5: getSnap(symbol, '5m'), range: recentRange(symbol, snap, rules.roomMin) }
+  const conds = { long: evalConditions(snap, 'long', rules, now, prevBar?.close ?? null, flow?.cvd ?? null, htf), short: evalConditions(snap, 'short', rules, now, prevBar?.close ?? null, flow?.cvd ?? null, htf) }
+  const top = dirOf15(htf.s15, now)                      // הכיוון נקבע מלמעלה: גרף 15 הדקות
   const market = (cs: GateCondition[]) => cs.filter(c => c.key !== 'time')
   const okN = (cs: GateCondition[]) => market(cs).filter(c => c.ok).length
   const active = [...signals].reverse().find(s => s.symbol === symbol && s.barTime === snap.time && now <= s.validUntil) ?? null
   const nL = okN(conds.long); const nS = okN(conds.short)
-  const dir: Dir | null = active ? active.dir : nL > nS ? 'long' : nS > nL ? 'short' : flag(snap, 'long', 'ema12Side') ? 'long' : flag(snap, 'short', 'ema12Side') ? 'short' : null
+  const dir: Dir | null = active ? active.dir : top ?? (nL > nS ? 'long' : nS > nL ? 'short' : flag(snap, 'long', 'ema12Side') ? 'long' : flag(snap, 'short', 'ema12Side') ? 'short' : null)
   const shown = dir ? conds[dir] : conds.long
   const otherDir: Dir = dir === 'short' ? 'long' : 'short'
   const other = dir ? { dir: otherDir, ok: okN(conds[otherDir]), total: market(conds[otherDir]).length } : null

@@ -18,9 +18,19 @@ const LV = { vah: 28480, val: 28300, ema: 28485 }
 function snap(over: Partial<SnapshotInput>): SnapshotInput {
   return { symbol: 'NQ1!', tf: '1m', time: T0, price: 28500, op: 28490, hi: 28502, lo: 28488, L: bits(LONG_ON), S: bits([]), phase: 4, cBull: 1, ms: 1, htfMs: 1, htfPh: 4, dq: 3, rsi: 55, atr: 20, vix: 17, trL: '', trS: '', stL: 28440, stS: 28560, lv: LV, ...over }
 }
-/** נר דקה נסגר: נשמר ונבדק ברמזור, כמו שה-Webhook עושה. הצילום מגיע שנייה אחרי סגירת הנר. */
-function bar(i: number, over: Partial<SnapshotInput> = {}, news: { title: string; inMin: number } | null = null) {
+/**
+ * נר דקה נסגר: נשמר ונבדק ברמזור, כמו שה-Webhook עושה. הצילום מגיע שנייה אחרי סגירת הנר.
+ * הרמזור בודק מלמעלה למטה (15 דק׳ ← 5 דק׳ ← דקה), אז לפני נר הדקה נשמרים גם צילומי 15 ו-5 דקות.
+ * ברירת המחדל: הם נראים כמו נר הדקה (אותו כיוון). htf מאפשר לקבוע אותם אחרת, או null כדי לא לשמור בכלל.
+ */
+type Htf = { m15?: Partial<SnapshotInput> | null; m5?: Partial<SnapshotInput> | null }
+function bar(i: number, over: Partial<SnapshotInput> = {}, news: { title: string; inMin: number } | null = null, htf: Htf = {}) {
   const time = T0 + i * MIN; const at = time + MIN + 1000
+  // ב-15 דקות נדרש אחד האישורים הרגילים של HTT: ברירת המחדל היא BOS בכיוון של נר הדקה (לפי הצד שבו EMA 12 דולק)
+  const shortSide = !!over.S && over.S[HTT_FLAG_KEYS.indexOf('ema12Ok')] === '1'
+  const conf15 = shortSide ? { L: bits([]), S: bits(['bos']) } : { L: bits(['bos']), S: bits([]) }
+  if (htf.m15 !== null) saveSnapshot(snap({ time, ...over, ...conf15, ...htf.m15, tf: '15m' }), at)
+  if (htf.m5 !== null) saveSnapshot(snap({ time, ...over, ...htf.m5, tf: '5m' }), at)
   const saved = saveSnapshot(snap({ time, ...over }), at)
   return { at, sig: onMinuteSnapshot(saved, { news }, at) }
 }
@@ -40,7 +50,7 @@ describe('entryGate', () => {
     expect(g.supported && g.state).toBe('green')
     if (!g.supported) return
     expect(g.dir).toBe('long'); expect(g.headline).toContain('לונג')
-    expect(g.conditions.map(c => c.key)).toEqual(['time', 'value', 'ema', 'emaNear', 'candle', 'cvd'])
+    expect(g.conditions.map(c => c.key)).toEqual(['time', 'tf15', 'tf5', 'value', 'ema', 'emaNear', 'candle', 'cvd', 'room', 'fresh'])
     expect(g.conditions.every(c => c.ok)).toBe(true)
     expect(g.plan).toMatchObject({ entry: 28500, stop: 28470, t2: 28560, contracts: 5, unit: 'MNQ', riskUsd: 300, rewardUsd: 600, estimated: false })
     expect(g.signal!.secLeft).toBeGreaterThan(40); expect(g.signal!.secLeft).toBeLessThanOrEqual(60)
@@ -202,16 +212,17 @@ describe('entryGate', () => {
     const stale = bar(0)
     expect(stale.sig).toMatchObject({ dir: 'long', cvdSrc: 'tv' })
     expect(gateTelegramText(stale.sig!, 300)).toContain('בלי אישור Bookmap')
-    expect(stale.sig!.why).toHaveLength(6)
+    expect(stale.sig!.why).toHaveLength(10)
   })
 
   it('score: counts good and bad greens, and what the day gives when taken by the daily rules', () => {
     bar(0)                                                                // ירוק 1: כניסה 28500
     bar(1, { price: 28465, op: 28500, hi: 28501, lo: 28460 })             // ← סטופ. הנר אדום = תיקון
-    bar(2, { price: 28503, op: 28465, hi: 28504, lo: 28464 })             // ירוק 2 (בתוך הצינון של 10 דק'): כניסה 28503
-    bar(3, { price: 28570, op: 28503, hi: 28575, lo: 28500 })             // ← יעד (28563). התנאים עדיין מתקיימים = אותו מהלך
-    bar(4, { price: 28560, op: 28570, hi: 28571, lo: 28556, lv: { vah: 28480, val: 28300, ema: 28545 } })   // תיקון
-    bar(5, { price: 28572, op: 28560, hi: 28573, lo: 28559, lv: { vah: 28480, val: 28300, ema: 28550 } })   // ירוק 3: כניסה 28572, עוד פתוח
+    // ירוק 2 רחוק מהמקום שנכשל (יותר מ-45 נק'), בתוך 10 דקות הצינון: כניסה 28563
+    bar(2, { price: 28563, op: 28550, hi: 28564, lo: 28549, lv: { vah: 28480, val: 28300, ema: 28550 } })
+    bar(3, { price: 28625, op: 28563, hi: 28630, lo: 28560, lv: { vah: 28480, val: 28300, ema: 28610 } })   // ← יעד (28623). התנאים עדיין מתקיימים = אותו מהלך
+    bar(4, { price: 28615, op: 28625, hi: 28626, lo: 28612, lv: { vah: 28480, val: 28300, ema: 28612 } })   // תיקון
+    bar(5, { price: 28628, op: 28615, hi: 28629, lo: 28614, lv: { vah: 28480, val: 28300, ema: 28615 } })   // ירוק 3: כניסה 28628, עוד פתוח
     const sc = gateScore('NQ', 300, T0 + 7 * MIN) as { total: Record<string, number | null>; byDay: Array<{ day: string; n: number; byRules: Record<string, unknown> }>; byDir: Array<{ key: string; n: number }>; list: unknown[] }
     expect(sc.total).toMatchObject({ n: 3, good: 1, bad: 1, open: 1, winPct: 50, sumR: 1, usd: 300 })
     expect(sc.byDir).toEqual([expect.objectContaining({ key: 'long', n: 3 })])
@@ -219,6 +230,97 @@ describe('entryGate', () => {
     // לפי החוקים: הראשון נלקח ונגמר בסטופ; השני והשלישי בתוך 10 דקות הצינון שאחרי ההפסד, ולכן מדלגים עליהם
     expect(sc.byDay[0].byRules).toMatchObject({ n: 1, bad: 1, good: 0, usd: -300 })
     expect(gateScore('BTCUSDT')).toEqual({ supported: false, symbol: 'BTCUSDT' })
+  })
+
+  it('top-down: the 15m chart must show a regular HTT confirmation in the direction, then the strategy on 5m, and only then the 1m confirms', () => {
+    // 15 דקות: חטיפת נזילות לשורט. הדקה נראית כמו לונג מושלם → אין לונג, והכיוון שמוצג הוא שורט
+    const a = bar(0, {}, null, { m15: { L: bits([]), S: bits(['sweep']) } })
+    expect(a.sig).toBeNull()
+    const ga = buildGate('NQ', {}, a.at + 2_000) as { state: string; dir: string }
+    expect(ga.state).not.toBe('green'); expect(ga.dir).toBe('short')                         // הכיוון נקבע מגרף 15 הדקות
+
+    // 15 דקות בלי אף אישור רגיל (רק דגלי הקשר ותנאי האסטרטגיה, שלא נספרים בשלב הזה) → אין איתות, וכתוב מה חסר
+    clearLive(); clearGate()
+    const b = bar(0, {}, null, { m15: { L: bits(['ema12Ok', 'cvdOk', 'htfMs', 'sesNY', 'vixOk']), S: bits(['sesNY']) } })
+    expect(b.sig).toBeNull()
+    const gb = buildGate('NQ', {}, b.at + 2_000) as { state: string; missing: string; conditions: Array<{ key: string; ok: boolean }> }
+    expect(gb.conditions.find(c => c.key === 'tf15')).toMatchObject({ ok: false })
+    expect(gb.state).toBe('yellow'); expect(gb.missing).toContain('15 דק׳'); expect(gb.missing).toContain('אישור')
+
+    // אישור אחד לכל כיוון = תמונה מעורבת; אישור שדולק לשני הכיוונים לא קובע כיוון
+    clearLive(); clearGate()
+    expect(bar(0, {}, null, { m15: { L: bits(['bos']), S: bits(['sweep']) } }).sig).toBeNull()
+    clearLive(); clearGate()
+    expect(bar(0, {}, null, { m15: { L: bits(['fvgAt']), S: bits(['fvgAt']) } }).sig).toBeNull()
+
+    // סוג כניסה של HTT ב-15 דקות (למשל אורדר בלוק) נחשב אישור
+    clearLive(); clearGate()
+    const e = bar(0, {}, null, { m15: { L: bits([]), S: bits([]), trL: 'O' } })
+    expect(e.sig).toMatchObject({ dir: 'long' }); expect(e.sig!.why[1]).toContain('אורדר בלוק')
+
+    // 15 דקות ללונג, אבל ב-5 דקות האסטרטגיה מצביעה למטה → אין איתות
+    clearLive(); clearGate()
+    expect(bar(0, {}, null, { m5: { L: bits([]), S: bits(['ema12Ok', 'ema12Side']), price: 28470, lv: { vah: 28480, val: 28300, ema: 28475 } } }).sig).toBeNull()
+
+    // אין בכלל צילום של 15 דקות → אין איתות
+    clearLive(); clearGate()
+    expect(bar(0, {}, null, { m15: null }).sig).toBeNull()
+
+    // שלושת השלבים באותו כיוון → ירוק, מסומן בשיטה החדשה, וההסבר מתחיל באישור של 15 דקות
+    clearLive(); clearGate()
+    const ok = bar(0, {}, null, { m15: { L: bits(['bos', 'sweep']), S: bits([]) } })
+    expect(ok.sig).toMatchObject({ dir: 'long', method: 'mtf' })
+    expect(ok.sig!.why[1]).toContain('15 דק׳'); expect(ok.sig!.why[1]).toContain('BOS'); expect(ok.sig!.why[1]).toContain('חטיפת נזילות')
+    expect(ok.sig!.why[2]).toContain('5 דק׳')
+    expect(gateTelegramText(ok.sig!, 300)).toContain('15 דק׳ ← 5 דק׳')
+    const sc = gateScore('NQ', 300, ok.at + MIN) as { byMethod: Array<{ key: string; n: number }>; current: { n: number } }
+    expect(sc.byMethod).toEqual([expect.objectContaining({ key: 'mtf', n: 1 })]); expect(sc.current.n).toBe(1)
+  })
+
+  it('a 15m snapshot older than two bars does not count', () => {
+    saveSnapshot(snap({ tf: '15m', time: T0 - 40 * MIN }), T0 - 40 * MIN)
+    const r = bar(0, {}, null, { m15: null })
+    expect(r.sig).toBeNull()
+    const g = buildGate('NQ', {}, r.at + 2_000) as { conditions: Array<{ key: string; ok: boolean; detail: string }> }
+    expect(g.conditions.find(c => c.key === 'tf15')).toMatchObject({ ok: false }); expect(g.conditions.find(c => c.key === 'tf15')!.detail).toContain('ישן')
+  })
+
+  it('room to target: the target must lie inside the last hour range', () => {
+    // 40 נרות דקה שבהם השיא של השעה 28,540: רק 40 נק' מעל הכניסה (28,500), והיעד 60 נק' → אין מקום
+    const seed = (hi: number) => { for (let i = -40; i < 0; i++) saveSnapshot(snap({ time: T0 + i * MIN, price: 28490, op: 28492, hi, lo: 28480 }), T0 + i * MIN + MIN) }   // נרות אדומים: הנר שלפני האיתות אינו "דרוך"
+    seed(28540)
+    const a = bar(0)
+    expect(a.sig).toBeNull()
+    const g = buildGate('NQ', {}, a.at + 2_000) as { state: string; missing: string; conditions: Array<{ key: string; ok: boolean }> }
+    expect(g.conditions.find(c => c.key === 'room')).toMatchObject({ ok: false })
+    expect(g.state).toBe('yellow'); expect(g.missing).toContain('אין מקום ליעד'); expect(g.missing).toContain('28,540'); expect(g.missing).toContain('40 נק׳')
+
+    // השיא של השעה 28,570: 70 נק' מעל, מעבר ליעד → יש מקום
+    clearLive(); clearGate()
+    seed(28570)
+    const b = bar(0)
+    expect(b.sig).toMatchObject({ dir: 'long', entry: 28500 })
+    expect(b.sig!.why.some(w => w.includes('יש מקום ליעד') && w.includes('28,570'))).toBe(true)
+
+    // כניסה על שיא חדש (אין שום דבר מעל בשעה האחרונה) → היעד מחוץ לטווח, אין איתות
+    clearLive(); clearGate()
+    seed(28495)
+    expect(bar(0).sig).toBeNull()
+  })
+
+  it('no return to a spot that already failed: after a stop, the same direction within 45 points is blocked for an hour', () => {
+    bar(0)                                                                // לונג 28500
+    bar(1, { price: 28465, op: 28500, hi: 28501, lo: 28460 })             // ← סטופ
+    const again = bar(2, { price: 28503, op: 28465, hi: 28504, lo: 28464 })     // כל התנאים שוב מתקיימים, 3 נק' מהמקום שנכשל
+    expect(again.sig).toBeNull()
+    const g = buildGate('NQ', {}, again.at + 2_000) as { state: string; missing: string }
+    expect(g.state).toBe('yellow'); expect(g.missing).toContain('כבר היה סטופ'); expect(g.missing).toContain('28,500')
+    // רחוק יותר מ-45 נק' → מותר
+    bar(3, { price: 28540, op: 28550, hi: 28551, lo: 28538, lv: { vah: 28480, val: 28300, ema: 28535 } })     // נר אדום: מאפס את "דרוך"
+    expect(bar(4, { price: 28555, op: 28540, hi: 28556, lo: 28539, lv: { vah: 28480, val: 28300, ema: 28540 } }).sig).toMatchObject({ dir: 'long', entry: 28555 })
+    // באותו מקום, אבל אחרי יותר משעה → מותר שוב
+    clearLive()
+    expect(bar(70).sig).toMatchObject({ dir: 'long', entry: 28500 })
   })
 
   it('stale data never shows a colour', () => {

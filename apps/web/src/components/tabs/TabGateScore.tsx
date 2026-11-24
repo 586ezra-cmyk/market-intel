@@ -12,6 +12,8 @@ interface Score {
   supported: true; symbol: string; serverTs: number; since: number | null; blocked: number
   rules: { stopPts: number; rr: number; contracts: number; unit: string; riskUsd: number; rewardUsd: number; maxTrades: number; maxLosses: number; cooldownMin: number; dayTargetUsd: number }
   total: Tally
+  current?: Tally                       // השיטה הנוכחית בלבד: 15 דק׳ ← 5 דק׳ ← דקה
+  byMethod?: Array<Tally & { key: string }>
   bySource: Array<Tally & { key: string }>; byDir: Array<Tally & { key: string }>; byVol: Array<Tally & { key: string }>; byHour: Array<Tally & { key: string }>
   byDay: Array<Tally & { day: string; byRules: Tally & { ids: number[] } }>
   list: GateSignalRow[]
@@ -24,6 +26,7 @@ const dayFmt = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}`
 const KEY_HE: Record<string, string> = {
   bookmap: 'עם אישור Bookmap', tv: 'TradingView בלבד', long: 'לונג', short: 'שורט',
   volatile: 'תנודתי (נר דקה ממוצע גדול מהסטופ)', calm: 'רגוע',
+  mtf: 'השיטה הנוכחית: 15 דק׳ ← 5 דק׳ ← אישור בדקה', v1: 'השיטה הקודמת: נר דקה בלבד (עד 24.11)',
 }
 
 function Tile({ label, value, cls = 'text-white', sub }: { label: string; value: string; cls?: string; sub?: string }) {
@@ -92,6 +95,11 @@ export default function TabGateScore() {
       <div className="card !p-3">
         <div className="text-lg font-black text-white">🎯 מדד הרמזור · נאסד״ק</div>
         <div className="text-sm text-slate-300 mt-1">{verdict}</div>
+        {sc.current && (
+          <div className="text-sm text-sky-200 mt-1">
+            מאז המעבר לשיטה של 15 דק׳ ← 5 דק׳ ← דקה: {sc.current.n === 0 ? 'עוד לא נשלח אף ירוק.' : `${sc.current.n} ירוקים, ${sc.current.good} טובות, ${sc.current.bad} לא טובות, ${signed(sc.current.sumR)}R.`}
+          </div>
+        )}
         <div className="text-[11px] text-slate-500 mt-1 leading-4">
           {sc.since ? `נמדד מאז ${timeFmt.format(new Date(sc.since))}. ` : ''}
           טובה = הגיעה ליעד 1:{sc.rules.rr} לפני הסטופ ({sc.rules.stopPts} נק׳). הכניסה לפי מחיר הסגירה של נר האיתות, בלי עמלות ובלי החלקה. הכסף מחושב לפי {sc.rules.contracts} {sc.rules.unit} ({num(sc.rules.riskUsd, 0)}$ סיכון).
@@ -142,6 +150,7 @@ export default function TabGateScore() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        <Breakdown title="לפי שיטה" rows={sc.byMethod ?? []} />
         <Breakdown title="עם אישור Bookmap מול בלעדיו" rows={sc.bySource} />
         <Breakdown title="לפי כיוון" rows={sc.byDir} />
         <Breakdown title="תנודתי מול רגוע" rows={sc.byVol} />

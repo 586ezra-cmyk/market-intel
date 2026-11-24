@@ -193,7 +193,7 @@ export default function EntryGate({ gate, symbol, onChanged }: { gate: Gate | un
               : <>👁 Bookmap (רק במחשב הזה): CVD עכשיו <b className="tabular-nums">{signed(eyes.cvd ?? 0)}</b> · לפני {Math.round((eyes.refAgeS ?? 0) / 60)} דק׳ <b className="tabular-nums">{signed(eyes.ref ?? 0)}</b> · <b>{eyes.dir === 'up' ? 'עולה ↑' : eyes.dir === 'down' ? 'יורד ↓' : 'לא זז לכיוון ברור'}</b>{eyes.sent ? ' · הכיוון נשלח לרמזור ✓' : ' · הכיוון עוד לא הגיע לשרת'}</>}
           </div>
           <div className="mt-2 text-[11px] text-slate-500 leading-4">
-            נבדק בכל סגירת נר דקה, מנתוני TradingView{g.dataAgeSec != null ? ` · עודכן לפני ${g.dataAgeSec} שנ׳` : ''}. ירוק = הכללים מתקיימים עכשיו, לא הבטחה לרווח.
+            הסדר: קודם גרף 15 דק׳, אחר כך 5 דק׳, והאישור בנר הדקה. נבדק בכל סגירת נר דקה, מנתוני TradingView{g.dataAgeSec != null ? ` · עודכן לפני ${g.dataAgeSec} שנ׳` : ''}. ירוק = הכללים מתקיימים עכשיו, לא הבטחה לרווח.
           </div>
         </div>
 
