@@ -100,6 +100,7 @@ export const SETTING_RULES: Record<string, (v: unknown) => boolean> = {
   htt_min_15: v => typeof v === 'number' && v >= 0 && v <= 10,
   htt_min_5: v => typeof v === 'number' && v >= 0 && v <= 10,
   telegram_active: v => typeof v === 'boolean' || v === 'true' || v === 'false',
+  old_engine_telegram: v => v === 'off' || v === 'crypto' || v === 'all',
   alert_signals: v => typeof v === 'string' && v.length <= 2000 && isJsonArrayOfStrings(v),
   alert_timeframes: v => typeof v === 'string' && v.length <= 500 && isJsonArrayOfStrings(v),
   telegram_chat_id: v => (typeof v === 'number' && Number.isFinite(v)) || (typeof v === 'string' && /^-?\d{1,20}$/.test(v)),

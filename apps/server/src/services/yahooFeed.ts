@@ -1,5 +1,5 @@
 import type { KlineCandle } from './binanceWebSocket'
-import { runRealtimeDetector, seedCandles } from './realtimeSignalDetector'
+import { forwardCandle, seedIndexHistory, seedLiveOnly } from './indexFeed'
 
 /**
  * Candle feed for index futures.
@@ -17,8 +17,8 @@ const YAHOO = 'https://query1.finance.yahoo.com/v8/finance/chart'
 
 /** Yahoo contract → the symbol name already used across the app. */
 const SYMBOLS: Array<{ yahoo: string; symbol: string }> = [
-  { yahoo: 'NQ=F', symbol: 'NQU2026' },
-  { yahoo: 'ES=F', symbol: 'SPX500'  },
+  { yahoo: 'NQ=F', symbol: 'NQ' },
+  { yahoo: 'ES=F', symbol: 'ES' },
 ]
 
 /** Our timeframe label → [Yahoo interval, Yahoo range]. */
@@ -91,7 +91,8 @@ async function poll(seedOnly = false): Promise<void> {
 
         if (seedOnly || !lastSeen.has(key)) {
           // Warm the buffer without firing alerts for historical candles
-          seedCandles(symbol, tf, candles.slice(-200))
+          // ההיסטוריה מ-Yahoo, ואחריה הנרות החיים של TradingView שכבר נשמרו (משלים את עשר הדקות ש-Yahoo מאחר)
+          seedIndexHistory(symbol, tf, candles.slice(-200))
           lastSeen.set(key, candles[candles.length - 1].time)
           continue
         }
@@ -102,8 +103,8 @@ async function poll(seedOnly = false): Promise<void> {
 
         lastSeen.set(key, fresh[fresh.length - 1].time)
         for (const c of fresh) {
-          await runRealtimeDetector(c)
-          yahooStatus.candlesForwarded++
+          // נכנס למנוע רק אם TradingView לא שולח את המסגרת הזו עכשיו — אחרת זה נר שכבר טופל, באיחור
+          if (await forwardCandle(c, 'yahoo')) yahooStatus.candlesForwarded++
         }
       } catch (err: any) {
         yahooStatus.lastError = `${symbol} ${tf}: ${err.message}`
@@ -121,6 +122,7 @@ export function startYahooFeed(): void {
   console.log('[YahooFeed] Starting NQ/ES candle feed...')
 
   // Seed first so detectors have history and no alerts fire for old candles
+  try { seedLiveOnly() } catch { /* אין עדיין נרות חיים */ }
   poll(true)
     .then(() => console.log('[YahooFeed] Buffers seeded'))
     .catch(err => console.error('[YahooFeed] seed failed:', err.message))

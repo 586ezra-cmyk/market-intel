@@ -17,6 +17,7 @@ import { getSetting } from './settings'
 import { saveAlert, sendTelegram, TOPIC_HIGH } from '../services/alertDispatcher'
 import { buildHttMessage, httFactors, buildHttContext } from '../services/httSetup'
 import { saveSnapshot } from '../services/liveBoard'
+import { onLiveSnapshot } from '../services/indexFeed'
 import { onMinuteSnapshot, nextNews, gateTelegramText } from '../services/entryGate'
 
 const router = Router()
@@ -272,6 +273,8 @@ router.post('/tradingview', async (req: Request, res: Response) => {
       const tf = parseTF(d.timeframe)
       const saved = saveSnapshot({ ...d, tf })
       res.json({ ok: true, symbol: saved.symbol, tf })
+      // המנוע של השרת מקבל את נרות נאסדק ו-S&P מכאן, בזמן אמת (ולא מ-Yahoo באיחור)
+      void onLiveSnapshot(saved.symbol, tf, saved.time)
       // רמזור הכניסה: נבדק בכל סגירת נר דקה, אחרי שכבר ענינו ל-TradingView (שלא יחכה לנו)
       if (tf === '1m') void nextNews(Date.now()).then(async news => {
         const sig = onMinuteSnapshot(saved, { news })

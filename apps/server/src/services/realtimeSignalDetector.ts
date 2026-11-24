@@ -72,7 +72,7 @@ function alreadyReportedSMT(symbol: string, tf: string, madeAt: number): boolean
 // produces neither SMT nor iSMT.
 const LIVE_SMT_PAIRS: Array<[string, string]> = [
   ['ETHUSDT', 'BTCUSDT'],   // crypto — Bybit socket
-  ['NQU2026', 'SPX500'],    // indices — Yahoo feed
+  ['NQ', 'ES'],             // indices — TradingView live bars, Yahoo as a delayed fallback
 ]
 
 // ─── Candle buffer (rolling 300 candles per symbol+TF) ───────────────────────
@@ -864,6 +864,12 @@ export async function runRealtimeDetector(candle: KlineCandle): Promise<void> {
       if (candle.symbol !== a1 && candle.symbol !== a2) continue
       const otherSym = candle.symbol === a1 ? a2 : a1
       const otherBuf = getBuffer(otherSym, candle.timeframe)
+
+      // The partner must be on (almost) the same candle. A partner that lags by
+      // more than one bar — a delayed feed, or a feed that stopped — makes fresh
+      // pivots here look like "the other one did not follow".
+      const otherLast = otherBuf[otherBuf.length - 1]
+      if (!otherLast || candle.time - otherLast.time > (TF_SECONDS[candle.timeframe] ?? 0)) continue
 
       // The partner is the mover, this symbol is the one that failed to follow —
       // and the entry belongs on the asset that failed, so the alert is raised

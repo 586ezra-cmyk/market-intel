@@ -90,6 +90,14 @@ function Toggle({ on, onChange, label, size = 'sm' }: {
   )
 }
 
+// המנוע הישן = הסורק של השרת (הודעות 🔔 עם מדליה). הוא תמיד רושם הכול באתר; כאן קובעים מה ממנו יוצא לטלגרם.
+type OldEngineMode = 'off' | 'crypto' | 'all'
+const OLD_ENGINE_MODES: Array<{ id: OldEngineMode; label: string; desc: string }> = [
+  { id: 'off',    label: 'שקט',          desc: 'לא שולח כלום לטלגרם' },
+  { id: 'crypto', label: 'קריפטו בלבד',  desc: 'ביטקוין, את׳ריום וסולנה' },
+  { id: 'all',    label: 'הכול',         desc: 'גם נאסדק ו-S&P' },
+]
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function TabAlertSettings() {
@@ -102,11 +110,13 @@ export default function TabAlertSettings() {
   const [saved,       setSaved]       = useState(false)
   const [testResult,  setTestResult]  = useState<string | null>(null)
   const [httMin,      setHttMin]      = useState<number>(5)
+  const [oldEngine,   setOldEngine]   = useState<OldEngineMode>('off')
   const [httMinTf,    setHttMinTf]    = useState<Record<string, number>>({ '240': 3, '15': 4, '5': 3 })
 
   useEffect(() => {
     if (!settings) return
     setMasterOn(settings.telegram_active ?? true)
+    setOldEngine(OLD_ENGINE_MODES.some(m => m.id === settings.old_engine_telegram) ? settings.old_engine_telegram : 'off')
     if (settings.htt_min_score !== undefined) setHttMin(Number(settings.htt_min_score))
     setHttMinTf({ '240': Number(settings.htt_min_240 ?? 3), '15': Number(settings.htt_min_15 ?? 4), '5': Number(settings.htt_min_5 ?? 3) })
     if (settings.alert_signals)    setSignals(JSON.parse(settings.alert_signals))
@@ -126,6 +136,7 @@ export default function TabAlertSettings() {
     try {
       await apiPost('/api/settings', {
         telegram_active:    masterOn,
+        old_engine_telegram: oldEngine,
         alert_signals:      JSON.stringify(signals),
         alert_timeframes:   JSON.stringify(timeframes),
         htt_min_score:      httMin,
@@ -169,6 +180,27 @@ export default function TabAlertSettings() {
           </p>
         </div>
         <Toggle on={masterOn} onChange={() => setMasterOn(v => !v)} label="הדלק/כבה התראות" size="lg" />
+      </div>
+
+      {/* ── Old engine → Telegram: off / crypto / all ── */}
+      <div className="card space-y-3">
+        <div>
+          <h3 className="font-semibold text-sm">🔔 הסורק של השרת — מה נשלח ממנו לטלגרם</h3>
+          <p className="text-xs text-slate-400 mt-0.5">הסורק של השרת (הודעות 🔔 עם מדליה) ממשיך לרשום כל התראה בלשונית ההתראות, בכל מצב. כאן בוחרים רק מה ממנו יוצא לטלגרם. ההתראות של HTT (🎯) והרמזור לא מושפעים.</p>
+        </div>
+        <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="מה הסורק של השרת שולח לטלגרם">
+          {OLD_ENGINE_MODES.map(m => {
+            const on = oldEngine === m.id
+            return (
+              <button key={m.id} role="radio" aria-checked={on} onClick={() => setOldEngine(m.id)}
+                className={`flex flex-col items-center gap-0.5 px-3 py-2 rounded-lg border transition-all ${on ? 'bg-brand-600/20 border-brand-500/50 text-white' : 'bg-surface border-slate-700 text-slate-500 hover:text-slate-300'}`}>
+                <span className="text-sm font-bold">{m.label}</span>
+                <span className="text-[11px]">{m.desc}</span>
+              </button>
+            )
+          })}
+        </div>
+        <p className="text-[11px] text-slate-500">השינוי נכנס לתוקף אחרי "שמור הגדרות".</p>
       </div>
 
       {/* ── HTT: minimum confirmation level for Telegram ── */}

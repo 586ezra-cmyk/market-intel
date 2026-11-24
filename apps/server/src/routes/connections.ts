@@ -7,6 +7,7 @@ import { getDetectorStats } from '../services/realtimeSignalDetector'
 import { backfillReport } from '../services/bybitBackfill'
 import { sendTelegram, alertsEnabled } from '../services/alertDispatcher'
 import { debouncerStats } from '../services/telegramDebouncer'
+import { indexFeedStatus } from '../services/indexFeed'
 
 
 // ─── Pine Script (embedded — always in sync with server deploy) ───────────────
@@ -671,6 +672,8 @@ router.get('/crypto-status', (_req: Request, res: Response) => {
     alertsSent: stats.sent,
     alertsSaved: stats.saved,
     telegram: debouncerStats,
+    // נאסדק ו-S&P במנוע: כמה נרות הגיעו חי מ-TradingView, כמה מהגיבוי של Yahoo, וכמה נרות יש בכל מסגרת
+    indexFeed: { ...indexFeedStatus, buffers: Object.fromEntries(Object.entries(stats.buffers).filter(([k]) => /^(NQ|ES):/.test(k))) },
     liquidityLevels: stats.liquidityLevels,
     lastSent: stats.lastSent,
     coverage,

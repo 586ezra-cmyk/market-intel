@@ -1,5 +1,6 @@
 import type { Timeframe } from '@market/shared'
 import { sendTelegram } from './alertDispatcher'
+import { getSetting } from '../routes/settings'
 
 /**
  * Holds outgoing alerts briefly so each instrument speaks once.
@@ -31,7 +32,20 @@ interface Pending {
 
 const pending = new Map<string, Pending>()
 
+/**
+ * המנוע הישן (הסורק של השרת) ממשיך לרשום כל קריאה באתר, אבל לטלגרם הוא שולח רק לפי ההגדרה
+ * old_engine_telegram: off (ברירת מחדל — שקט) · crypto (רק BTC/ETH/SOL, שמגיעים בזמן אמת) · all.
+ * נאסדק ו-S&P של המנוע (NQ/ES) נשלחים רק ב-all.
+ * ההתראות של HTT מ-TradingView לא עוברות כאן והן לא מושפעות.
+ */
+export function oldEngineTelegramAllowed(symbol: string, mode: string): boolean {
+  if (mode === 'all') return true
+  if (mode === 'crypto') return /USDT$/.test(symbol)
+  return false
+}
+
 export const debouncerStats = {
+  muted: 0,
   queued: 0,
   sent: 0,
   superseded: 0,
@@ -45,6 +59,7 @@ export function queueTelegramAlert(
   timeframe: Timeframe,
   direction: string,
 ): void {
+  if (!oldEngineTelegramAllowed(symbol, getSetting('old_engine_telegram', 'off'))) { debouncerStats.muted++; return }
   const existing = pending.get(symbol)
   debouncerStats.queued++
 
